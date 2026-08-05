@@ -1,0 +1,53 @@
+.organisation-management-layout {
+  margin-top: 30px;
+}
+
+.organisation-management-layout .govuk-breadcrumbs {
+  margin-top: 0;
+}
+
+.organisation-management-layout .govuk-breadcrumbs + .govuk-notification-banner {
+  margin-top: 20px;
+}
+
+.organisation-management-layout__content {
+  min-width: 0;
+}
+
+.organisation-management-layout__navigation .app-subnav__section:not(.app-subnav__section--nested) > .app-subnav__section-item:first-child {
+  padding-top: 0;
+}
+
+.organisation-management-layout__navigation .app-subnav__section {
+  margin-bottom: 0;
+}
+
+.organisation-management-layout__navigation .app-subnav__section--nested {
+  margin-top: 10px;
+  padding-left: 0;
+}
+
+.organisation-management-layout__navigation .app-subnav__section--nested .app-subnav__section-item {
+  padding-top: 5px;
+}
+
+/* Figma design shows nested items as plain indented text with the active blue bar only —
+ * no dash prefix, unlike the shared GovUKSideNavigation nested-item default. */
+.organisation-management-layout__navigation .app-subnav__section--nested .app-subnav__section-item::before {
+  content: none;
+}
+
+.organisation-management-layout__content > .govuk-back-link:first-child {
+  margin-top: 0;
+}
+
+.organisation-admin-user-view .govuk-summary-card__actions .govuk-link {
+  font-size: 19px;
+  line-height: 25px;
+}
+
+@media (max-width: 40.0525em) {
+  .organisation-management-layout__navigation {
+    margin-bottom: 20px;
+  }
+}

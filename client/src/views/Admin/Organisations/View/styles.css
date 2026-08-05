@@ -1,0 +1,175 @@
+.organisations-view-page {
+  padding-top: 5px;
+}
+
+.organisations-view-page--has-banner {
+  padding-top: 40px;
+}
+
+.organisations-view-page--has-banner .govuk-notification-banner {
+  margin-bottom: 50px;
+}
+
+.organisations-view-page__header {
+  align-items: flex-start;
+  display: flex;
+  gap: 15px;
+  justify-content: space-between;
+  margin-bottom: 40px;
+}
+
+.organisations-view-page__title {
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 40px;
+  margin-bottom: 0;
+}
+
+.organisations-view-page .govuk-summary-card {
+  margin-bottom: 30px;
+}
+
+.organisations-view-page .govuk-summary-card__title-wrapper {
+  padding: 20px;
+}
+
+.organisations-view-page .govuk-summary-card__content {
+  padding: 0 20px;
+}
+
+.organisations-view-page .govuk-summary-list {
+  margin-bottom: 0;
+}
+
+.organisations-view-page .govuk-summary-list__row {
+  column-gap: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  padding: 10px 0;
+}
+
+.organisations-view-page .govuk-summary-list__key,
+.organisations-view-page .govuk-summary-list__value {
+  padding: 0;
+  width: auto;
+}
+
+.organisations-view-page .govuk-summary-card .govuk-summary-list__row:last-child {
+  border-bottom: 0;
+}
+
+.organisations-view-page__muted {
+  color: #505a5f;
+}
+
+.organisations-view-page__stacked-value {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.organisations-view-page__users-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 30px;
+  justify-content: space-between;
+  padding-top: 10px;
+}
+
+.organisations-view-page__users-title {
+  font-size: 24px;
+  line-height: 30px;
+  margin-bottom: 20px;
+}
+
+.organisations-view-page__users-header .govuk-button {
+  margin-bottom: 0;
+}
+
+.organisations-view-page .govuk-inset-text {
+  margin-bottom: 0;
+  margin-top: 0;
+}
+
+.organisations-view-page .govuk-table-filter {
+  align-items: flex-end;
+  column-gap: 30px;
+  display: flex;
+  margin-bottom: 20px;
+  margin-left: 0;
+  margin-right: 0;
+  width: 100%;
+}
+
+.organisations-view-page .govuk-table-filter > [class*='govuk-grid-column'] {
+  box-sizing: border-box;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.organisations-view-page .govuk-table-filter .govuk-grid-column-two-thirds {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.organisations-view-page .govuk-table-filter__sort {
+  flex: 0 0 191px;
+  max-width: 191px;
+  width: 191px;
+}
+
+.organisations-view-page .govuk-table-filter .govuk-label {
+  line-height: 25px;
+  margin-bottom: 5px;
+}
+
+.organisations-view-page .govuk-table-filter__search,
+.organisations-view-page .govuk-table-filter__input,
+.organisations-view-page .govuk-table-filter__search-button,
+.organisations-view-page .govuk-table-filter .govuk-select {
+  height: 40px;
+}
+
+.organisations-view-page .govuk-table {
+  margin-bottom: 0;
+}
+
+.organisations-view-page .govuk-table__header,
+.organisations-view-page .govuk-table__cell {
+  padding-bottom: 10px;
+  padding-top: 10px;
+}
+
+@media (max-width: 40.0525em) {
+  .organisations-view-page__header,
+  .organisations-view-page__users-header {
+    display: block;
+  }
+
+  .organisations-view-page__header .govuk-action-menu,
+  .organisations-view-page__users-header .govuk-button {
+    margin-top: 10px;
+  }
+
+  .organisations-view-page .govuk-summary-list__row {
+    display: block;
+  }
+
+  .organisations-view-page .govuk-summary-list__value {
+    margin-top: 5px;
+  }
+
+  .organisations-view-page .govuk-table-filter {
+    display: block;
+  }
+
+  .organisations-view-page .govuk-table-filter .govuk-grid-column-two-thirds {
+    width: 100%;
+  }
+
+  .organisations-view-page .govuk-table-filter__sort {
+    margin-top: 15px;
+    max-width: none;
+    width: 100%;
+  }
+}

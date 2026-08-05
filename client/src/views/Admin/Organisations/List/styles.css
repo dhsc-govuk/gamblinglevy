@@ -1,0 +1,139 @@
+.organisations-list-page--has-banner {
+  padding-top: 40px;
+}
+
+.organisations-list-page--has-banner .govuk-notification-banner {
+  margin-bottom: 50px;
+}
+
+.organisations-list-page .govuk-heading-xl {
+  font-size: 36px;
+  line-height: 40px;
+  margin-bottom: 50px;
+}
+
+.organisations-list-page__intro {
+  margin-bottom: 50px;
+}
+
+.organisations-list-page__intro .govuk-body {
+  font-size: 19px;
+  line-height: 25px;
+  margin: 0 0 10px;
+}
+
+.organisations-list-page__intro .govuk-body:last-child {
+  margin-bottom: 0;
+}
+
+/* Layout only — govuk-button-group supplies display:flex, the 15px child spacing and responsive stacking.
+   Its container margin-right:-15px cancels the last child's margin, so flex-end still lands flush right. */
+.organisations-list-page__actions {
+  justify-content: flex-end;
+  margin-bottom: 30px;
+}
+
+.organisations-list-page__actions .govuk-button {
+  font-size: 19px;
+  line-height: 25px;
+  margin-bottom: 0;
+}
+
+/* The margin-bottom: 0 above ties govuk-button-group's own `.govuk-button { margin-bottom: 17px }` on
+   specificity and wins on source order, which zeroes the gap when the group stacks into a column below
+   the tablet breakpoint. Restore it only for the stacked case so the desktop row's spacing is untouched. */
+@media (max-width: 40.0525em) {
+  .organisations-list-page__actions .govuk-button:not(:last-child) {
+    margin-bottom: 17px;
+  }
+}
+
+.organisations-list-page .govuk-table-filter {
+  display: grid;
+  grid-template-columns: 462px 191px;
+  column-gap: 30px;
+  align-items: end;
+  margin-bottom: 30px;
+}
+
+.organisations-list-page .govuk-table-filter > [class*='govuk-grid-column'] {
+  box-sizing: border-box;
+  float: none;
+  min-width: 0;
+  padding: 0;
+  width: auto;
+}
+
+.organisations-list-page .govuk-table-filter .govuk-label {
+  font-size: 19px;
+  line-height: 25px;
+  margin-bottom: 5px;
+}
+
+.organisations-list-page .govuk-table-filter__input,
+.organisations-list-page .govuk-table-filter__search-button {
+  height: 40px;
+}
+
+.organisations-list-page .govuk-table-filter .govuk-select {
+  min-height: 40px;
+  height: auto;
+  min-width: 0;
+  width: 100% !important;
+}
+
+.organisations-list-page .govuk-table {
+  margin-bottom: 30px;
+}
+
+.organisations-list-page .govuk-table__header,
+.organisations-list-page .govuk-table__cell {
+  font-size: 19px;
+  line-height: 25px;
+}
+
+.organisations-list-page .govuk-table__header:nth-child(1),
+.organisations-list-page .govuk-table__cell:nth-child(1) {
+  width: 320px;
+}
+
+.organisations-list-page .govuk-table__header:nth-child(2),
+.organisations-list-page .govuk-table__cell:nth-child(2) {
+  width: 199px;
+}
+
+.organisations-list-page .govuk-table__header:nth-child(3),
+.organisations-list-page .govuk-table__cell:nth-child(3) {
+  padding-right: 0;
+  width: 124px;
+}
+
+.organisations-list-page__status-cell {
+  padding-right: 0 !important;
+  text-align: right;
+  width: 124px;
+}
+
+.organisations-list-page__status {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.organisations-list-page > .govuk-link {
+  font-size: 19px;
+  line-height: 25px;
+}
+
+@media (max-width: 40.0525em) {
+  .organisations-list-page .govuk-heading-xl {
+    font-size: 27px;
+    line-height: 30px;
+    margin-bottom: 30px;
+  }
+
+  .organisations-list-page .govuk-table-filter {
+    grid-template-columns: 1fr;
+    row-gap: 20px;
+  }
+}

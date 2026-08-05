@@ -1,0 +1,40 @@
+/* Bespoke deep-blue confirmation panel for destructive-action "Are you sure?"
+   pages (no govuk-frontend equivalent in blue — govuk-panel--confirmation
+   ships green only). Layout + scoped colour overrides; typography classes
+   (govuk-heading-xl / govuk-body) carry the GOV.UK type ramp. */
+
+.confirm-action-panel {
+  background-color: #1d70b8; /* govuk-brand-colour */
+  color: #ffffff;
+  padding: 35px; /* InterruptionCard padding per the Figma kit (e.g. node 420-29290) */
+  margin-top: 20px;
+}
+
+.confirm-action-panel .govuk-heading-xl,
+.confirm-action-panel .govuk-heading-l,
+.confirm-action-panel .govuk-body-l,
+.confirm-action-panel .govuk-body {
+  color: #ffffff;
+}
+
+.confirm-action-panel .govuk-link--inverse,
+.confirm-action-panel .govuk-link--inverse:visited,
+.confirm-action-panel .govuk-link--inverse:hover,
+.confirm-action-panel .govuk-link--inverse:active {
+  color: #ffffff;
+}
+
+.confirm-action-panel .govuk-heading-xl,
+.confirm-action-panel .govuk-heading-l {
+  margin-bottom: 20px;
+}
+
+.confirm-action-panel .govuk-body-l,
+.confirm-action-panel .govuk-body {
+  margin-bottom: 15px;
+}
+
+.confirm-action-panel .govuk-button-group {
+  margin-bottom: 0;
+  margin-top: 10px;
+}

@@ -1,0 +1,8 @@
+/* H1 defaults to govuk-heading-xl (48px/50px) but this app's Figma designs specify "Desktop/Heading/Large"
+   (36px/40px bold) for page headings — matches Collections/View, the collection wizard, and every other
+   H1 in this Figma file. */
+.collections-edit-page__title {
+  font-size: 36px;
+  line-height: 40px;
+  font-weight: 700;
+}

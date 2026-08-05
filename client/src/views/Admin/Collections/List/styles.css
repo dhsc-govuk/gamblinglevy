@@ -1,0 +1,115 @@
+.collections-list-page {
+  /* govuk-breadcrumbs already carries a 10px margin-bottom; 5px on top of that matches the Figma
+     spec's 15px gap between the breadcrumb and the title. */
+  padding-top: 5px;
+}
+
+.collections-list-page--has-banner {
+  /* Figma success state: the notification banner starts 50px below the layout breadcrumb.
+     govuk-breadcrumbs already contributes 10px bottom margin, so this page offset supplies the rest. */
+  padding-top: 40px;
+}
+
+.collections-list-page--has-banner .govuk-notification-banner {
+  margin-bottom: 50px;
+}
+
+.collections-list-page .collections-list-page__title {
+  /* Figma: 20px padding under the breadcrumb/title block + 30px gap to the intro copy = 50px. */
+  margin-bottom: 50px;
+  font-size: 36px;
+  line-height: 40px;
+}
+
+.collections-list-page__intro {
+  margin-bottom: 30px;
+}
+
+/* Figma's intro text is one block with 10px paragraph spacing throughout — between the lead sentence,
+   "You can:", and each bullet — tighter than govuk-frontend's default 20px paragraph / 5px list-item margins. */
+.collections-list-page__intro .govuk-body {
+  margin: 0 0 10px;
+}
+
+.collections-list-page__intro .govuk-list {
+  margin: 0;
+}
+
+.collections-list-page__intro .govuk-list > li {
+  margin-bottom: 10px;
+}
+
+.collections-list-page__intro .govuk-list > li:last-child {
+  margin-bottom: 0;
+}
+
+.collections-list-page__header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  gap: 30px;
+  margin-bottom: 30px;
+}
+
+.collections-list-page .collections-list-page__subheading {
+  margin-bottom: 0;
+  font-size: 24px;
+  line-height: 30px;
+}
+
+.collections-list-page__deleted-link {
+  margin-top: 30px;
+}
+
+/* Neutralise govuk-inset-text's own bottom margin so the empty state's gap to the "View deleted" link is
+   governed by .collections-list-page__deleted-link's margin-top alone (avoids doubling up to 60px). */
+.collections-list-page .govuk-inset-text {
+  margin-bottom: 0;
+}
+
+.collections-list-page .govuk-table-filter {
+  display: grid;
+  /* No minimum floor on the first track: it must always resolve to exactly "container - 442px" so the third
+     column's right edge lines up with the button/table above regardless of viewport width. A minmax() floor
+     here would force the grid wider than its container on narrower screens, pushing the filter select past
+     the right edge instead of flush with it. */
+  grid-template-columns: 1fr 191px 191px;
+  column-gap: 30px;
+  row-gap: 20px;
+  margin: 0 0 30px;
+  align-items: end;
+}
+
+.collections-list-page .govuk-table-filter > div {
+  min-width: 0;
+  width: 100%;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.collections-list-page .govuk-table-filter .govuk-select {
+  width: 191px !important;
+  min-width: 0;
+}
+
+@media (max-width: 40.0525em) {
+  .collections-list-page {
+    padding-top: 5px;
+  }
+
+  .collections-list-page .collections-list-page__title {
+    margin-bottom: 30px;
+  }
+
+  .collections-list-page__header {
+    display: block;
+  }
+
+  .collections-list-page .govuk-table-filter {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .collections-list-page .govuk-table-filter .govuk-select {
+    width: 100% !important;
+  }
+}

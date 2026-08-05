@@ -1,0 +1,80 @@
+{
+  "name": "core",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@azure/msal-browser": "^3.10.0",
+    "@azure/msal-react": "^2.0.12",
+    "@date-io/moment": "^2.16.1",
+    "@emotion/react": "^11.10.5",
+    "@emotion/styled": "^11.10.5",
+    "@microsoft/applicationinsights-web": "^3.4.3",
+    "@mui/icons-material": "^5.11.0",
+    "@mui/lab": "^5.0.0-alpha.145",
+    "@mui/material": "^5.14.10",
+    "@mui/x-data-grid": "^6.14.0",
+    "@mui/x-date-pickers": "^5.0.20",
+    "@sentry/react": "^7.28.1",
+    "@sentry/tracing": "^7.28.1",
+    "@types/styled-components": "^5.1.36",
+    "@vitejs/plugin-react-swc": "^3.7.0",
+    "accessible-autocomplete": "^3.0.1",
+    "axios": "^1.4.0",
+    "dayjs": "^1.11.7",
+    "govuk-frontend": "^6.0.0-rc.0",
+    "govuk-react": "^0.10.7",
+    "moment": "^2.29.4",
+    "notistack": "^2.0.8",
+    "qrcode.react": "^4.2.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-dropzone": "^14.2.3",
+    "react-query": "^3.39.3",
+    "react-router-dom": "^6.6.1",
+    "styled-components": "^6.3.6",
+    "vite": "^5.3.0",
+    "vite-plugin-svgr": "^4.2.0",
+    "vite-tsconfig-paths": "^4.3.2"
+  },
+  "devDependencies": {
+    "@axe-core/react": "^4.10.1",
+    "@eslint/js": "^9.0.0",
+    "@types/react": "^18.0.26",
+    "@types/react-dom": "^18.0.10",
+    "@types/react-router-dom": "^5.3.3",
+    "eslint": "^9.0.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.0",
+    "globals": "^16.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
+    "prettier": "^2.8.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.0.0",
+    "vite-plugin-eslint": "^1.8.1"
+  },
+  "scripts": {
+    "dev": "vite",
+    "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\"",
+    "build": "tsc && vite build",
+    "prepare": "cd .. && husky client/.husky"
+  },
+  "lint-staged": {
+    "src/**/*.{js,jsx,ts,tsx}": [
+      "eslint --max-warnings 0"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

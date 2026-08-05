@@ -1,0 +1,399 @@
+.reports-orgs-page {
+  padding-top: 30px;
+  color: #0b0c0c;
+}
+
+.reports-orgs-page__overview {
+  width: 630px;
+  margin: 0 0 30px;
+}
+
+.reports-orgs-page__caption {
+  display: block;
+  margin: 0;
+  color: #505a5f;
+  font-family: "GDS Transport", arial, sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 30px;
+}
+
+.reports-orgs-page .reports-orgs-page__title {
+  width: 630px;
+  margin: 0 0 20px;
+  font-size: 36px;
+  line-height: 40px;
+}
+
+.reports-orgs-page .reports-orgs-page__intro {
+  width: 630px;
+  margin: 0;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+.reports-orgs-page__section-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 30px;
+  width: 960px;
+  height: 40px;
+  margin: 0 0 30px;
+}
+
+.reports-orgs-page .reports-orgs-page__subheading {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 24px;
+  line-height: 30px;
+}
+
+.reports-orgs-page__manage-button {
+  min-width: 217px;
+  height: 40px;
+  margin: 0;
+  padding: 8px 12px 7px;
+  box-sizing: border-box;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.reports-orgs-page__summary {
+  width: 630px;
+  min-height: 135px;
+  margin: 0 0 30px;
+}
+
+.reports-orgs-page__summary-row {
+  display: flex;
+  gap: 20px;
+  min-height: 45px;
+  padding: 10px 0;
+  border-bottom: 1px solid #b1b4b6;
+  box-sizing: border-box;
+}
+
+.reports-orgs-page__summary-row dt {
+  flex: 0 0 225px;
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 25px;
+}
+
+.reports-orgs-page__summary-row dd {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+.reports-orgs-page__heading-band {
+  width: 630px;
+  height: 45px;
+  margin: 0 0 30px;
+  padding-top: 15px;
+  box-sizing: border-box;
+}
+
+.reports-orgs-file {
+  display: flex;
+  align-items: flex-start;
+  gap: 30px;
+  width: 630px;
+  min-height: 216px;
+  margin: 0 0 30px;
+}
+
+.reports-orgs-file__icon {
+  display: block;
+  flex: 0 0 109px;
+  width: 109px;
+  height: 150px;
+}
+
+.reports-orgs-file__icon svg {
+  width: 109px;
+  height: 150px;
+}
+
+.reports-orgs-file__body {
+  flex: 1 1 auto;
+  width: 491px;
+}
+
+.reports-orgs-file__title {
+  display: block;
+  width: 491px;
+  margin: 0 0 15px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1d70b8;
+  cursor: pointer;
+  font-family: "GDS Transport", arial, sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 32px;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-thickness: max(1px, 0.0625rem);
+  text-underline-offset: 0.1em;
+  white-space: pre-line;
+}
+
+.reports-orgs-file__title:hover {
+  color: #003078;
+  text-decoration-thickness: 3px;
+}
+
+.reports-orgs-file__title:focus {
+  outline: 3px solid transparent;
+  background-color: #ffdd00;
+  box-shadow:
+    0 -2px #ffdd00,
+    0 4px #0b0c0c;
+  color: #0b0c0c;
+  text-decoration: none;
+}
+
+.reports-orgs-file__title:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.reports-orgs-file__meta {
+  margin: 0 0 25px;
+  color: #505a5f;
+  font-size: 19px;
+  line-height: 24px;
+}
+
+.reports-orgs-file .reports-orgs-file__warning {
+  width: 491px;
+  margin: 0;
+}
+
+.reports-orgs-file__error {
+  margin-top: 15px;
+  margin-bottom: 0;
+}
+
+.reports-orgs-filter {
+  display: grid;
+  grid-template-columns: 518px 170px 170px;
+  gap: 51px;
+  align-items: end;
+  width: 960px;
+  height: 70px;
+  margin: 0 0 30px;
+}
+
+.reports-orgs-filter .govuk-label {
+  margin-bottom: 5px;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+.reports-orgs-filter__search-control {
+  display: flex;
+  width: 518px;
+  height: 40px;
+}
+
+.reports-orgs-filter__input {
+  flex: 1 1 auto;
+  height: 40px;
+  min-width: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.reports-orgs-filter__search-button {
+  display: flex;
+  flex: 0 0 40px;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  border: 0;
+  background: #1d70b8;
+  cursor: pointer;
+}
+
+.reports-orgs-filter__search-button:hover {
+  background: #003078;
+}
+
+.reports-orgs-filter__search-button:focus {
+  outline: 3px solid #ffdd00;
+  outline-offset: 0;
+  background: #ffdd00;
+}
+
+.reports-orgs-filter__search-button:focus svg circle,
+.reports-orgs-filter__search-button:focus svg line {
+  stroke: #0b0c0c;
+}
+
+.reports-orgs-filter__select,
+.reports-orgs-filter__select .govuk-select {
+  width: 170px !important;
+  min-width: 0;
+}
+
+.reports-orgs-filter__select .govuk-select {
+  /* Allow user-defined line height to grow the control without clipping its
+     text (WCAG 1.4.12), while preserving the default 40px control size. */
+  min-height: 40px;
+  height: auto;
+  margin: 0;
+  padding: 5px 7px 5px 11px;
+  box-sizing: border-box;
+  font-family: "GDS Transport", arial, sans-serif;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+.reports-orgs-list {
+  width: 960px;
+  margin: 0;
+}
+
+.reports-orgs-list__empty {
+  margin: 0;
+  padding: 10px 0;
+  border-top: 1px solid #b1b4b6;
+  border-bottom: 1px solid #b1b4b6;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+.reports-orgs-row {
+  min-height: 50px;
+  padding: 8px 0;
+  border-top: 1px solid #b1b4b6;
+  border-bottom: 1px solid #b1b4b6;
+  box-sizing: border-box;
+}
+
+.reports-orgs-row + .reports-orgs-row {
+  margin-top: -1px;
+}
+
+.reports-orgs-row--submitted {
+  min-height: 75px;
+}
+
+.reports-orgs-row__primary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.reports-orgs-row__link {
+  display: inline-block;
+  padding-top: 4px;
+  padding-bottom: 2px;
+  color: #1d70b8;
+  font-size: 19px;
+  line-height: 25px;
+  text-decoration: underline;
+  text-decoration-thickness: max(1px, 0.0625rem);
+  text-underline-offset: 0.1em;
+}
+
+.reports-orgs-row__link:hover {
+  color: #003078;
+  text-decoration-thickness: 3px;
+}
+
+.reports-orgs-row__tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 5px 8px 4px;
+  box-sizing: border-box;
+  background: #bbd4ea;
+  color: #0c2d4a;
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 25px;
+  white-space: nowrap;
+}
+
+.reports-orgs-row__tag--overdue {
+  background: #f4cdc6;
+  color: #2a0b06;
+}
+
+.reports-orgs-row__status-text {
+  display: inline-block;
+  width: 110px;
+  color: #0b0c0c;
+  font-size: 19px;
+  line-height: 25px;
+  text-align: right;
+}
+
+.reports-orgs-row__submitted {
+  margin: 0;
+  padding-right: 110px;
+  color: #505a5f;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+@media (max-width: 48.0525em) {
+  .reports-orgs-page {
+    padding-top: 30px;
+  }
+
+  .reports-orgs-page__overview,
+  .reports-orgs-page .reports-orgs-page__title,
+  .reports-orgs-page .reports-orgs-page__intro,
+  .reports-orgs-page__summary,
+  .reports-orgs-page__heading-band,
+  .reports-orgs-file,
+  .reports-orgs-list {
+    width: 100%;
+  }
+
+  .reports-orgs-page__section-header,
+  .reports-orgs-filter {
+    width: 100%;
+    height: auto;
+  }
+
+  .reports-orgs-page__section-header,
+  .reports-orgs-file,
+  .reports-orgs-row__primary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .reports-orgs-page__manage-button,
+  .reports-orgs-file__body,
+  .reports-orgs-file__title,
+  .reports-orgs-file .reports-orgs-file__warning,
+  .reports-orgs-filter__search-control,
+  .reports-orgs-filter__select,
+  .reports-orgs-filter__select .govuk-select {
+    width: 100%;
+  }
+
+  .reports-orgs-filter {
+    grid-template-columns: 1fr;
+  }
+
+  .reports-orgs-row__submitted {
+    padding-right: 0;
+  }
+
+  .reports-orgs-row__status-text {
+    width: auto;
+    text-align: left;
+  }
+}

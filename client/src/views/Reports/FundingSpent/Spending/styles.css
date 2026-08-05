@@ -1,0 +1,180 @@
+/* Figma 420:27051 places the page content 50px below the back link. */
+.govuk-main-wrapper > .govuk-width-container > .govuk-back-link[data-testid='reports-funding-spent-spending-back'] {
+  margin-bottom: 50px;
+}
+
+.reports-funding-spending {
+  display: flex;
+  width: 960px;
+  max-width: 100%;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.reports-funding-spending__header,
+.reports-funding-spending__activity,
+.reports-funding-spending__other,
+.reports-funding-spending__summary {
+  box-sizing: border-box;
+  width: 630px;
+  max-width: 100%;
+}
+
+.reports-funding-spending__header {
+  padding-bottom: 20px;
+}
+
+.reports-funding-spending__header .govuk-caption-l,
+.reports-funding-spending__header .govuk-heading-xl,
+.reports-funding-spending__header .govuk-body {
+  margin-top: 0;
+}
+
+.reports-funding-spending__header .govuk-caption-l,
+.reports-funding-spending__header .govuk-heading-xl {
+  margin-bottom: 0;
+}
+
+.reports-funding-spending__header .govuk-heading-xl {
+  margin-bottom: 30px;
+}
+
+.reports-funding-spending__header > .govuk-body {
+  margin-bottom: 20px;
+}
+
+.reports-funding-spending__intro .govuk-body {
+  margin-bottom: 10px;
+}
+
+.reports-funding-spending__intro .govuk-body:last-child {
+  margin-bottom: 0;
+}
+
+.reports-funding-spending__activities {
+  display: flex;
+  flex-direction: column;
+  gap: 50px;
+}
+
+.reports-funding-spending__activity {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.reports-funding-spending__activity-heading .govuk-caption-m,
+.reports-funding-spending__activity-heading .govuk-heading-l {
+  margin: 0;
+}
+
+.reports-funding-spending__activity-heading .govuk-caption-m {
+  color: #505a5f;
+  font-size: 19px;
+  line-height: 24px;
+}
+
+.reports-funding-spending__activity-heading .govuk-heading-l {
+  font-size: 24px;
+  line-height: 30px;
+}
+
+.reports-funding-spending__activity > .govuk-inset-text,
+.reports-funding-spending__summary {
+  box-sizing: border-box;
+  width: 630px;
+  max-width: 100%;
+  margin: 0;
+  padding: 15px 0 15px 25px;
+  border-left-width: 10px;
+  border-left-color: #b1b4b6;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+.reports-funding-spending .govuk-form-group {
+  box-sizing: border-box;
+  width: 630px;
+  max-width: 100%;
+  margin: 0;
+}
+
+.reports-funding-spending .govuk-label {
+  margin-bottom: 10px;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+.reports-funding-spending__summary .govuk-heading-m {
+  margin: 0 0 10px;
+  font-size: 24px;
+  line-height: 30px;
+}
+
+.reports-funding-spending__summary .govuk-summary-list {
+  margin-bottom: 0;
+}
+
+.reports-funding-spending__summary .govuk-summary-list__value {
+  text-align: right;
+}
+
+.reports-funding-spending__actions {
+  gap: 10px;
+  margin: 0;
+}
+
+.reports-funding-spending__actions .govuk-button {
+  margin-right: 0;
+  margin-bottom: 0;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+@media (min-width: 641px) {
+  .reports-funding-spending__header .govuk-caption-l {
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  .reports-funding-spending__header .govuk-heading-xl {
+    font-size: 36px;
+    line-height: 40px;
+  }
+
+  .reports-funding-spending__header .govuk-body,
+  .reports-funding-spending__summary .govuk-summary-list {
+    font-size: 19px;
+    line-height: 25px;
+  }
+}
+
+@media (max-width: 640px) {
+  .govuk-main-wrapper > .govuk-width-container > .govuk-back-link[data-testid='reports-funding-spent-spending-back'] {
+    margin-bottom: 30px;
+  }
+
+  .reports-funding-spending {
+    gap: 20px;
+  }
+
+  .reports-funding-spending__activities {
+    gap: 30px;
+  }
+
+  .reports-funding-spending__header .govuk-caption-l {
+    font-size: 19px;
+    line-height: 25px;
+  }
+
+  .reports-funding-spending__header .govuk-heading-xl {
+    font-size: 32px;
+    line-height: 35px;
+  }
+
+  .reports-funding-spending__summary .govuk-summary-list__key,
+  .reports-funding-spending__summary .govuk-summary-list__value {
+    width: 100% !important;
+    text-align: left;
+  }
+}

@@ -1,0 +1,268 @@
+.collection-wizard {
+  max-width: 760px;
+}
+
+.collection-wizard .govuk-back-link {
+  margin-top: 0;
+  margin-bottom: 56px;
+}
+
+.collection-wizard .govuk-caption-l {
+  margin-bottom: 2px;
+}
+
+.collection-wizard__heading {
+  font-size: 36px;
+  line-height: 1.1111111111;
+  margin-bottom: 35px;
+}
+
+/* Figma's field-to-field rhythm is 30px (not the previous 34px). */
+.collection-wizard .govuk-form-group {
+  margin-bottom: 30px;
+}
+
+.collection-wizard .govuk-label--s,
+.collection-wizard .govuk-fieldset__legend--m {
+  font-size: 19px;
+  line-height: 1.3157894737;
+}
+
+/* Figma: 10px between a question's hint and its input/radio group (not 14px). */
+.collection-wizard .govuk-hint {
+  margin-bottom: 10px;
+}
+
+.collection-wizard .govuk-input,
+.collection-wizard .govuk-textarea {
+  width: 100%;
+}
+
+.collection-wizard #admin-collections-create-purpose {
+  min-height: 156px;
+}
+
+/* Figma's radio-item stack has no explicit gap of its own — each row's own padding provides the
+   rhythm — but 10px matches the same margin correction as .govuk-hint above and reads better than 0. */
+.collection-wizard .govuk-radios__item {
+  margin-bottom: 10px;
+}
+
+.collection-wizard .govuk-radios__conditional {
+  margin-bottom: 15px;
+}
+
+.collection-wizard__type-fields {
+  max-width: 100%;
+}
+
+/* Figma: 30px between the Financial year and Quarter selects inside the conditional panel. */
+.collection-wizard__type-fields .govuk-form-group {
+  margin-bottom: 30px;
+}
+
+.collection-wizard__type-fields .govuk-form-group:last-child {
+  margin-bottom: 0;
+}
+
+/* Force edge-to-edge width explicitly (not just relying on the auto-width block chain through the
+   radio conditional's indent) so the select's right edge lines up with the Purpose textarea's above it,
+   regardless of the select's own box-sizing/min-width defaults. */
+.collection-wizard__type-fields,
+.collection-wizard__type-fields .govuk-form-group {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* The conditional panel keeps GOV.UK's left inset, but Figma extends these selects back out to the
+   same right-hand column as the text input and textarea above. */
+.collection-wizard__type-fields .govuk-select {
+  box-sizing: border-box;
+  max-width: calc(100% + 30px);
+  width: calc(100% + 30px) !important;
+}
+
+.collection-wizard__window-fields {
+  max-width: 100%;
+}
+
+/* Figma: 30px between the open-date and deadline-date fieldsets. */
+.collection-wizard__window-fields .govuk-form-group {
+  margin-bottom: 30px;
+}
+
+.collection-wizard__window-fields .govuk-form-group:last-child {
+  margin-bottom: 0;
+}
+
+.collection-wizard__window-fields .govuk-date-input .govuk-form-group {
+  margin-bottom: 0;
+}
+
+.collection-wizard__window-fields .govuk-fieldset__legend--s {
+  font-size: 19px;
+  line-height: 1.3157894737;
+  font-weight: 700;
+}
+
+.collection-wizard__reporting-las-fields {
+  max-width: 100%;
+}
+
+.collection-wizard .collection-la-selector {
+  margin-bottom: 0;
+}
+
+/* Figma: 5px between the picker heading and its hint (not 8px). */
+.collection-wizard .collection-la-selector__heading {
+  margin-bottom: 5px;
+}
+
+.collection-wizard .collection-la-selector__hint {
+  margin-bottom: 10px;
+}
+
+/* Figma: 10px between the hint and the search box (not 18px). */
+.collection-wizard .collection-la-selector__search-group {
+  margin-bottom: 10px;
+}
+
+.collection-wizard .collection-la-selector__search-group .govuk-label {
+  margin-bottom: 6px;
+}
+
+/* Figma's checkbox stacks (here and in the Forms step) show no explicit row gap — each row's own
+   padding already produces the rhythm — matching govuk-frontend's own default for small checkboxes. */
+.collection-wizard .govuk-checkboxes__item {
+  margin-bottom: 0;
+}
+
+/* Figma: 20px under the "All" row before the individual organisation rows start (not 24px). */
+.collection-wizard .collection-la-selector__checkboxes .collection-la-selector__all {
+  margin-bottom: 20px;
+}
+
+.collection-wizard .collection-la-selector__all-input--indeterminate + .govuk-checkboxes__label::after {
+  border: 0;
+  background: #0b0c0c;
+  height: 4px;
+  left: 6px;
+  opacity: 1;
+  top: 18px;
+  transform: none;
+  width: 12px;
+}
+
+.collection-wizard .collection-la-selector__checkboxes .collection-la-selector__option {
+  margin-bottom: 0;
+}
+
+.collection-wizard .govuk-checkboxes__hint {
+  color: #505a5f;
+  margin-bottom: 0;
+}
+
+.collection-wizard .govuk-button-group {
+  margin-top: 38px;
+}
+
+.collection-wizard--window {
+  max-width: 683px;
+}
+
+.collection-wizard--window .govuk-back-link {
+  margin-bottom: 50px;
+}
+
+.collection-wizard--window .collection-wizard__title-block {
+  margin-bottom: 30px;
+}
+
+.collection-wizard--window .collection-wizard__heading {
+  margin-bottom: 0;
+}
+
+.collection-wizard--window .govuk-fieldset {
+  max-width: 683px;
+}
+
+.collection-wizard__window-hint-paragraph {
+  color: #505a5f;
+  margin: 0 0 25px;
+}
+
+.collection-wizard__window-hint-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+.collection-wizard--window .govuk-button-group {
+  margin-top: 0;
+}
+
+.collection-wizard--reporting-las .govuk-back-link {
+  margin-bottom: 50px;
+}
+
+.collection-wizard--reporting-las .collection-wizard__heading {
+  margin-bottom: 30px;
+}
+
+.collection-wizard--reporting-las .govuk-button-group {
+  margin-top: 0;
+}
+
+/* Figma: 50px above each reminder block (intro paragraph → first block, and block → block); spacing
+   comes from margin-top alone so it doesn't double up with the previous block's own bottom margin. */
+.collection-wizard__reminder {
+  margin-top: 50px;
+  margin-bottom: 0;
+}
+
+/* Figma: 15px between the "Reminder"/"Remove" row and the trigger question underneath (not 26px). */
+.collection-wizard__reminder-header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+
+.collection-wizard__reminder-header h3 {
+  margin-bottom: 0;
+}
+
+.collection-wizard__reminder-header .govuk-button {
+  margin-bottom: 0;
+}
+
+.collection-wizard__reminder .govuk-form-group {
+  margin-bottom: 0;
+}
+
+.collection-wizard__reminder-days .govuk-form-group {
+  margin-bottom: 0;
+}
+
+/* Figma: the days input is a fixed 68px (not 60px). */
+.collection-wizard__reminder-days .govuk-input {
+  width: 68px;
+}
+
+/* Figma: 50px between the last reminder block and "Add another reminder" (not 44px). */
+.collection-wizard__reminder-actions {
+  margin-top: 50px;
+}
+
+@media (max-width: 40.0525em) {
+  .collection-wizard {
+    max-width: none;
+  }
+
+  .collection-wizard .govuk-back-link {
+    margin-bottom: 30px;
+  }
+
+  .collection-wizard__heading {
+    font-size: 32px;
+    line-height: 1.09375;
+  }
+}

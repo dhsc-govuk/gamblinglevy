@@ -1,0 +1,114 @@
+.admin-users-list__heading {
+  font-size: 36px;
+  line-height: 40px;
+  margin-bottom: 50px;
+}
+
+.admin-users-list__introduction {
+  margin-bottom: 20px;
+}
+
+.admin-users-list__introduction .govuk-body {
+  margin-bottom: 10px;
+}
+
+.admin-users-list__introduction .govuk-body:last-child {
+  margin-bottom: 0;
+}
+
+.admin-users-list__access-levels {
+  margin-bottom: 30px;
+}
+
+.admin-users-list__access-levels-heading {
+  font-size: 24px;
+  line-height: 30px;
+  margin-bottom: 10px;
+}
+
+.admin-users-list__access-levels > .govuk-body {
+  margin-bottom: 10px;
+}
+
+.admin-users-list__access-levels > .govuk-details {
+  margin-bottom: 0;
+}
+
+.admin-users-list__add-user {
+  display: flex;
+  justify-content: flex-end;
+  height: 40px;
+  margin-bottom: 30px;
+}
+
+.admin-users-list__add-user .govuk-button {
+  margin-bottom: 0;
+}
+
+.admin-users-list__empty-message {
+  margin: 0 0 30px;
+}
+
+.admin-users-list__table .govuk-table-filter {
+  align-items: flex-end;
+  flex-wrap: nowrap;
+  gap: 30px;
+  margin: 0 0 30px;
+}
+
+.admin-users-list__table .govuk-table-filter > .govuk-grid-column-two-thirds {
+  flex: 1 1 auto;
+  float: none;
+  padding: 0;
+  width: auto;
+}
+
+.admin-users-list__table .govuk-table-filter > .govuk-grid-column-one-third {
+  flex: 0 0 191px;
+  float: none;
+  padding: 0;
+  width: 191px;
+}
+
+.admin-users-list__table .govuk-table {
+  table-layout: fixed;
+}
+
+.admin-users-list__column--name,
+.admin-users-list__column--organisation,
+.admin-users-list__column--access-level {
+  width: 27.28%;
+}
+
+.admin-users-list__column--status {
+  width: 18.16%;
+}
+
+.admin-users-list__deleted-users {
+  display: inline-block;
+}
+
+@media (max-width: 40.0525em) {
+  .admin-users-list__heading {
+    font-size: 27px;
+    line-height: 30px;
+    margin-bottom: 30px;
+  }
+
+  .admin-users-list__access-levels-heading {
+    font-size: 21px;
+    line-height: 25px;
+  }
+
+  .admin-users-list__table .govuk-table-filter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .admin-users-list__table .govuk-table-filter > .govuk-grid-column-two-thirds,
+  .admin-users-list__table .govuk-table-filter > .govuk-grid-column-one-third {
+    flex-basis: auto;
+    width: 100%;
+  }
+}

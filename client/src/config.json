@@ -1,0 +1,12 @@
+{
+  "api_url": "https://localhost:5001/",
+  "ad_tenant_id": "a2d94d57-fc24-4c20-9abf-25e646fcfc0a",
+  "ad_client_id": "528bd860-3b14-4ce2-b200-9ff656b9eaf1",
+  "ad_authority": "https://gamblingleveymvp.ciamlogin.com/",
+  "ad_scope": "api://gambling-levy-api-mvp/user_impersonation",
+  "ad_redirect_uri": "/",
+  "ad_domain_hint": "",
+  "accessibility_testing_enabled": "true",
+  "sentry_dsn": "",
+  "app_insights_connection_string": ""
+}

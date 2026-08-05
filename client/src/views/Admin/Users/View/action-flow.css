@@ -1,0 +1,47 @@
+.admin-users-confirm-action-page .confirm-action-panel {
+  box-sizing: border-box;
+  margin-top: 60px;
+  padding: 35px;
+}
+
+.admin-users-confirm-action-page .confirm-action-panel .govuk-heading-xl {
+  color: #ffffff;
+  font-size: 36px;
+  line-height: 40px;
+  margin-bottom: 20px;
+}
+
+.admin-users-confirm-action-page .confirm-action-panel .govuk-body {
+  color: #ffffff;
+  font-size: 24px;
+  line-height: 32px;
+  margin-bottom: 20px;
+}
+
+.admin-users-confirm-action-page .confirm-action-panel .govuk-button-group {
+  column-gap: 15px;
+  margin-bottom: 0;
+  margin-top: 0;
+  padding-top: 10px;
+}
+
+.admin-users-confirm-action-page .confirm-action-panel .govuk-button {
+  margin-bottom: 0;
+}
+
+@media (max-width: 40.0525em) {
+  .admin-users-confirm-action-page .confirm-action-panel {
+    margin-top: 30px;
+    padding: 25px;
+  }
+
+  .admin-users-confirm-action-page .confirm-action-panel .govuk-heading-xl {
+    font-size: 32px;
+    line-height: 35px;
+  }
+
+  .admin-users-confirm-action-page .confirm-action-panel .govuk-body {
+    font-size: 19px;
+    line-height: 25px;
+  }
+}

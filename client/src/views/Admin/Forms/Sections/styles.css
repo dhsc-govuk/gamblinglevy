@@ -1,0 +1,7 @@
+/* Question tables mix tag pills and the Actions button with plain text (the
+   question code). The GOV.UK default `vertical-align: top` leaves the short
+   code text floating above the taller cells, so centre every cell's content
+   onto a shared baseline. */
+.forms-sections-questions-table .govuk-table__cell {
+  vertical-align: middle;
+}

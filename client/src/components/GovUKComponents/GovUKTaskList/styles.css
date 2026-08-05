@@ -1,0 +1,142 @@
+/* GOV.UK Task List Component
+ * Layout (display: table / table-cell) comes from govuk-frontend's own task-list CSS, which is
+ * already loaded globally — do NOT re-declare it here. The table columns are what keep the task
+ * name and its status side-by-side at any name length; an earlier flex re-implementation of this
+ * component pushed the status onto its own line whenever the name was long (BLUM-7045).
+ * This file only carries the project's palette and spacing overrides on top of the vendor rules.
+ */
+
+.govuk-task-list {
+  font-family: "GDS Transport", arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-weight: 400;
+  font-size: 16px;
+  font-size: 1rem;
+  line-height: 1.25;
+  margin: 0;
+  padding: 0;
+  list-style-type: none;
+}
+
+@media (min-width: 40.0625em) {
+  .govuk-task-list {
+    font-size: 19px;
+    font-size: 1.1875rem;
+    line-height: 1.3157894737;
+  }
+}
+
+@media print {
+  .govuk-task-list {
+    font-family: sans-serif;
+    font-size: 14pt;
+    line-height: 1.15;
+  }
+}
+
+.govuk-task-list__item {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #b1b4b6;
+}
+
+@media (min-width: 40.0625em) {
+  .govuk-task-list__item {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}
+
+.govuk-task-list__item:first-child {
+  border-top: 1px solid #b1b4b6;
+}
+
+
+/* Table auto-layout floors a cell at its min-content width — the longest single word. Activity
+   names are free text, so an unbroken token (a pasted URL) would otherwise force the row wider
+   than its container and scroll the page sideways (WCAG 2.2 AA, 1.4.10 Reflow).
+   Must be `anywhere`, not `break-word`: per CSS Text 3 §5.5 only `anywhere` lets the break
+   opportunities count toward the min-content size, and it is the min-content floor we need to
+   lower here. `break-word` looks equivalent but leaves the row overflowing.
+   Deliberate addition on top of the vendor rules; govuk-frontend does not set this. */
+.govuk-task-list__name-and-hint {
+  overflow-wrap: anywhere;
+}
+
+.govuk-task-list__link {
+  display: inline;
+  text-decoration: underline;
+  text-decoration-thickness: max(1px, .0625rem);
+  text-underline-offset: 0.1578em;
+}
+
+.govuk-task-list__link:hover {
+  text-decoration-thickness: max(3px, .1875rem, .12em);
+  text-decoration-skip-ink: none;
+  text-decoration-skip: none;
+}
+
+.govuk-task-list__link:focus {
+  outline: 3px solid transparent;
+  color: #0b0c0c;
+  background-color: #ffdd00;
+  box-shadow: 0 -2px #ffdd00, 0 4px #0b0c0c;
+  text-decoration: none;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.govuk-task-list__link:link {
+  color: #1d70b8;
+}
+
+.govuk-task-list__link:visited {
+  color: #4c2c92;
+}
+
+.govuk-task-list__link:hover {
+  color: #003078;
+}
+
+.govuk-task-list__link:active {
+  color: #0b0c0c;
+}
+
+.govuk-task-list__link:focus {
+  color: #0b0c0c;
+}
+
+.govuk-task-list__hint {
+  margin-top: 5px;
+  color: #505a5f;
+}
+
+/* The vendor rules already give this cell display: table-cell, text-align: right and
+   vertical-align: top. Two additions are ours:
+
+   - nowrap, so the column claims the width of its label instead of being squeezed toward
+     min-content by a long task name. This is what stops the label breaking across lines
+     ("Not started" -> "Not" / "started"); it inherits into the tag too. Keep status labels short:
+     nowrap makes this column incompressible, so an over-long label silently steals width from the
+     task name instead of wrapping. Constraint is restated on TaskListItemStatus.text.
+
+   - the gap, restated at both breakpoints. Do NOT drop these and inherit the vendor's
+     padding-left: 10px: the flex rules these replaced set margin-left 10px/20px, which *composed*
+     with that vendor padding for a real gap of 20px/30px. Padding replaces it rather than adding
+     to it, so the vendor value alone would quietly halve the mobile gap. The gap only binds once
+     the name fills the column — i.e. on exactly the long-name rows BLUM-7045 is about. */
+.govuk-task-list__status {
+  padding-left: 20px;
+  white-space: nowrap;
+}
+
+@media (min-width: 40.0625em) {
+  .govuk-task-list__status {
+    padding-left: 30px;
+  }
+}
+
+.govuk-task-list__status--cannot-start-yet {
+  color: #505a5f;
+}

@@ -1,0 +1,32 @@
+.collections-deleted-page {
+  max-width: 683px;
+  padding-top: 45px;
+}
+
+/* H1 defaults to govuk-heading-xl (48px/50px) but this app's Figma designs specify "Desktop/Heading/Large"
+   (36px/40px bold) for page headings — matches Collections/View, the collection wizard, and every other
+   H1 in this Figma file. */
+.collections-deleted-page__title {
+  font-size: 36px;
+  line-height: 40px;
+  font-weight: 700;
+  margin-bottom: 30px;
+}
+
+.collections-deleted-page__list {
+  margin-top: 35px;
+  margin-bottom: 30px;
+}
+
+.collections-deleted-page__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 10px 0;
+  border-bottom: 1px solid #b1b4b6;
+}
+
+.collections-deleted-page__name {
+  overflow-wrap: anywhere;
+}

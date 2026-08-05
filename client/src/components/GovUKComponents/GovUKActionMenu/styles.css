@@ -1,0 +1,104 @@
+/*
+ * GovUK Action Menu
+ * Custom component - no equivalent in GOV.UK Design System
+ * Uses govuk-button--secondary for the trigger button
+ * See: https://design-system.service.gov.uk/components/button/
+ */
+.govuk-action-menu {
+  position: relative;
+  display: inline-block;
+}
+
+/*
+ * Override only the margin-bottom that govuk-button adds,
+ * so the button sits flush when used inline in a header bar.
+ */
+.govuk-action-menu__button.govuk-button {
+  margin-bottom: 0;
+  /* Keep the label and chevron on one line in narrow cells (e.g. a table action column). */
+  white-space: nowrap;
+  padding: 8px 12px 7px;
+}
+
+.govuk-action-menu__chevron {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: 8px;
+  transition: transform 0.2s ease;
+}
+
+.govuk-action-menu__chevron svg {
+  height: 5px;
+  width: 11px;
+}
+
+.govuk-action-menu__chevron--open {
+  transform: rotate(180deg);
+}
+
+.govuk-action-menu__list {
+  position: absolute;
+  top: 100%;
+  z-index: 100;
+  box-sizing: border-box;
+  min-width: 100%;
+  width: max-content;
+  max-width: calc(100vw - 30px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background-color: #f3f2f1; /* govuk-colour("light-grey") */
+}
+
+.govuk-action-menu__list--align-right {
+  right: 0;
+  left: auto;
+}
+
+.govuk-action-menu__list--align-left {
+  right: auto;
+  left: 0;
+}
+
+/*
+ * Menu items styled consistent with govuk-link
+ */
+.govuk-action-menu__item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px 7px;
+  font-family: "GDS Transport", arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 19px;
+  line-height: 25px;
+  text-align: left;
+  color: #0b0c0c; /* govuk-text-colour */
+  background-color: transparent;
+  border: none;
+  border-bottom: 1px solid #929191;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.govuk-action-menu__item:hover {
+  background-color: #e5e5e5; /* slightly darker grey for hover */
+  color: #0b0c0c;
+}
+
+/* Focus state follows GOV.UK focus pattern */
+.govuk-action-menu__item:focus {
+  outline: 3px solid #ffdd00; /* $govuk-focus-colour */
+  outline-offset: -3px;
+  background-color: #ffdd00;
+  color: #0b0c0c;
+}
+
+.govuk-action-menu__divider {
+  border: none;
+  margin: 0;
+  padding: 1;
+}

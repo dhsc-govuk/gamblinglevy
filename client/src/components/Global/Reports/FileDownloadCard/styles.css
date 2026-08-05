@@ -1,0 +1,42 @@
+/* GOV.UK attachment pattern per the submission-detail design (Figma 420-80777): thumbnail beside the
+   download link, 30px apart; the page thumbnail sits on a light-grey (#f3f2f1, GOV.UK light grey)
+   card with 5px padding. */
+.report-file-attachment {
+  display: flex;
+  align-items: flex-start;
+  gap: 30px;
+  margin-bottom: 30px;
+}
+
+.report-file-attachment__thumbnail {
+  flex: 0 0 auto;
+  display: inline-flex;
+  padding: 5px;
+  background-color: #f3f2f1;
+}
+
+.report-file-attachment__body {
+  flex: 1 1 auto;
+  align-self: center;
+}
+
+/* The download needs JavaScript (auth token), so it is a button restyled as a link. The design's 24px
+   size comes from the govuk-!-font-size-24 override class (responsive type scale), not fixed CSS. */
+.report-file-attachment__link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-weight: inherit;
+}
+
+.report-file-attachment__link:disabled {
+  cursor: wait;
+}
+
+.report-file-attachment__metadata {
+  margin-top: 15px;
+  margin-bottom: 0;
+}

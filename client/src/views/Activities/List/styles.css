@@ -1,0 +1,178 @@
+.activities-list-page {
+  padding-top: 20px;
+}
+
+.activities-list-page__intro,
+.activities-list-page__reporting-deadlines {
+  width: 630px;
+  max-width: 100%;
+}
+
+.activities-list-page__heading-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 30px;
+  margin-top: 50px;
+  margin-bottom: 20px;
+}
+
+.activities-list-page__heading-row .govuk-heading-l,
+.activities-list-page__heading-row .govuk-heading-m,
+.activities-list-page__heading-row .govuk-button {
+  margin-bottom: 0;
+}
+
+.activities-list-page__heading-row .govuk-heading-l,
+.activities-list-page__heading-row .govuk-heading-m {
+  font-size: 24px;
+  line-height: 30px;
+}
+
+.activities-list-page .govuk-inset-text {
+  width: 655px;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-top: 0;
+}
+
+.activities-list-page__reporting-deadlines {
+  margin-top: 45px;
+}
+
+/* Quarterly-report variant — desktop measurements from Figma 420:27364.
+   The standalone activities page retains its existing layout above. */
+.govuk-main-wrapper > .govuk-width-container > .govuk-back-link[data-testid='reports-confirm-activities-back'] {
+  margin-bottom: 50px;
+}
+
+.activities-list-page--report {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  padding-top: 0;
+}
+
+.activities-list-page--report .activities-list-page__intro {
+  display: flex;
+  flex-direction: column;
+}
+
+.activities-list-page--report .activities-list-page__intro > * {
+  margin-top: 0;
+}
+
+.activities-list-page--report .activities-list-page__intro > .govuk-heading-xl {
+  margin-bottom: 30px;
+}
+
+.activities-list-page--report .activities-list-page__intro > .govuk-body {
+  margin-bottom: 20px;
+}
+
+.activities-list-page--report .activities-list-page__intro > .govuk-heading-l {
+  margin-bottom: 10px;
+}
+
+.activities-list-page--report .activities-list-page__intro > .govuk-list {
+  margin-top: -10px;
+  margin-bottom: 10px;
+}
+
+.activities-list-page--report .activities-list-page__intro > .govuk-list > li {
+  margin-bottom: 10px;
+}
+
+.activities-list-page--report .activities-list-page__intro > .govuk-list > li:last-child {
+  margin-bottom: 0;
+}
+
+.activities-list-page--report .activities-list-page__activities {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 20px;
+}
+
+.activities-list-page--report .activities-list-page__heading-row,
+.activities-list-page--report .activities-list-page__deleted-link,
+.activities-list-page--report .activities-list-page__activities .govuk-inset-text,
+.activities-list-page--report .activities-list-page__activities > .govuk-\!-margin-bottom-6 {
+  margin-top: 0;
+  margin-bottom: 0 !important;
+}
+
+.activities-list-page--report .activities-list-page__activities .govuk-inset-text {
+  width: 665px;
+}
+
+.activities-list-page--report .activities-list-page__reporting-deadlines {
+  box-sizing: border-box;
+  margin-top: 0;
+  padding-bottom: 20px;
+}
+
+.activities-list-page--report .activities-list-page__reporting-deadlines .govuk-heading-l {
+  margin-bottom: 10px;
+}
+
+.activities-list-page--report .activities-list-page__reporting-deadlines .govuk-body {
+  margin-bottom: 0;
+}
+
+.activities-list-page--report .activities-list-page__confirm {
+  width: 630px;
+  max-width: 100%;
+}
+
+.activities-list-page--report .activities-list-page__confirm .govuk-heading-l {
+  margin-bottom: 20px;
+}
+
+.activities-list-page--report .activities-list-page__confirm-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 20px;
+}
+
+.activities-list-page--report .activities-list-page__confirm-copy .govuk-body,
+.activities-list-page--report .activities-list-page__confirm .govuk-warning-text,
+.activities-list-page--report .activities-list-page__confirm-action .govuk-button {
+  margin: 0;
+}
+
+.activities-list-page--report .activities-list-page__confirm-action {
+  display: flex;
+  align-items: flex-start;
+}
+
+@media (min-width: 641px) {
+  .activities-list-page--report > .activities-list-page__intro > .govuk-heading-xl {
+    font-size: 48px;
+    line-height: 50px;
+  }
+
+  .activities-list-page--report .govuk-heading-l {
+    font-size: 36px;
+    line-height: 40px;
+  }
+
+  .activities-list-page--report .govuk-body,
+  .activities-list-page--report .govuk-list,
+  .activities-list-page--report .govuk-link,
+  .activities-list-page--report .govuk-button,
+  .activities-list-page--report .govuk-inset-text,
+  .activities-list-page--report .govuk-warning-text__text {
+    font-size: 19px;
+    line-height: 25px;
+  }
+}
+
+@media (max-width: 640px) {
+  .activities-list-page__heading-row {
+    align-items: flex-start;
+    flex-direction: column;
+    margin-top: 35px;
+  }
+}

@@ -1,0 +1,56 @@
+.activity-status-step {
+  width: 630px;
+  max-width: 100%;
+}
+
+.activity-status-step > .govuk-form-group {
+  width: 100%;
+  margin-bottom: 30px;
+}
+
+/* Figma 420:25253: 10px from the 24px question legend to the first compact radio. */
+.activity-status-step .govuk-fieldset__legend--m {
+  margin-bottom: 10px;
+}
+
+/* The Active reveal uses a 12px inset, 4px grey rule and 25px content padding. */
+.activity-status-step .govuk-radios--small .govuk-radios__conditional {
+  box-sizing: border-box;
+  margin-left: 12px;
+  margin-bottom: 15px;
+  padding-top: 15px;
+  padding-left: 25px;
+  border-left-color: #b1b4b6;
+}
+
+.activity-status-step .govuk-form-group.activity-status-step__start-date {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.activity-status-step .activity-status-step__date-heading {
+  margin: 0 0 10px;
+}
+
+.activity-status-step .activity-status-step__start-date > .govuk-hint {
+  margin-bottom: 15px;
+}
+
+/* Month and Year are body-weight labels in the design, not bold small labels. */
+.activity-status-step .govuk-date-input .govuk-label--s {
+  margin-bottom: 10px;
+  font-weight: 400;
+}
+
+.activity-status-step .govuk-date-input .govuk-form-group {
+  width: auto;
+  margin-bottom: 0;
+}
+
+.activity-status-step #activity-start-month {
+  width: 51px;
+}
+
+.activity-status-step #activity-start-year {
+  width: 85px;
+}

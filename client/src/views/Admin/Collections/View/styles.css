@@ -1,0 +1,95 @@
+/* Figma: 10px breadcrumb margin + 5px page padding = the spec's 15px gap to the H1/Actions row. */
+.collections-view-page {
+  padding-top: 5px;
+}
+
+.collections-view-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 15px;
+  margin-bottom: 40px;
+}
+
+/* H1 defaults to govuk-heading-xl (48px/50px) but Figma specifies "Desktop/Heading/Large" (36px/40px
+   bold) for this heading, matching every other H1 in this Figma file (Reports pages, Collections list,
+   the add/change-collection wizard). No margin override here — this class is also used standalone (the
+   "not found" state), where it needs its normal bottom margin before the following paragraph. */
+.collections-view-page__title {
+  font-size: 36px;
+  line-height: 40px;
+  font-weight: 700;
+}
+
+/* Only the header-row instance (next to the Actions menu) zeroes its margin — the flex row's own
+   `gap: 15px` supplies the spacing there instead. */
+.collections-view-page__header .collections-view-page__title {
+  margin-bottom: 0;
+}
+
+/* Figma: 30px gap between each summary card (native govuk-frontend default is also 30px). */
+.collections-view-page .govuk-summary-card {
+  margin-bottom: 30px;
+}
+
+/* Figma: the card header/title-wrapper padding is a uniform 20px (not 13/12/12). */
+.collections-view-page .govuk-summary-card__title-wrapper {
+  padding: 20px;
+}
+
+/* Figma: the row list only has 20px left/right padding, no top/bottom — each row supplies its own
+   vertical spacing (10px) via .govuk-summary-list__row below. */
+.collections-view-page .govuk-summary-card__content {
+  padding: 0 20px;
+}
+
+.collections-view-page .govuk-summary-list {
+  margin-bottom: 0;
+}
+
+.collections-view-page .govuk-summary-list__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 20px;
+  padding: 10px 0;
+}
+
+.collections-view-page .govuk-summary-list__key,
+.collections-view-page .govuk-summary-list__value {
+  width: auto;
+  padding: 0;
+}
+
+.collections-view-page .govuk-summary-list__key {
+  font-weight: 700;
+}
+
+.collections-view-page .govuk-summary-card .govuk-summary-list__row:last-child {
+  border-bottom: 0;
+}
+
+.collections-view-page__record-date {
+  color: #505a5f;
+}
+
+@media (max-width: 40.0525em) {
+  .collections-view-page {
+    max-width: none;
+  }
+
+  .collections-view-page__header {
+    display: block;
+  }
+
+  .collections-view-page__header .govuk-action-menu {
+    margin-top: 10px;
+  }
+
+  .collections-view-page .govuk-summary-list__row {
+    display: block;
+  }
+
+  .collections-view-page .govuk-summary-list__value {
+    margin-top: 5px;
+  }
+}

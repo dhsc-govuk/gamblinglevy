@@ -1,0 +1,150 @@
+.organisation-admin-home {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  padding-top: 50px;
+  padding-bottom: 10px;
+}
+
+/* This bleeds the page content 30px either side of the global .govuk-width-container so it lines up
+   with the service navigation, which has its own wider container (1020px — see
+   LayoutHeader/service-navigation.css). */
+@media (min-width: 1020px) {
+  .organisation-admin-home {
+    width: 960px;
+    max-width: calc(100% + 60px);
+    margin-left: -30px;
+  }
+}
+
+.organisation-admin-home__heading {
+  width: 630px;
+  max-width: 100%;
+  margin: 0;
+}
+
+.organisation-admin-home__tasks {
+  display: flex;
+  flex-direction: column;
+}
+
+.organisation-admin-home__section-heading-wrap {
+  box-sizing: border-box;
+  padding-top: 20px;
+  padding-bottom: 10px;
+}
+
+.organisation-admin-home__section-heading {
+  width: 630px;
+  max-width: 100%;
+  margin: 0;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 700;
+}
+
+.organisation-admin-home__cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 195px;
+  gap: 20px;
+}
+
+.organisation-admin-home-card {
+  box-sizing: border-box;
+  padding: 25px;
+  border: 1px solid #d9dadb;
+  border-bottom-width: 5px;
+  background: #ffffff;
+}
+
+.organisation-admin-home-card__heading {
+  margin: 0 0 10px;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 700;
+}
+
+.organisation-admin-home-card__heading .govuk-link,
+.organisation-admin-home-card__heading .govuk-link:link,
+.organisation-admin-home-card__heading .govuk-link:visited {
+  color: #1a65a6 !important;
+  text-decoration-thickness: from-font;
+  text-underline-offset: 0;
+  text-decoration-skip-ink: none;
+}
+
+.organisation-admin-home-card__heading .govuk-link:hover {
+  color: #003078 !important;
+  text-decoration-thickness: max(3px, .1875rem, .12em);
+}
+
+.organisation-admin-home-card__heading .govuk-link:active,
+.organisation-admin-home-card__heading .govuk-link:focus {
+  color: #0b0c0c !important;
+}
+
+.organisation-admin-home-card__description {
+  margin: 0;
+  color: #000000;
+}
+
+.organisation-admin-home__support {
+  width: 630px;
+  max-width: 100%;
+  padding-top: 20px;
+}
+
+.organisation-admin-home__support-heading-wrap {
+  padding-bottom: 10px;
+}
+
+.organisation-admin-home__support-intro {
+  padding-bottom: 20px;
+}
+
+.organisation-admin-home__support-intro .govuk-body,
+.organisation-admin-home__contact-body .govuk-body {
+  margin: 0;
+}
+
+.organisation-admin-home__support-intro .govuk-body:first-child {
+  margin-bottom: 15px;
+}
+
+.organisation-admin-home__contact-heading {
+  margin: 0;
+  padding-bottom: 10px;
+  font-size: 19px;
+  line-height: 25px;
+  font-weight: 700;
+  color: #0b0c0c;
+}
+
+.organisation-admin-home__contact-body {
+  padding-bottom: 20px;
+}
+
+.organisation-admin-home__contact-body .govuk-body:nth-child(2) {
+  margin-bottom: 15px;
+}
+
+.organisation-admin-home__contact-body--email .govuk-body:nth-child(2) {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .organisation-admin-home {
+    gap: 25px;
+    padding-top: 30px;
+  }
+
+  .organisation-admin-home__cards {
+    grid-template-columns: 1fr;
+    grid-auto-rows: auto;
+  }
+
+  .organisation-admin-home-card {
+    min-height: 0;
+  }
+}

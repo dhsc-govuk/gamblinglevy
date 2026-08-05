@@ -1,0 +1,22 @@
+/*
+ * govuk-frontend's .govuk-back-link is authored for anchors. When the wrapper
+ * renders a <button> (no href provided), browsers paint default button chrome
+ * — grey background, border, padding, button font — and the chevron drawn by
+ * .govuk-back-link::before sits inside that chrome instead of next to the
+ * underlined word. Reset only the button-introduced styles so the rendered
+ * output is visually identical to the <a> form.
+ */
+button.govuk-back-link {
+  background: none;
+  border: 0;
+  padding-top: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+  font: inherit;
+  /* govuk-link-common applies colour via :link / :visited, which don't match a
+   * button — pin the GOV.UK text colour directly so the button matches the
+   * anchor in every state except :focus (which already works on buttons). */
+  color: #0b0c0c;
+  text-align: left;
+  cursor: pointer;
+}

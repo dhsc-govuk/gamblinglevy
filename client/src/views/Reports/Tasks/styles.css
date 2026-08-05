@@ -1,0 +1,69 @@
+.reports-tasks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 30px;
+  width: 100%;
+  margin-top: -10px;
+}
+
+.reports-tasks > .govuk-heading-xl,
+.reports-tasks__intro,
+.reports-tasks__section .govuk-heading-m,
+.reports-tasks__actions .govuk-button {
+  margin: 0;
+}
+
+/* The Figma review state gives the banner 20px of trailing space in addition
+   to the page's 30px item gap, for 50px before the page heading. */
+.reports-tasks > .govuk-notification-banner {
+  width: 100%;
+  margin: 0 0 20px;
+}
+
+.reports-tasks__intro,
+.reports-tasks__section .govuk-heading-m {
+  width: 630px;
+  max-width: 100%;
+}
+
+.reports-tasks__section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.reports-tasks__section--check .govuk-task-list__item {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.reports-tasks__section--check .govuk-task-list__name-and-hint,
+.reports-tasks__section--check .govuk-task-list__status {
+  vertical-align: middle;
+}
+
+.reports-tasks__section--check-completed .govuk-task-list__item {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.reports-tasks__section--prepare .govuk-task-list__item {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.reports-tasks__section--prepare-available .govuk-task-list__item {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.reports-tasks__section--prepare-available .govuk-task-list__name-and-hint,
+.reports-tasks__section--prepare-available .govuk-task-list__status {
+  vertical-align: middle;
+}
+
+.reports-tasks__actions {
+  width: 100%;
+}

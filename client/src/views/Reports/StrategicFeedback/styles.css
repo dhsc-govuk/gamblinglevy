@@ -1,0 +1,127 @@
+/* Figma 420:26432 and 420:26455 place the page content 50px below the back link. */
+.govuk-main-wrapper > .govuk-width-container > .govuk-back-link[data-testid^='reports-strategic-feedback-'] {
+  margin-bottom: 50px;
+}
+
+.reports-strategic-feedback-questions {
+  display: flex;
+  width: 960px;
+  max-width: 100%;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.reports-strategic-feedback-questions__header,
+.reports-strategic-feedback-questions__form {
+  box-sizing: border-box;
+  width: 630px;
+  max-width: 100%;
+}
+
+.reports-strategic-feedback-questions__header {
+  padding-bottom: 20px;
+}
+
+.reports-strategic-feedback-questions__header .govuk-caption-l,
+.reports-strategic-feedback-questions__header .govuk-heading-xl,
+.reports-strategic-feedback-questions__header .govuk-body {
+  margin-top: 0;
+}
+
+.reports-strategic-feedback-questions__header .govuk-caption-l {
+  margin-bottom: 0;
+}
+
+.reports-strategic-feedback-questions__header .govuk-heading-xl {
+  margin-bottom: 30px;
+}
+
+.reports-strategic-feedback-questions__header .govuk-body {
+  margin-bottom: 0;
+}
+
+.reports-strategic-feedback-questions__form > div {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.reports-strategic-feedback-questions__form > div > div,
+.reports-strategic-feedback-questions__form .govuk-form-group {
+  margin-top: 0 !important;
+  margin-bottom: 0;
+}
+
+.reports-strategic-feedback-questions__form .govuk-form-group > .govuk-label,
+.reports-strategic-feedback-questions__form .govuk-fieldset__legend {
+  margin-bottom: 5px;
+}
+
+.reports-strategic-feedback-questions__form .govuk-hint {
+  margin-bottom: 10px;
+}
+
+.reports-strategic-feedback-questions__form .govuk-textarea {
+  box-sizing: border-box;
+  width: 630px;
+  max-width: 100%;
+  height: 140px;
+  margin-bottom: 0;
+}
+
+.reports-strategic-feedback-questions__actions {
+  gap: 10px;
+  margin: 0;
+}
+
+.reports-strategic-feedback-questions__actions .govuk-button {
+  margin-right: 0;
+  margin-bottom: 0;
+}
+
+@media (min-width: 641px) {
+  .reports-strategic-feedback-questions__header .govuk-caption-l {
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  .reports-strategic-feedback-questions__header .govuk-heading-xl {
+    font-size: 36px;
+    line-height: 40px;
+  }
+
+  .reports-strategic-feedback-questions__header .govuk-body,
+  .reports-strategic-feedback-questions__form .govuk-hint,
+  .reports-strategic-feedback-questions__form .govuk-textarea,
+  .reports-strategic-feedback-questions__actions .govuk-button {
+    font-size: 19px;
+    line-height: 25px;
+  }
+
+  .reports-strategic-feedback-questions__form .govuk-label--m {
+    font-size: 24px;
+    line-height: 30px;
+  }
+}
+
+@media (max-width: 640px) {
+  .govuk-main-wrapper > .govuk-width-container > .govuk-back-link[data-testid^='reports-strategic-feedback-'] {
+    margin-bottom: 30px;
+  }
+
+  .reports-strategic-feedback-questions {
+    gap: 20px;
+  }
+
+  .reports-strategic-feedback-questions__header {
+    padding-bottom: 10px;
+  }
+
+  .reports-strategic-feedback-questions__header .govuk-heading-xl {
+    margin-bottom: 20px;
+  }
+
+  .reports-strategic-feedback-questions__form > div {
+    gap: 20px;
+  }
+}

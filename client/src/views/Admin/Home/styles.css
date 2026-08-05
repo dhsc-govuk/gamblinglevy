@@ -1,0 +1,83 @@
+.admin-home {
+  padding-top: 35px;
+  padding-bottom: 5px;
+}
+
+.admin-home__heading {
+  max-width: 630px;
+  margin-bottom: 35px;
+}
+
+.admin-home__tasks {
+  max-width: 960px;
+}
+
+.admin-home__section-heading {
+  margin-bottom: 10px;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 700;
+}
+
+.admin-home__cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.admin-home-card {
+  min-height: 195px;
+  padding: 25px;
+  border: 1px solid #d9dadb;
+  border-bottom-width: 5px;
+  box-sizing: border-box;
+  background: #ffffff;
+}
+
+.admin-home-card__heading {
+  margin: 0 0 10px;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 700;
+}
+
+.admin-home-card__heading .govuk-link,
+.admin-home-card__heading .govuk-link:link,
+.admin-home-card__heading .govuk-link:visited {
+  color: #1a65a6 !important;
+  text-decoration-thickness: max(3px, .1875rem, .12em) !important;
+  text-underline-offset: .1em;
+  text-decoration-skip-ink: none;
+}
+
+.admin-home-card__heading .govuk-link:hover {
+  color: #003078 !important;
+  text-decoration-thickness: max(3px, .1875rem, .12em) !important;
+}
+
+.admin-home-card__heading .govuk-link:active,
+.admin-home-card__heading .govuk-link:focus {
+  color: #0b0c0c !important;
+}
+
+.admin-home-card__description {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .admin-home {
+    padding-top: 30px;
+  }
+
+  .admin-home__heading {
+    margin-bottom: 30px;
+  }
+
+  .admin-home__cards {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-home-card {
+    min-height: 0;
+  }
+}

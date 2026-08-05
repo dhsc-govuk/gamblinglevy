@@ -1,0 +1,179 @@
+.organisations-create-page {
+  max-width: 683px;
+}
+
+.organisations-create-page__heading {
+  margin-top: 50px;
+  margin-bottom: 50px;
+}
+
+.organisations-create-page__heading .govuk-caption-l {
+  color: #505a5f;
+  font-size: 24px;
+  line-height: 30px;
+  margin-bottom: 0;
+}
+
+.organisations-create-page__heading .govuk-heading-xl {
+  font-size: 36px;
+  line-height: 40px;
+  margin-bottom: 0;
+}
+
+.organisations-create-page__heading--review {
+  margin-bottom: 30px;
+}
+
+.organisations-create-page__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  margin-bottom: 40px;
+}
+
+.organisations-create-page__contact-section {
+  margin-bottom: 30px;
+}
+
+.organisations-create-page__contact-section .govuk-heading-m {
+  font-size: 24px;
+  line-height: 30px;
+  margin-bottom: 10px;
+}
+
+.organisations-create-page__contact-section .govuk-body {
+  margin-bottom: 0;
+}
+
+.organisations-create-page__fields--contacts {
+  gap: 30px;
+  margin-bottom: 30px;
+}
+
+.organisations-create-page__contact-person {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.organisations-create-page__contact-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 30px;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.organisations-create-page__contact-header .govuk-heading-m {
+  font-size: 24px;
+  line-height: 30px;
+  margin-bottom: 0;
+}
+
+.organisations-create-page__contact-description {
+  margin-bottom: 0;
+  margin-top: -20px;
+}
+
+.organisations-create-page__conditional-field {
+  border-left: 4px solid #b1b4b6;
+  margin-left: 12px;
+  margin-top: -20px;
+  padding-left: 25px;
+  padding-top: 15px;
+}
+
+.organisations-create-page__conditional-field .govuk-form-group {
+  margin-bottom: 0;
+}
+
+.organisations-create-page .govuk-form-group {
+  margin-bottom: 0;
+}
+
+.organisations-create-page .govuk-label--s,
+.organisations-create-page .govuk-fieldset__legend--s {
+  font-size: 19px;
+  line-height: 25px;
+  margin-bottom: 10px;
+}
+
+.organisations-create-page .govuk-input {
+  height: 40px;
+  width: 100%;
+}
+
+.organisations-create-page .govuk-radios__item {
+  margin-bottom: 10px;
+}
+
+.organisations-create-page .govuk-button {
+  font-size: 19px;
+  line-height: 25px;
+  margin-bottom: 0;
+  min-height: 40px;
+  padding: 8px 12px 7px;
+}
+
+.organisations-create-page--contacts .organisations-create-page__secondary-button {
+  display: block;
+  margin-bottom: 30px;
+  width: max-content;
+}
+
+.organisations-create-page--contacts .organisations-create-page__remove-button {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.organisations-create-page--contacts .govuk-button[type='submit'] {
+  display: block;
+}
+
+.organisations-create-page--review .govuk-summary-card {
+  margin-bottom: 30px;
+  width: 100%;
+}
+
+.organisations-create-page--review .govuk-summary-card__title-wrapper {
+  padding: 20px;
+}
+
+.organisations-create-page--review .govuk-summary-card__content {
+  padding: 0 20px;
+}
+
+.organisations-create-page--review .govuk-summary-list {
+  margin-bottom: 0;
+}
+
+.organisations-create-page--review .govuk-summary-list__row {
+  padding-bottom: 10px;
+  padding-top: 10px;
+}
+
+.organisations-create-page__review-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.organisations-create-page__review-muted {
+  color: #505a5f;
+}
+
+@media (max-width: 40.0525em) {
+  .organisations-create-page {
+    max-width: none;
+  }
+
+  .organisations-create-page__heading {
+    margin-top: 30px;
+    margin-bottom: 30px;
+  }
+
+  .organisations-create-page__heading .govuk-heading-xl {
+    font-size: 27px;
+    line-height: 30px;
+  }
+}

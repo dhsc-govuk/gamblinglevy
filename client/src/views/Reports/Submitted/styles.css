@@ -1,0 +1,122 @@
+/* Confirmation layout from Figma 420:28078. There are no breadcrumbs on this terminal screen. */
+.reports-submitted {
+  display: flex;
+  width: 960px;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 30px;
+  padding: 50px 0 10px;
+}
+
+.reports-submitted__panel {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 40px;
+  border-width: 5px;
+}
+
+.reports-submitted__panel .govuk-panel__title {
+  margin-bottom: 30px;
+  font-size: 48px;
+  line-height: 50px;
+}
+
+.reports-submitted__panel .govuk-panel__body {
+  width: 550px;
+  max-width: 100%;
+  margin: 0 auto;
+  font-size: 36px;
+  line-height: 44px;
+}
+
+.reports-submitted__section {
+  display: flex;
+  box-sizing: border-box;
+  width: 630px;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.reports-submitted__section .govuk-heading-l {
+  width: 100%;
+  margin: 0;
+  padding-bottom: 10px;
+  font-size: 24px;
+  line-height: 30px;
+}
+
+.reports-submitted__section > .govuk-body {
+  width: 100%;
+  margin: 0;
+  padding-bottom: 20px;
+}
+
+.reports-submitted__download {
+  padding-bottom: 20px;
+}
+
+.reports-submitted__download > .govuk-body {
+  padding-bottom: 20px;
+}
+
+.reports-submitted__download .report-file-attachment {
+  width: 100%;
+  margin: 0;
+}
+
+.reports-submitted__download .report-file-attachment__link {
+  line-height: 32px;
+}
+
+.reports-submitted__download .report-file-attachment__metadata {
+  font-size: 19px;
+  line-height: 24px;
+}
+
+.reports-submitted__actions,
+.reports-submitted__actions .govuk-button {
+  margin: 0;
+}
+
+.reports-submitted__actions .govuk-button {
+  font-size: 19px;
+  line-height: 25px;
+}
+
+@media (max-width: 640px) {
+  .reports-submitted {
+    gap: 20px;
+    padding-top: 30px;
+  }
+
+  .reports-submitted__panel {
+    padding: 25px 15px;
+  }
+
+  .reports-submitted__panel .govuk-panel__title {
+    margin-bottom: 20px;
+    font-size: 32px;
+    line-height: 35px;
+  }
+
+  .reports-submitted__panel .govuk-panel__body {
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  .reports-submitted__section .govuk-heading-l {
+    font-size: 19px;
+    line-height: 25px;
+  }
+
+  .reports-submitted__download .report-file-attachment {
+    gap: 15px;
+  }
+
+  .reports-submitted__download .report-file-attachment__thumbnail {
+    display: none;
+  }
+}

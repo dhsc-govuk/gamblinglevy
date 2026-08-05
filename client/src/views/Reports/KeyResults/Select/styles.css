@@ -1,0 +1,58 @@
+/* Desktop measurements from Figma 420:26651. */
+.govuk-main-wrapper > .govuk-width-container > .govuk-back-link[data-testid='reports-key-results-select-back'] {
+  margin-bottom: 50px;
+}
+
+.reports-key-results-select {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.reports-key-results-select__heading {
+  width: 630px;
+  max-width: 100%;
+}
+
+.reports-key-results-select__heading .govuk-caption-l,
+.reports-key-results-select__heading .govuk-heading-l,
+.reports-key-results-select__activities-heading .govuk-heading-m,
+.reports-key-results-select__return {
+  margin: 0;
+}
+
+.reports-key-results-select__activities-heading {
+  box-sizing: border-box;
+  width: 630px;
+  max-width: 100%;
+  padding-top: 30px;
+}
+
+.reports-key-results-select .govuk-task-list__item {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+@media (min-width: 641px) {
+  .reports-key-results-select__heading .govuk-caption-l {
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  .reports-key-results-select__heading .govuk-heading-l {
+    font-size: 36px;
+    line-height: 40px;
+  }
+
+  .reports-key-results-select__activities-heading .govuk-heading-m {
+    font-size: 24px;
+    line-height: 30px;
+  }
+
+  .reports-key-results-select .govuk-task-list,
+  .reports-key-results-select .govuk-link,
+  .reports-key-results-select .govuk-tag {
+    font-size: 19px;
+    line-height: 25px;
+  }
+}

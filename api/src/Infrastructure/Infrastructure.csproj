@@ -1,0 +1,47 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.17.2" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.19.1" />
+    <PackageReference Include="EFCore.NamingConventions" Version="10.0.0-rc.2" />
+    <PackageReference Include="EFCore.BulkExtensions.MIT.PostgreSql" Version="10.22.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.10" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Graph" Version="5.105.0" />
+    <!-- Security pin: Microsoft.Graph 5.105.0 still resolves a vulnerable Microsoft.Kiota.Abstractions 1.21.1 (GHSA-7j59-v9qr-6fq9, fixed in 1.22.0). -->
+    <PackageReference Include="Microsoft.Kiota.Abstractions" Version="1.22.2" />
+    <PackageReference Include="Otp.NET" Version="1.4.0" />
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+    <PackageReference Include="SendGrid" Version="9.29.3" />
+    <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Application\Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Persistence\Migrations" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Email\Templates\InvitationEmail.html" />
+    <EmbeddedResource Include="Email\Templates\SubmissionConfirmationEmail.html" />
+    <EmbeddedResource Include="Email\Templates\NewSignInEmail.html" />
+  </ItemGroup>
+
+</Project>

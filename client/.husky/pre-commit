@@ -1,0 +1,7 @@
+if ! git diff --cached --quiet -- client/src/config.json; then
+  echo "Commit blocked: client/src/config.json contains staged local configuration changes."
+  echo "Run 'git restore --staged client/src/config.json' and commit again."
+  exit 1
+fi
+
+cd client && npx lint-staged

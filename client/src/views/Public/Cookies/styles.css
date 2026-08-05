@@ -1,0 +1,8 @@
+/* Cookies page (BLUM-cookies). Layout-only composition — colours, spacing and typography come from
+   govuk-frontend tokens. */
+
+/* The banner wrapper is only a programmatic focus target (tabIndex=-1) for the save confirmation; it
+   must not draw its own outline — the success banner itself is the visible cue. */
+.public-cookies__banner:focus {
+  outline: none;
+}

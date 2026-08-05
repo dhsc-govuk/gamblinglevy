@@ -1,0 +1,9 @@
+/* H1 defaults to govuk-heading-xl (48px/50px) but Figma specifies "Desktop/Heading/Large" (36px/40px
+   bold) for this heading — matches the add-collection wizard's own .collection-wizard__heading rule
+   (CollectionWizard/styles.css), duplicated here (rather than importing that whole stylesheet) so this
+   component doesn't implicitly pick up wizard-only selectors it has no matching markup for. */
+.collection-editor__heading {
+  font-size: 36px;
+  line-height: 1.1111111111;
+  margin-bottom: 35px;
+}

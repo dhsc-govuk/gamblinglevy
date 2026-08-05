@@ -1,0 +1,44 @@
+import React from 'react';
+import './styles.css';
+
+interface GovUKButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'type'> {
+  children: React.ReactNode;
+  isLoading?: boolean;
+  start?: boolean;
+  type?: 'button' | 'submit' | 'reset';
+}
+
+function GovUKButton({
+  children,
+  onClick,
+  disabled = false,
+  isLoading = false,
+  start = false,
+  type = 'button',
+  className = 'govuk-button',
+  style,
+  ...rest
+}: GovUKButtonProps): React.ReactElement {
+  const buttonClass = [className, start && 'govuk-button--start'].filter(Boolean).join(' ');
+  return (
+    <button
+      type={type}
+      className={buttonClass}
+      onClick={onClick}
+      disabled={disabled || isLoading}
+      aria-busy={isLoading}
+      data-module="govuk-button"
+      style={style}
+      {...rest}
+    >
+      <span style={{ visibility: isLoading ? 'hidden' : undefined }}>{children}</span>
+      {isLoading && (
+        <span className="govuk-button__spinner-wrapper" aria-hidden="true">
+          <span className="govuk-button__spinner" />
+        </span>
+      )}
+    </button>
+  );
+}
+
+export default GovUKButton;

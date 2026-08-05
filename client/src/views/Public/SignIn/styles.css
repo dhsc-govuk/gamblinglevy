@@ -1,0 +1,45 @@
+/* SignIn page styles using GOV.UK Design System classes */
+
+.signin-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #ffffff;
+}
+
+.signin-page__main {
+  flex: 1;
+  background-color: #ffffff;
+}
+
+.signin-page__service-banner {
+  background-color: #f4f8fb;
+  padding: 15px 0;
+  border-bottom: 2px solid #8eb8dc;
+}
+
+.signin-page__service-name {
+  font-family: "GDS Transport", arial, sans-serif;
+  font-weight: 700;
+  font-size: 19px;
+  color: #0b0c0c;
+}
+
+.signin-page__content {
+  max-width: 640px;
+}
+
+.signin-page__loading {
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* The banner wrappers only exist to take programmatic focus when someone lands here without a live session,
+   so they must not paint a focus ring of their own — they are not controls the user tabbed to. Shared by the
+   session-ended and profile-error banners; same pattern as the cookie page's saved-preferences banner. */
+.signin-page__banner-focus-target:focus {
+  outline: none;
+}

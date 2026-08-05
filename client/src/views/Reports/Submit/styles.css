@@ -1,0 +1,105 @@
+/* Figma 420:28054 uses the back-link page template with 50px before the main content. */
+.govuk-main-wrapper > .govuk-width-container > .govuk-back-link[data-testid='reports-submit-back'] {
+  margin-bottom: 50px;
+}
+
+.reports-submit {
+  display: flex;
+  width: 960px;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 30px;
+}
+
+.reports-submit__title,
+.reports-submit__confirmation-heading,
+.reports-submit__warning,
+.reports-submit__body,
+.reports-submit__actions,
+.reports-submit__actions .govuk-button {
+  margin: 0;
+}
+
+.reports-submit__title,
+.reports-submit__summary,
+.reports-submit__confirmation-heading,
+.reports-submit__warning,
+.reports-submit__body {
+  box-sizing: border-box;
+  width: 630px;
+  max-width: 100%;
+}
+
+.reports-submit__summary {
+  margin: 0;
+  padding: 15px 0 15px 25px;
+  border-left-width: 10px;
+  border-left-color: #b1b4b6;
+}
+
+.reports-submit__summary .govuk-summary-list {
+  margin-bottom: 0;
+}
+
+.reports-submit__confirmation-heading {
+  padding-bottom: 10px;
+  font-size: 24px;
+  line-height: 30px;
+}
+
+.reports-submit__warning {
+  min-height: 35px;
+  padding: 0;
+}
+
+.reports-submit__warning .govuk-warning-text__icon {
+  width: 35px;
+  height: 35px;
+  margin-top: 0;
+  font-size: 30px;
+}
+
+.reports-submit__warning .govuk-warning-text__text {
+  padding-top: 6px;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+.reports-submit__actions {
+  gap: 10px;
+}
+
+.reports-submit__actions .govuk-button {
+  margin-right: 0;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+@media (min-width: 641px) {
+  .reports-submit__title {
+    font-size: 48px;
+    line-height: 50px;
+  }
+}
+
+@media (max-width: 640px) {
+  .govuk-main-wrapper > .govuk-width-container > .govuk-back-link[data-testid='reports-submit-back'] {
+    margin-bottom: 30px;
+  }
+
+  .reports-submit {
+    gap: 20px;
+  }
+
+  .reports-submit__confirmation-heading {
+    padding-bottom: 0;
+    font-size: 19px;
+    line-height: 25px;
+  }
+
+  .reports-submit__summary .govuk-summary-list__key,
+  .reports-submit__summary .govuk-summary-list__value {
+    width: 100% !important;
+  }
+}

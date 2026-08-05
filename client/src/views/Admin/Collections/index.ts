@@ -1,0 +1,11 @@
+export { default as CollectionsList } from './List';
+export { default as CollectionsCreate } from './Create';
+export { default as CollectionsView } from './View';
+export { default as CollectionsEdit } from './Edit';
+export { default as CollectionsDiscard } from './Discard';
+export { default as CollectionsDeleted } from './Deleted';
+export { default as CollectionsReminder } from './Reminder';
+export { default as CollectionsRevert } from './Revert';
+export { default as CollectionsClose } from './Close';
+export { default as CollectionsDelete } from './Delete';
+export { default as CollectionsRestore } from './Restore';

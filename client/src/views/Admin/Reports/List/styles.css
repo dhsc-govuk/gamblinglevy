@@ -1,0 +1,118 @@
+.reports-list-page {
+  padding-top: 60px;
+}
+
+.reports-list-page .reports-list-page__title {
+  max-width: 630px;
+  margin-bottom: 20px;
+  font-size: 36px;
+  line-height: 40px;
+  font-weight: 700;
+}
+
+.reports-list-page h1 {
+  margin-bottom: 20px;
+}
+
+.reports-list-page > .govuk-body {
+  max-width: 630px;
+  margin-bottom: 10px;
+}
+
+.reports-list-page > .govuk-body + .govuk-body {
+  margin-bottom: 0;
+}
+
+.reports-list-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 30px;
+  flex-wrap: wrap;
+  margin-top: 30px;
+  margin-bottom: 30px;
+}
+
+.reports-list-page .reports-list-page__subheading {
+  margin-bottom: 0;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 700;
+}
+
+/* The "Manage data collections" button baselines with the subheading rather than carrying its own bottom margin. */
+.reports-list-page__header .govuk-button {
+  width: 225px;
+  margin-bottom: 0;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.reports-list-page .govuk-table-filter {
+  display: grid;
+  grid-template-columns: 297px 191px 191px 191px;
+  justify-content: space-between;
+  row-gap: 30px;
+  column-gap: 0;
+  margin-right: 0;
+  margin-bottom: 0;
+  margin-left: 0;
+  align-items: end;
+}
+
+.reports-list-page .govuk-table-filter > div {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.reports-list-page .govuk-table-filter > div:first-child {
+  width: 297px;
+}
+
+.reports-list-page .govuk-table-filter > div:not(:first-child) {
+  width: 191px;
+}
+
+.reports-list-page .govuk-table-filter .govuk-label {
+  font-size: 19px;
+  line-height: 25px;
+}
+
+.reports-list-page .govuk-table-filter .govuk-select {
+  width: 191px !important;
+  min-width: 0;
+}
+
+.reports-list-page .govuk-table .govuk-link,
+.reports-list-page .govuk-table .govuk-link:link,
+.reports-list-page .govuk-table .govuk-link:visited {
+  color: #1d70b8 !important;
+}
+
+.reports-list-page .govuk-table .govuk-link:hover {
+  color: #003078 !important;
+}
+
+.reports-list-page .govuk-table .govuk-link:active,
+.reports-list-page .govuk-table .govuk-link:focus {
+  color: #0b0c0c !important;
+}
+
+@media (max-width: 640px) {
+  .reports-list-page {
+    padding-top: 30px;
+  }
+
+  .reports-list-page .govuk-table-filter {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .reports-list-page .govuk-table-filter > div,
+  .reports-list-page .govuk-table-filter > div:first-child,
+  .reports-list-page .govuk-table-filter > div:not(:first-child),
+  .reports-list-page .govuk-table-filter .govuk-select {
+    flex: 1 1 100%;
+    width: 100% !important;
+  }
+}

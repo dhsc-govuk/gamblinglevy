@@ -1,0 +1,222 @@
+.reports-detail-page {
+  padding-top: 60px;
+  color: #0b0c0c;
+}
+
+/* govuk-frontend's default :visited colour is purple; the redesigned reporting screens keep links blue
+   regardless of visited state (matches List/styles.css and Organisations/styles.css). */
+.reports-detail-page .govuk-link,
+.reports-detail-page .govuk-link:link,
+.reports-detail-page .govuk-link:visited {
+  color: #1d70b8 !important;
+}
+
+.reports-detail-page .govuk-link:hover {
+  color: #003078 !important;
+}
+
+.reports-detail-page .govuk-link:active,
+.reports-detail-page .govuk-link:focus {
+  color: #0b0c0c !important;
+}
+
+.reports-detail-page__overview {
+  width: 630px;
+  margin: 0 0 30px;
+}
+
+.reports-detail-page__caption {
+  display: block;
+  margin: 0;
+  color: #505a5f;
+  font-family: "GDS Transport", arial, sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 30px;
+}
+
+.reports-detail-page .reports-detail-page__title {
+  width: 630px;
+  margin: 0 0 20px;
+  font-size: 36px;
+  line-height: 40px;
+}
+
+.reports-detail-page .reports-detail-page__intro {
+  width: 630px;
+  margin: 0;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+.reports-detail-page__heading-band {
+  width: 630px;
+  height: 45px;
+  margin: 0 0 30px;
+  padding-top: 15px;
+  box-sizing: border-box;
+}
+
+.reports-detail-page .reports-detail-page__subheading {
+  margin: 0;
+  font-size: 24px;
+  line-height: 30px;
+}
+
+.reports-detail-page__summary {
+  width: 630px;
+  margin: 0 0 30px;
+}
+
+/* Top-aligned like govuk-summary-list, not centred: the "Reporting period" value wraps to two lines, and centring
+   left its label floating in the gap between them. Single-line rows are unaffected — 10px padding + a 25px line
+   exactly fills the 45px min-height, so there is no free space for `center` to distribute (BLUM-7079). */
+.reports-detail-page__summary-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  min-height: 45px;
+  padding: 10px 0;
+  border-bottom: 2px solid #b1b4b6;
+  box-sizing: border-box;
+}
+
+.reports-detail-page__summary-row dt {
+  flex: 0 0 225px;
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 25px;
+}
+
+.reports-detail-page__summary-row dd {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+.reports-detail-page__summary-action {
+  flex: 0 0 auto !important;
+  text-align: right;
+}
+
+.reports-detail-page__file {
+  display: flex;
+  align-items: flex-start;
+  gap: 30px;
+  width: 630px;
+  margin: 0 0 30px;
+}
+
+.reports-detail-page__file-icon {
+  display: block;
+  flex: 0 0 109px;
+  width: 109px;
+  height: 150px;
+}
+
+.reports-detail-page__file-icon svg {
+  width: 109px;
+  height: 150px;
+}
+
+.reports-detail-page__file-body {
+  flex: 1 1 auto;
+  width: 491px;
+}
+
+.reports-detail-page__file-title {
+  display: block;
+  width: 491px;
+  margin: 0 0 15px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1d70b8;
+  cursor: pointer;
+  font-family: "GDS Transport", arial, sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 32px;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-thickness: max(1px, 0.0625rem);
+  text-underline-offset: 0.1em;
+}
+
+.reports-detail-page__file-title:hover {
+  color: #003078;
+  text-decoration-thickness: 3px;
+}
+
+.reports-detail-page__file-title:focus {
+  outline: 3px solid transparent;
+  background-color: #ffdd00;
+  box-shadow:
+    0 -2px #ffdd00,
+    0 4px #0b0c0c;
+  color: #0b0c0c;
+  text-decoration: none;
+}
+
+.reports-detail-page__file-title:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.reports-detail-page__file-title--placeholder {
+  color: #505a5f;
+  cursor: default;
+  text-decoration: none;
+}
+
+.reports-detail-page__file-meta {
+  margin: 0;
+  color: #505a5f;
+  font-size: 19px;
+  line-height: 24px;
+}
+
+.reports-detail-page__file-error {
+  margin-top: 15px;
+  margin-bottom: 0;
+}
+
+.reports-detail-page__file-empty {
+  margin: 15px 0 0;
+  width: 491px;
+  color: #505a5f;
+  font-size: 19px;
+  line-height: 25px;
+}
+
+@media (max-width: 48.0525em) {
+  .reports-detail-page {
+    padding-top: 30px;
+  }
+
+  .reports-detail-page__overview,
+  .reports-detail-page .reports-detail-page__title,
+  .reports-detail-page .reports-detail-page__intro,
+  .reports-detail-page__heading-band,
+  .reports-detail-page__summary,
+  .reports-detail-page__file {
+    width: 100%;
+  }
+
+  .reports-detail-page__file {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .reports-detail-page__file-body,
+  .reports-detail-page__file-title,
+  .reports-detail-page__file-empty {
+    width: 100%;
+  }
+
+  .reports-detail-page__summary-row {
+    flex-wrap: wrap;
+  }
+}

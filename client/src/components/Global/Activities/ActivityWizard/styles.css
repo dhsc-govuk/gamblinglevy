@@ -1,0 +1,144 @@
+.activity-wizard {
+  width: 960px;
+  max-width: 100%;
+}
+
+/* The Back link renders in the layout chrome (above #main-content) so "Skip to main content" bypasses it
+   rather than landing on it — BLUM-7256. These reproduce the margins it had inside .activity-wizard, and
+   outrank the generic chrome rule in layouts/General/Content/styles.css on specificity alone.
+   Shared by the create/draft wizard, the editor's check mode and the completed-activity summary. */
+.govuk-main-wrapper > .govuk-width-container > .govuk-back-link.activity-wizard__back-link {
+  margin-top: 25px;
+  margin-bottom: 50px;
+}
+
+/* ActivityEditor's section-editing mode instead carried its wrapper's 20px top padding plus
+   govuk-frontend's default 15px margins; the padding moved onto the link when it left the wrapper.
+   (The editor has no stylesheet of its own — it renders inside the .activity-wizard namespace.) */
+.govuk-main-wrapper > .govuk-width-container > .govuk-back-link.activity-wizard__back-link--section {
+  margin-top: 35px;
+  margin-bottom: 15px;
+}
+
+.activity-wizard__title-block {
+  width: 630px;
+  max-width: 100%;
+  margin-bottom: 30px;
+}
+
+.activity-wizard .govuk-caption-l {
+  display: block;
+  margin: 0;
+  color: #505a5f;
+  font-size: 24px;
+  line-height: 30px;
+}
+
+.activity-wizard__heading {
+  margin: 0;
+  font-size: 36px;
+  line-height: 40px;
+}
+
+.activity-wizard .govuk-form-group,
+.activity-wizard > .govuk-fieldset,
+.activity-wizard > div > .govuk-fieldset {
+  width: 630px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.activity-wizard .govuk-form-group {
+  margin-bottom: 30px;
+}
+
+.activity-wizard .govuk-hint {
+  margin-bottom: 10px;
+}
+
+.activity-wizard .govuk-input,
+.activity-wizard .govuk-textarea {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.activity-wizard .govuk-\!-margin-top-6 {
+  margin-top: 30px !important;
+}
+
+.activity-wizard .govuk-button-group {
+  margin-top: 0;
+}
+
+/* Figma 420:25253 places the status actions 10px apart. GOV.UK's desktop button
+   group uses a 15px right margin by default. */
+.activity-wizard--status .govuk-button-group {
+  column-gap: 10px;
+  margin-right: 0;
+}
+
+.activity-wizard--status .govuk-button-group .govuk-button {
+  margin-right: 0;
+}
+
+.activity-wizard--check .govuk-summary-card {
+  border-color: #b1b4b6;
+  width: 100%;
+  margin-bottom: 30px;
+}
+
+.activity-wizard--check .govuk-summary-card__title-wrapper {
+  box-sizing: border-box;
+  min-height: 65px;
+  padding: 20px;
+}
+
+.activity-wizard--check .govuk-summary-card__title,
+.activity-wizard--check .govuk-summary-card__actions {
+  margin-bottom: 0;
+  margin-top: 0;
+}
+
+.activity-wizard--check .govuk-summary-card__content {
+  padding: 0 20px;
+}
+
+.activity-wizard--check .govuk-summary-list {
+  margin-bottom: 0;
+}
+
+.activity-wizard--check .govuk-button-group {
+  column-gap: 10px;
+  margin-right: 0;
+}
+
+.activity-wizard--check .govuk-button-group .govuk-button {
+  margin-right: 0;
+}
+
+.activity-wizard__check-guidance {
+  width: 630px;
+  max-width: 100%;
+  margin: 0 0 30px;
+}
+
+@media (max-width: 640px) {
+  .govuk-main-wrapper > .govuk-width-container > .govuk-back-link.activity-wizard__back-link {
+    margin-top: 15px;
+    margin-bottom: 30px;
+  }
+
+  .activity-wizard .govuk-caption-l {
+    font-size: 19px;
+    line-height: 25px;
+  }
+
+  .activity-wizard__heading {
+    font-size: 32px;
+    line-height: 35px;
+  }
+
+  .activity-wizard--check .govuk-summary-card__title-wrapper {
+    min-height: auto;
+  }
+}

@@ -1,0 +1,89 @@
+.deleted-organisations-page {
+  padding-top: 5px;
+}
+
+.deleted-organisations-page .govuk-heading-xl {
+  font-size: 36px;
+  line-height: 40px;
+  margin-bottom: 50px;
+}
+
+.deleted-organisations-page .govuk-table-filter {
+  align-items: end;
+  column-gap: 30px;
+  display: grid;
+  grid-template-columns: 462px 191px;
+  margin: 0 0 30px;
+  max-width: 100%;
+  width: 683px;
+}
+
+.deleted-organisations-page .govuk-table-filter > [class*='govuk-grid-column'] {
+  box-sizing: border-box;
+  float: none;
+  min-width: 0;
+  padding: 0;
+  width: auto;
+}
+
+.deleted-organisations-page .govuk-table-filter .govuk-label {
+  font-size: 19px;
+  line-height: 25px;
+  margin-bottom: 5px;
+}
+
+.deleted-organisations-page .govuk-table-filter__input,
+.deleted-organisations-page .govuk-table-filter__search-button,
+.deleted-organisations-page .govuk-table-filter .govuk-select {
+  height: 40px;
+}
+
+.deleted-organisations-page .govuk-table-filter .govuk-select {
+  min-width: 0;
+  width: 100% !important;
+}
+
+.deleted-organisations-page .govuk-table {
+  margin-bottom: 30px;
+  max-width: 100%;
+  table-layout: fixed;
+  width: 683px;
+}
+
+.deleted-organisations-page .govuk-table__header,
+.deleted-organisations-page .govuk-table__cell {
+  font-size: 19px;
+  line-height: 25px;
+  padding-bottom: 10px;
+  padding-top: 10px;
+}
+
+.deleted-organisations-page .govuk-table__header:nth-child(1),
+.deleted-organisations-page .govuk-table__cell:nth-child(1) {
+  box-sizing: border-box;
+  width: 320px;
+}
+
+.deleted-organisations-page .govuk-table__header:nth-child(2),
+.deleted-organisations-page .govuk-table__cell:nth-child(2) {
+  box-sizing: border-box;
+  width: 343px;
+}
+
+.deleted-organisations-page > .govuk-link {
+  font-size: 19px;
+  line-height: 25px;
+}
+
+@media (max-width: 40.0525em) {
+  .deleted-organisations-page .govuk-heading-xl {
+    font-size: 27px;
+    line-height: 30px;
+    margin-bottom: 30px;
+  }
+
+  .deleted-organisations-page .govuk-table-filter {
+    grid-template-columns: 1fr;
+    row-gap: 20px;
+  }
+}

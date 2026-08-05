@@ -1,0 +1,79 @@
+.admin-deleted-users-list {
+  max-width: 683px;
+  padding-top: 5px;
+}
+
+.admin-deleted-users-list__heading {
+  font-size: 36px;
+  line-height: 40px;
+  margin-bottom: 50px;
+}
+
+.admin-deleted-users-list__empty {
+  box-sizing: border-box;
+  margin: 0 0 30px;
+  max-width: 100%;
+  width: 655px;
+}
+
+.admin-deleted-users-list__table {
+  margin-bottom: 30px;
+}
+
+.admin-deleted-users-list__table .govuk-table-filter {
+  align-items: flex-end;
+  flex-wrap: nowrap;
+  gap: 30px;
+  margin: 0 0 30px;
+}
+
+.admin-deleted-users-list__table .govuk-table-filter > .govuk-grid-column-two-thirds {
+  flex: 1 1 auto;
+  float: none;
+  padding: 0;
+  width: auto;
+}
+
+.admin-deleted-users-list__table .govuk-table-filter > .govuk-grid-column-one-third {
+  flex: 0 0 191px;
+  float: none;
+  padding: 0;
+  width: 191px;
+}
+
+.admin-deleted-users-list__table .govuk-table {
+  margin-bottom: 0;
+  table-layout: fixed;
+}
+
+.admin-deleted-users-list__column {
+  width: 33.333%;
+}
+
+.admin-deleted-users-list__return {
+  display: inline-block;
+}
+
+@media (max-width: 40.0525em) {
+  .admin-deleted-users-list {
+    max-width: none;
+  }
+
+  .admin-deleted-users-list__heading {
+    font-size: 27px;
+    line-height: 30px;
+    margin-bottom: 30px;
+  }
+
+  .admin-deleted-users-list__table .govuk-table-filter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .admin-deleted-users-list__table .govuk-table-filter > .govuk-grid-column-two-thirds,
+  .admin-deleted-users-list__table .govuk-table-filter > .govuk-grid-column-one-third {
+    flex-basis: auto;
+    width: 100%;
+  }
+}

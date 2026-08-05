@@ -1,0 +1,40 @@
+.management-layout {
+  margin-top: 30px;
+}
+
+.management-layout .govuk-breadcrumbs {
+  margin-top: 0;
+}
+
+.management-layout__content {
+  min-width: 0;
+}
+
+.management-layout__navigation .app-subnav__section-item:first-child {
+  padding-top: 0;
+}
+
+.management-layout__navigation .app-subnav__section-item--current:first-child {
+  align-items: center;
+  display: flex;
+  min-height: 25px;
+  padding-bottom: 0;
+}
+
+.management-layout__navigation .app-subnav__section-item--current:first-child .app-subnav__link {
+  padding-bottom: 0;
+  padding-top: 0;
+}
+
+/* Align the back link with the first side-nav item (which sits flush at the top
+ * of its column). govuk-frontend's .govuk-back-link ships with margin-top: 15px
+ * for standalone use — drop it here so the rows line up horizontally. */
+.management-layout__content > .govuk-back-link:first-child {
+  margin-top: 0;
+}
+
+@media (max-width: 40.0525em) {
+  .management-layout__navigation {
+    margin-bottom: 20px;
+  }
+}

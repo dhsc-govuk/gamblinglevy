@@ -1,0 +1,125 @@
+.admin-users-edit-page,
+.admin-users-edit-review {
+  max-width: 683px;
+  padding-top: 35px;
+}
+
+.admin-users-edit-page__heading {
+  margin-bottom: 50px;
+}
+
+.admin-users-edit-review__heading {
+  margin-bottom: 30px;
+}
+
+.admin-users-edit-page__heading .govuk-caption-l,
+.admin-users-edit-review__heading .govuk-caption-l {
+  color: #505a5f;
+  font-size: 24px;
+  line-height: 30px;
+  margin-bottom: 0;
+}
+
+.admin-users-edit-page__heading .govuk-heading-xl,
+.admin-users-edit-review__heading .govuk-heading-xl {
+  font-size: 36px;
+  line-height: 40px;
+  margin-bottom: 0;
+}
+
+.admin-users-edit-page__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  margin-bottom: 30px;
+}
+
+.admin-users-edit-page .govuk-form-group {
+  margin-bottom: 0;
+}
+
+.admin-users-edit-page .govuk-label--s {
+  font-size: 19px;
+  line-height: 25px;
+  margin-bottom: 10px;
+}
+
+.admin-users-edit-page .govuk-label--s + .govuk-hint {
+  margin-bottom: 10px;
+  margin-top: -5px;
+}
+
+.admin-users-edit-page .govuk-input,
+.admin-users-edit-page .govuk-select {
+  height: 40px;
+  width: 100%;
+}
+
+.admin-users-edit-page__access-level {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-users-edit-page__access-level > .govuk-link {
+  font-size: 19px;
+  line-height: 25px;
+  width: fit-content;
+}
+
+.admin-users-edit-page .govuk-button {
+  margin-bottom: 0;
+}
+
+.admin-users-edit-review .govuk-summary-card {
+  border-color: #b1b4b6;
+  margin-bottom: 30px;
+}
+
+.admin-users-edit-review .govuk-summary-card__title-wrapper {
+  box-sizing: border-box;
+  min-height: 65px;
+  padding: 20px;
+}
+
+.admin-users-edit-review .govuk-summary-card__title,
+.admin-users-edit-review .govuk-summary-card__actions {
+  margin-bottom: 0;
+  margin-top: 0;
+}
+
+.admin-users-edit-review .govuk-summary-card__content {
+  padding: 0 20px;
+}
+
+.admin-users-edit-review__actions {
+  column-gap: 10px;
+  margin-bottom: 0;
+}
+
+.admin-users-edit-review__actions .govuk-button {
+  margin: 0;
+}
+
+@media (max-width: 40.0525em) {
+  .admin-users-edit-page,
+  .admin-users-edit-review {
+    max-width: none;
+    padding-top: 25px;
+  }
+
+  .admin-users-edit-page__heading,
+  .admin-users-edit-review__heading {
+    margin-bottom: 30px;
+  }
+
+  .admin-users-edit-page__heading .govuk-heading-xl,
+  .admin-users-edit-review__heading .govuk-heading-xl {
+    font-size: 27px;
+    line-height: 30px;
+  }
+
+  .admin-users-edit-review .govuk-summary-card__title-wrapper {
+    min-height: auto;
+  }
+}

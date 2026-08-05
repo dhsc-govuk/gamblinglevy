@@ -1,0 +1,49 @@
+import React from 'react';
+import { PageLoading } from '../../../../../components/GovUKComponents';
+import { useParams } from 'react-router-dom';
+import { useQuery } from 'react-query';
+import { UserEditView } from '../../../../../components/Global/OrganisationUsers';
+import { localAuthorityKey } from '../../../../../helpers/queriesParams';
+import { ROUTES } from '../../../../../helpers/routes';
+import { pageTitleWithName } from '../../../../../hooks/usePageTitle';
+import { getLocalAuthority } from '../../queries';
+
+const LocalAuthorityUsersEdit = (): React.ReactElement => {
+  const { organisationId = '', userId = '' } = useParams<{
+    organisationId: string;
+    userId: string;
+  }>();
+
+  const { data, isLoading } = useQuery(
+    localAuthorityKey(organisationId),
+    () => getLocalAuthority(organisationId),
+    { enabled: !!organisationId },
+  );
+  const org = data?.data;
+
+  if (isLoading || !org) {
+    return <PageLoading />;
+  }
+
+  const usersBase = ROUTES.admin.organisations.users(organisationId);
+
+  return (
+    <UserEditView
+      organisationId={organisationId}
+      userId={userId}
+      pageTitle={pageTitleWithName('Edit user', org.name)}
+      heading="Edit user"
+      breadcrumbs={[
+        { label: 'Home', link: ROUTES.admin.home },
+        { label: 'Local Authorities', link: ROUTES.admin.organisations.list },
+        { label: org.name, link: ROUTES.admin.organisations.detail(organisationId) },
+        { label: 'Users', link: usersBase },
+      ]}
+      backLinkHref={ROUTES.admin.organisations.user(organisationId, userId)}
+      successNavigateHref={ROUTES.admin.organisations.user(organisationId, userId)}
+      testIdPrefix="admin-la-users"
+    />
+  );
+};
+
+export default LocalAuthorityUsersEdit;
