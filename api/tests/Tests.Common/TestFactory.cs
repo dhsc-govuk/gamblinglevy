@@ -89,6 +89,17 @@ public class IntegrationTestWebFactory : WebApplicationFactory<Program>, IAsyncL
             // where it belongs — switching a control off globally is not a reason to leave it untested.
             existing.InputValidation.MaxAuditRowsPerActorPerHour = 0;
             existing.InputValidation.MaxAuditRowsPerHour = 0;
+
+            // Off for the same reason, one level up: the request limiter counts per address and route in a
+            // cache that outlives an individual test, and the suite drives essentially every endpoint through
+            // one HttpClient from one apparent address. Left on, a long test class would start answering 429
+            // partway through and which assertion broke would depend on how many requests ran before it.
+            //
+            // RateLimitingTests turns it back on for its own host — IntegrationTestWebFactory is an
+            // IClassFixture, so that instance belongs to that class alone and cannot leak into a parallel one
+            // — and clears the counters between methods. The counting itself is covered directly by
+            // Application.Tests.Unit/Security/FixedWindowCounterTests (BLUM-7239).
+            existing.RateLimiting.Enabled = false;
         }
     }
 

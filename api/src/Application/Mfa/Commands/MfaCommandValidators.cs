@@ -46,9 +46,10 @@ public class RegenerateRecoveryCodesCommandValidator : AbstractValidator<Regener
     }
 }
 
-// The most valuable bound of the five. VerifyRecoveryCodeCommandHandler is the one MFA endpoint with no
-// per-minute limiter, and it answers by running BCrypt at cost 12 over every stored hash — roughly two and
-// a half CPU-seconds per request. An unbounded string reached that loop.
+// The most valuable bound of the five. VerifyRecoveryCodeCommandHandler answers by running BCrypt at cost 12
+// over every stored hash — roughly two and a half CPU-seconds per request — and an unbounded string reached
+// that loop. It was also, until BLUM-7239, the one MFA endpoint with no per-minute limiter in front of it;
+// all five now reserve against IMfaRateLimitService before doing any work.
 public class VerifyRecoveryCodeCommandValidator : AbstractValidator<VerifyRecoveryCodeCommand>
 {
     public VerifyRecoveryCodeCommandValidator()

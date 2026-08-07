@@ -37,7 +37,7 @@
   align-items: flex-start;
   gap: 30px;
   width: 960px;
-  height: 40px;
+  min-height: 40px;
   margin: 0 0 30px;
 }
 
@@ -50,7 +50,8 @@
 
 .reports-orgs-page__manage-button {
   min-width: 217px;
-  height: 40px;
+  min-height: 40px;
+  height: auto;
   margin: 0;
   padding: 8px 12px 7px;
   box-sizing: border-box;
@@ -90,7 +91,7 @@
 
 .reports-orgs-page__heading-band {
   width: 630px;
-  height: 45px;
+  min-height: 45px;
   margin: 0 0 30px;
   padding-top: 15px;
   box-sizing: border-box;
@@ -181,11 +182,15 @@
 
 .reports-orgs-filter {
   display: grid;
-  grid-template-columns: 518px 170px 170px;
+  /* Under a user text-spacing stylesheet (WCAG 1.4.12) the selects need more width than 170px and the labels
+     more than one 25px line. max-content maxima let the two filter tracks take that width out of the search
+     track (which is why it is minmax(0, 518px) and no longer a flat 518px), and min-height lets the row grow
+     instead of clipping the labels. All three resolve to the previous fixed values at default spacing. */
+  grid-template-columns: minmax(0, 518px) minmax(170px, max-content) minmax(170px, max-content);
   gap: 51px;
   align-items: end;
   width: 960px;
-  height: 70px;
+  min-height: 70px;
   margin: 0 0 30px;
 }
 
@@ -195,15 +200,19 @@
   line-height: 25px;
 }
 
+/* Floors rather than fixed heights so a user-defined line height grows these controls instead of clipping
+   their text (WCAG 1.4.12); they still render at 40px at default spacing. */
 .reports-orgs-filter__search-control {
   display: flex;
-  width: 518px;
-  height: 40px;
+  width: 100%;
+  min-height: 40px;
+  height: auto;
 }
 
 .reports-orgs-filter__input {
   flex: 1 1 auto;
-  height: 40px;
+  min-height: 40px;
+  height: auto;
   min-width: 0;
   margin: 0;
   box-sizing: border-box;
@@ -214,8 +223,10 @@
   flex: 0 0 40px;
   align-items: center;
   justify-content: center;
+  align-self: stretch;
   width: 40px;
-  height: 40px;
+  min-height: 40px;
+  height: auto;
   padding: 8px;
   border: 0;
   background: #1d70b8;
@@ -237,9 +248,10 @@
   stroke: #0b0c0c;
 }
 
+/* No !important: the mobile block below has to be able to take these to 100%. */
 .reports-orgs-filter__select,
 .reports-orgs-filter__select .govuk-select {
-  width: 170px !important;
+  width: 100%;
   min-width: 0;
 }
 

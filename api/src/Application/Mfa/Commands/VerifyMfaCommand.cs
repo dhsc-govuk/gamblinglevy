@@ -1,5 +1,6 @@
 using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
+using Application.Common.Settings;
 using Application.Mfa.Dtos;
 using Application.Mfa.Exceptions;
 using Domain.AuditLogs;
@@ -21,16 +22,20 @@ public class VerifyMfaCommandHandler(
     IMfaRateLimitService rateLimitService,
     IMfaSessionService sessionService,
     IUserMfaRepository userMfaRepository,
-    IAuditLogRepository auditLogRepository)
+    IAuditLogRepository auditLogRepository,
+    MfaAttemptGate attemptGate,
+    MfaFailureRecorder failureRecorder,
+    ApplicationSettings settings)
     : IRequestHandler<VerifyMfaCommand, Either<MfaException, MfaVerifyResponseDto>>
 {
     public async Task<Either<MfaException, MfaVerifyResponseDto>> Handle(
         VerifyMfaCommand request,
         CancellationToken cancellationToken)
     {
-        if (rateLimitService.IsRateLimited(request.UserId))
+        var refusal = await attemptGate.ReserveAsync(request.UserId, cancellationToken);
+        if (refusal is not null)
         {
-            return new MfaRateLimitException(request.UserId);
+            return refusal;
         }
 
         var userMfaOption = await userMfaRepository.GetByUserIdAsync(request.UserId, cancellationToken);
@@ -50,8 +55,13 @@ public class VerifyMfaCommandHandler(
     private Either<MfaException, UserMfa> ValidateNotLockedOut(UserMfa mfa, UserId userId)
     {
         return mfa.IsLockedOut()
-            ? new MfaRateLimitException(userId, mfa.LockedUntil)
+            ? new MfaLockedOutException(userId, mfa.LockedUntil!.Value, RetryAfterSeconds(mfa))
             : mfa;
+    }
+
+    private int RetryAfterSeconds(UserMfa mfa)
+    {
+        return MfaRetryAfter.Seconds(mfa.LockedUntil, DateTime.UtcNow, settings.Mfa.LockoutMinutes * 60);
     }
 
     private async Task<Either<MfaException, MfaVerifyResponseDto>> ValidateAndVerifyAsync(
@@ -107,12 +117,13 @@ public class VerifyMfaCommandHandler(
         UserMfa mfa,
         CancellationToken cancellationToken)
     {
-        rateLimitService.RecordAttempt(request.UserId);
-        mfa.RecordFailedAttempt();
-        await userMfaRepository.UpdateAsync(mfa, cancellationToken);
-        await auditLogRepository.AppendAsync(
-            AuditLog.Create(request.UserId, AuditTargetType.User, request.UserId.Value, AuditAction.MfaVerifyFailed, before: null, after: null),
-            cancellationToken);
-        return new InvalidMfaCodeException(request.UserId);
+        // The attempt was already counted against the per-minute damper by Reserve, whether it turned out to
+        // be right or wrong — that is what makes it a damper on guessing rather than a damper on failing.
+        return await failureRecorder.RecordAsync(
+            request.UserId,
+            mfa,
+            AuditAction.MfaVerifyFailed,
+            MfaEndpoints.Verify,
+            new InvalidMfaCodeException(request.UserId));
     }
 }

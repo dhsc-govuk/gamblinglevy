@@ -25,6 +25,7 @@ import {
   type SessionEndedReason,
 } from '../../helpers/sessionEnd';
 import { decideAuthFailureAction, sessionEndedReasonFromError } from '../../helpers/authFailure';
+import { isRateLimitedError } from '../../helpers/httpErrors';
 import { withRouter } from '../DashboardProviderArgs';
 import appConfig from '../../config.json';
 
@@ -74,6 +75,15 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
+      // react-query v3 retries a failed query three times by default, which for a 429 turns one refusal into
+      // four requests with backoff — spending the very budget that has to drain before the caller can get
+      // back in, and converting a soft limit into a hard one (BLUM-7239). Everything else keeps the default
+      // resilience: a single dropped request must not surface as a failed page.
+      //
+      // A query that sets its own `retry` overrides this rather than composing with it, so each of those has
+      // to repeat the exclusion. Grep for isRateLimitedError to find them — enumerating them here would be
+      // wrong the first time a fourth query sets a predicate.
+      retry: (failureCount: number, error: unknown) => !isRateLimitedError(error) && failureCount < 3,
     },
   },
 });

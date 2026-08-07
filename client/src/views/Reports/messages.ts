@@ -50,5 +50,6 @@ export const mapReportError = (error: unknown): ReportError => {
   return { message: 'Something went wrong. Try again.', fieldErrors: {} };
 };
 
-// Shown when the report ZIP download fails to prepare (BLUM-6098).
-export const DOWNLOAD_ERROR_MESSAGE = 'Sorry, there is a problem preparing your download. Try again.';
+// The report ZIP download's failure copy lives in helpers/downloadErrors.downloadErrorMessage (BLUM-6098,
+// BLUM-7239), imported directly by the screens that render it — the Submitted confirmation and SubmissionDetail,
+// which share it with the DHSC screens.

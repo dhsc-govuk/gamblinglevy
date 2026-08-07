@@ -2,7 +2,7 @@
 // business pulling that whole feature into its module graph (the useOrganisationUser precedent imports the same
 // constant the same way).
 import { SERVICE_PROBLEM_HEADING } from '../../../components/Global/OrganisationUsers/UserLoadFailed';
-import { httpStatusOf, isForbiddenError, isNotFoundError } from '../../../helpers/httpErrors';
+import { httpStatusOf, isForbiddenError, isNotFoundError, isRateLimitedError } from '../../../helpers/httpErrors';
 
 // Why a failed DHSC submission-visibility read failed. The three cases need three different pages, and lumping them
 // together is the BLUM-7216 defect: a 500 was reported to admins as "Submission not found", so a service outage read
@@ -12,6 +12,14 @@ import { httpStatusOf, isForbiddenError, isNotFoundError } from '../../../helper
 //               rather than the scoped-out 404 that isAccessDeniedError exists to hide.
 //   forbidden — the role gate refused. Reachable past the route guard via an MFA or suspension envelope.
 //   failed    — anything else: 5xx, a dropped connection, an aborted request. Not a statement about the record.
+//
+// A 429 deliberately has no kind of its own and lands in 'failed' (BLUM-7239). It is a refusal rather than a
+// fault, so on the face of it it belongs beside 'forbidden' — but these reads draw on the Read budget, 300 a
+// minute per address, which no admin reaches by using the service. Giving it a kind would widen
+// ReportLoadFailure's `kind` prop and mint a new `composeTestId(testId, kind)` value on two pages, i.e. change
+// the QA contract, to describe a state reached only by scripted traffic. What the user sees is still accurate:
+// mapReportError surfaces the API's own "Too many requests. Try again in N seconds." from the 4xx body, and
+// the page offers a retry. Revisit if the Read budget is ever tightened toward real usage.
 export type ReportErrorKind = 'not-found' | 'forbidden' | 'failed';
 
 export const reportErrorKind = (error: unknown): ReportErrorKind => {
@@ -20,12 +28,14 @@ export const reportErrorKind = (error: unknown): ReportErrorKind => {
   return 'failed';
 };
 
-// Only a 404 is retry-proof, so it falls straight through to the not-found page. A 403 keeps its retries on purpose:
-// the axios interceptor deliberately lets an MFA_REQUIRED 403 through inside its 5-second post-verify guard, and the
-// retry backoff is what carries the last attempt past that window so the redirect can fire. Shared by both Reports
-// screens rather than copied into each — the rule that a 403 must keep retrying is not obvious enough to survive
-// being restated (the useOrganisationUser precedent, written after five copies had already drifted).
-export const reportQueryRetry = (failureCount: number, error: unknown): boolean => !isNotFoundError(error) && failureCount < 3;
+// A 404 is retry-proof, so it falls straight through to the not-found page. A 429 is excluded for the opposite
+// reason: retrying it would make it worse, turning one refusal into four requests against the budget that has to
+// drain before the user can get back in (BLUM-7239). A 403 keeps its retries on purpose: the axios interceptor
+// deliberately lets an MFA_REQUIRED 403 through inside its 5-second post-verify guard, and the retry backoff is what
+// carries the last attempt past that window so the redirect can fire. Shared by both Reports screens rather than
+// copied into each — these rules are not obvious enough to survive being restated (the useOrganisationUser
+// precedent, written after five copies had already drifted).
+export const reportQueryRetry = (failureCount: number, error: unknown): boolean => !isNotFoundError(error) && !isRateLimitedError(error) && failureCount < 3;
 
 // Each screen's own not-found wording. The detail page is about one organisation's submission, so it must not tell
 // the admin "this report was not found" under a "Submission not found" heading.
@@ -90,5 +100,6 @@ const mapReportError = (error: unknown): string => {
 export const reportFailureMessage = (errorKind: ReportErrorKind, notFoundMessage: string, error: unknown): string =>
   errorKind === 'not-found' ? notFoundMessage : mapReportError(error);
 
-// Shown when a file download (the submissions spreadsheet or an organisation's report ZIP) fails to prepare.
-export const DOWNLOAD_ERROR_MESSAGE = 'Sorry, there is a problem preparing your download. Try again.';
+// Download failures are mapped by helpers/downloadErrors.downloadErrorMessage, imported directly by the screens
+// that render them. Not re-exported through here: this module keeps mapReportError private so reportFailureMessage
+// is its single entry point, and a bare pass-through would give one symbol two import paths for no gain.

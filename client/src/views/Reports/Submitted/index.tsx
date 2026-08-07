@@ -9,6 +9,7 @@ import { homeLinkForRole, useAuthProvider } from '../../../components/AuthProvid
 import usePageTitle from '../../../hooks/usePageTitle';
 import { ROUTES } from '../../../helpers/routes';
 import { downloadReportExport } from '../mutations';
+import { downloadErrorMessage } from '../../../helpers/downloadErrors';
 import { formatGovUkDate } from '../display';
 import { useReportContext } from '../context';
 import './styles.css';
@@ -31,7 +32,7 @@ const Submitted = (): React.ReactElement => {
   const { collectionId, context, isLoading, isError } = useReportContext();
 
   const downloadMutation = useMutation(() => downloadReportExport(collectionId), {
-    onError: () => setDownloadError('Sorry, there is a problem preparing your download. Try again.'),
+    onError: (error) => setDownloadError(downloadErrorMessage(error)),
     onSuccess: () => setDownloadError(null),
   });
 

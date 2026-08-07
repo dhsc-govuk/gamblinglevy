@@ -12,7 +12,8 @@ import { SUBMISSION_STATUS_LABEL } from '../../Admin/Reports/display';
 import { getMySubmissionDetail } from '../queries';
 import { downloadReportExport } from '../mutations';
 import { formatGovUkDate, formatSubmittedDateTime, reportName } from '../display';
-import { mapReportError, DOWNLOAD_ERROR_MESSAGE } from '../messages';
+import { mapReportError } from '../messages';
+import { downloadErrorMessage } from '../../../helpers/downloadErrors';
 import { reportsLandingBreadcrumbs, submissionDetailBreadcrumbs } from '../navigation';
 
 // LA submission detail (BLUM-6098). The read-only record of one finalised report — status, who/when submitted, and
@@ -96,7 +97,7 @@ const SubmissionDetail = (): React.ReactElement => {
                 metadata="ZIP"
                 onDownload={() => downloadMutation.mutate()}
                 isLoading={downloadMutation.isLoading}
-                errorMessage={downloadMutation.isError ? DOWNLOAD_ERROR_MESSAGE : null}
+                errorMessage={downloadMutation.isError ? downloadErrorMessage(downloadMutation.error) : null}
                 testId="la-reports-detail-files"
               />
             ) : (

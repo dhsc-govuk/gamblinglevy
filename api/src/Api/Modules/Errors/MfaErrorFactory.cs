@@ -30,15 +30,34 @@ public static class MfaErrorFactory
             {
                 StatusCode = StatusCodes.Status401Unauthorized,
             },
-            MfaRateLimitException rateLimitEx => new ObjectResult(new
-            {
-                error = "MFA_RATE_LIMITED",
-                message = exception.Message,
-                lockedUntil = rateLimitEx.LockedUntil,
-            })
-            {
-                StatusCode = StatusCodes.Status429TooManyRequests,
-            },
+            // Both 429s state their own user-facing copy rather than passing exception.Message through. The
+            // exception messages interpolate the user's id, and this body is returned to the caller — so
+            // relaying them would answer an unauthenticated-ish guessing endpoint with a real user GUID.
+            //
+            // They are also two distinct codes on purpose. A client that could not tell the short damper
+            // from the lockout would tell somebody locked out for half an hour to "wait a few minutes".
+            // retryAfterSeconds is repeated in the body deliberately. Retry-After is not a CORS-safelisted
+            // response header, so a browser on another origin can only read it because SetupCors names it in
+            // Access-Control-Expose-Headers — and a body field costs nothing, cannot be stripped by a proxy
+            // that rewrites headers, and matches the RATE_LIMITED envelope the middleware writes.
+            MfaLockedOutException lockedOut => new RateLimitedObjectResult(
+                new
+                {
+                    error = "MFA_LOCKED_OUT",
+                    message = "Too many incorrect codes. Your access is locked. Try again later, or tell your administrator.",
+                    lockedUntil = lockedOut.LockedUntil,
+                    retryAfterSeconds = lockedOut.RetryAfterSeconds,
+                },
+                lockedOut.RetryAfterSeconds),
+            MfaRateLimitException rateLimitEx => new RateLimitedObjectResult(
+                new
+                {
+                    error = "MFA_RATE_LIMITED",
+                    message = "Too many attempts. Wait a moment and try again.",
+                    lockedUntil = rateLimitEx.LockedUntil,
+                    retryAfterSeconds = rateLimitEx.RetryAfterSeconds,
+                },
+                rateLimitEx.RetryAfterSeconds),
             MfaSetupExpiredException => new ObjectResult(new { error = "MFA_SETUP_EXPIRED", message = exception.Message })
             {
                 StatusCode = StatusCodes.Status400BadRequest,

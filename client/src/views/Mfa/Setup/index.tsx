@@ -13,6 +13,7 @@ import { useMfa } from '../../../components/MfaProvider';
 import { useAuthProvider, roleToAreaMap } from '../../../components/AuthProvider';
 import { GovUKHeaderLogo } from '../../../components/Logos';
 import LayoutFooter from '../../../layouts/General/LayoutFooter';
+import { mfaTooManyRequestsMessage } from '../messages';
 import '../styles.css';
 
 const SERVICE_NAME = 'Share progress preventing gambling harms';
@@ -147,6 +148,10 @@ const MfaSetup = (): React.ReactElement => {
     } catch (err: any) {
       if (err?.response?.status === 401) {
         setError('That code no longer works. You need to enter the 6-digit code currently shown in your app');
+      } else if (err?.response?.status === 429) {
+        // This endpoint counted nothing at all before BLUM-7239, so a 429 was not previously reachable here
+        // and fell through to the generic message.
+        setError(mfaTooManyRequestsMessage(err));
       } else if (err?.response?.status === 400) {
         setError('Your setup session has expired. Refresh the page to start again.');
       } else {
@@ -253,8 +258,8 @@ const MfaSetup = (): React.ReactElement => {
               </GovUKBackLink>
             )}
 
-            {activeStep === 1 && error && <ErrorSummary heading="There is a problem" errors={[{ targetName: 'code-input', text: error }]} />}
-            {activeStep === 2 && confirmError && <ErrorSummary heading="There is a problem" errors={[{ targetName: 'confirm-saved', text: confirmError }]} />}
+            {activeStep === 1 && error && <ErrorSummary testId="mfa-setup-error-summary" heading="There is a problem" errors={[{ targetName: 'code-input', text: error }]} />}
+            {activeStep === 2 && confirmError && <ErrorSummary testId="mfa-setup-error-summary" heading="There is a problem" errors={[{ targetName: 'confirm-saved', text: confirmError }]} />}
 
             {/* Step 1: Set up an authenticator app */}
             {activeStep === 0 && (
@@ -272,7 +277,7 @@ const MfaSetup = (): React.ReactElement => {
 
                 <p className="govuk-body">Open the app and scan the QR code.</p>
 
-                {error && <ErrorSummary heading="There is a problem" errors={[{ targetName: 'code-input', text: error }]} />}
+                {error && <ErrorSummary testId="mfa-setup-error-summary" heading="There is a problem" errors={[{ targetName: 'code-input', text: error }]} />}
 
                 {setupData && (
                   <>

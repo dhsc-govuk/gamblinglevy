@@ -1,5 +1,6 @@
 using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
+using Application.Common.Settings;
 using Application.Mfa.Dtos;
 using Application.Mfa.Exceptions;
 using Domain.AuditLogs;
@@ -18,14 +19,28 @@ public record VerifyRecoveryCodeCommand(
 public class VerifyRecoveryCodeCommandHandler(
     IRecoveryCodeService recoveryCodeService,
     IMfaSessionService sessionService,
+    IMfaRateLimitService rateLimitService,
     IUserMfaRepository userMfaRepository,
-    IAuditLogRepository auditLogRepository)
+    IAuditLogRepository auditLogRepository,
+    MfaAttemptGate attemptGate,
+    MfaFailureRecorder failureRecorder,
+    ApplicationSettings settings)
     : IRequestHandler<VerifyRecoveryCodeCommand, Either<MfaException, MfaVerifyResponseDto>>
 {
     public async Task<Either<MfaException, MfaVerifyResponseDto>> Handle(
         VerifyRecoveryCodeCommand request,
         CancellationToken cancellationToken)
     {
+        // This endpoint had no damper at all until BLUM-7239, and it is the most expensive one in the API to
+        // answer wrongly: BCrypt at cost 12 against every stored hash, roughly two and a half CPU-seconds a
+        // request. Unlimited, it is a denial-of-service vector on its own, quite apart from being a guessing
+        // oracle against a single-use bypass of the authenticator.
+        var refusal = await attemptGate.ReserveAsync(request.UserId, cancellationToken);
+        if (refusal is not null)
+        {
+            return refusal;
+        }
+
         var userMfaOption = await userMfaRepository.GetByUserIdAsync(request.UserId, cancellationToken);
 
         return await userMfaOption.MatchAsync(
@@ -42,9 +57,18 @@ public class VerifyRecoveryCodeCommandHandler(
 
     private Either<MfaException, UserMfa> ValidateNotLockedOut(UserMfa mfa, UserId userId)
     {
+        // The lock deliberately covers this path too. A recovery code is guessable in exactly the way a TOTP
+        // code is, so leaving the escape hatch open during a lockout would mean the lockout could simply be
+        // walked around. The cost of that decision — an administrator's mfa reset becomes the only way back
+        // for somebody genuinely locked out — is why RecordFailedAttempt now clears an expired lock.
         return mfa.IsLockedOut()
-            ? new MfaRateLimitException(userId, mfa.LockedUntil)
+            ? new MfaLockedOutException(userId, mfa.LockedUntil!.Value, RetryAfterSeconds(mfa))
             : mfa;
+    }
+
+    private int RetryAfterSeconds(UserMfa mfa)
+    {
+        return MfaRetryAfter.Seconds(mfa.LockedUntil, DateTime.UtcNow, settings.Mfa.LockoutMinutes * 60);
     }
 
     private async Task<Either<MfaException, MfaVerifyResponseDto>> ValidateAndVerifyAsync(
@@ -87,6 +111,7 @@ public class VerifyRecoveryCodeCommandHandler(
             return await RecordFailedAttemptAsync(request, mfa, cancellationToken);
         }
 
+        rateLimitService.ResetAttempts(request.UserId);
         mfa.RemoveRecoveryCode(matchedHashedCode);
         mfa.ResetFailedAttempts();
         await userMfaRepository.UpdateAsync(mfa, cancellationToken);
@@ -108,8 +133,13 @@ public class VerifyRecoveryCodeCommandHandler(
         UserMfa mfa,
         CancellationToken cancellationToken)
     {
-        mfa.RecordFailedAttempt();
-        await userMfaRepository.UpdateAsync(mfa, cancellationToken);
-        return new InvalidRecoveryCodeException(request.UserId);
+        // Until BLUM-7239 this path wrote no audit row at all, so a brute force against the recovery codes
+        // was invisible while the equivalent attack on TOTP was recorded.
+        return await failureRecorder.RecordAsync(
+            request.UserId,
+            mfa,
+            AuditAction.MfaRecoveryCodeFailed,
+            MfaEndpoints.VerifyRecovery,
+            new InvalidRecoveryCodeException(request.UserId));
     }
 }

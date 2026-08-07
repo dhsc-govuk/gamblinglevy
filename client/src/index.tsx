@@ -25,6 +25,20 @@ if (appConfig.sentry_dsn !== '') {
   });
 }
 
+// govuk-frontend scopes its JavaScript-dependent rules to this class, including the ones that hide an
+// unselected conditional reveal (.govuk-radios__conditional--hidden / .govuk-checkboxes__conditional--hidden).
+// Without it those panels are always visible (BLUM-7040). Set before React's first render so none flashes open.
+//
+// React — not govuk-frontend's JS — drives those reveals; this app loads govuk's CSS only, never initAll.
+// So the class also means any govuk component that needs JS renders in its JS-enabled state with nothing
+// to drive it: .govuk-accordion__section-content and .govuk-tabs__panel--hidden would be display:none and
+// never open. Nothing renders that markup today. If you add an accordion or tabs, drive it from React or
+// initialise govuk-frontend's JS module.
+//
+// This lived in an inline <script> in index.html until BLUM-7237: an inline script forces 'unsafe-inline'
+// into script-src, which is exactly what the Content-Security-Policy hardening had to remove.
+document.body.classList.add('govuk-frontend-supported');
+
 const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
 root.render(
   <React.StrictMode>

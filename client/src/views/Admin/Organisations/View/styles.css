@@ -112,10 +112,13 @@
   width: auto;
 }
 
+/* flex-basis auto + a 191px floor rather than a pinned 191px, so a user text-spacing stylesheet
+   (WCAG 1.4.12) can widen the select instead of clipping its chosen option. The floor keeps the
+   default-spacing width at 191px. */
 .organisations-view-page .govuk-table-filter__sort {
-  flex: 0 0 191px;
-  max-width: 191px;
-  width: 191px;
+  flex: 0 0 auto;
+  min-width: 191px;
+  width: auto;
 }
 
 .organisations-view-page .govuk-table-filter .govuk-label {
@@ -123,11 +126,13 @@
   margin-bottom: 5px;
 }
 
+/* Floors rather than fixed heights so a user-defined line height grows these controls instead of clipping
+   their text (WCAG 1.4.12); they still render at 40px at default spacing. */
 .organisations-view-page .govuk-table-filter__search,
 .organisations-view-page .govuk-table-filter__input,
-.organisations-view-page .govuk-table-filter__search-button,
-.organisations-view-page .govuk-table-filter .govuk-select {
-  height: 40px;
+.organisations-view-page .govuk-table-filter__search-button {
+  min-height: 40px;
+  height: auto;
 }
 
 .organisations-view-page .govuk-table {

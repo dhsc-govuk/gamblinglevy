@@ -45,10 +45,24 @@ export type AuthFailureContext = {
 // trailing slash and the suffixes never lead with one; it is there for the case where that stops being true.
 const joinBase = (basePath: string, suffix: string): string => `${basePath}${suffix}`.replace('//', '/');
 
-// The three envelopes MfaRequiredMiddleware writes when it has destroyed the session server-side, mapped to
-// the banner the sign-in page shows. Exported separately from the decision below because the caller has to
-// record the signed-out account on *every* one of these, including the ones the decision then rejects.
+// The envelopes that mean the session is gone server-side, mapped to the banner the sign-in page shows.
+// Exported separately from the decision below because the caller has to record the signed-out account on
+// *every* one of these, including the ones the decision then rejects.
+//
+// Three come from MfaRequiredMiddleware as 401s. The fourth is the odd one: MFA_LOCKED_OUT arrives as a 429
+// from MfaErrorFactory, because too many incorrect codes is a rate-limit answer (BLUM-7239 AC3) — but the
+// lockout also revokes every session the user holds, so the browser's job is the same as for the other
+// three. Handling it here rather than as its own branch in the decision is what gives it the whole existing
+// mechanism: the signed-out-account marker, the attempt budget, and the guard that stops a second tab
+// walking to /mfa/verify and minting a replacement session.
+//
+// MFA_RATE_LIMITED is deliberately absent. That one is the short per-minute damper: nothing was revoked and
+// the user is fine in a moment, so it belongs to the view that made the request, not to this.
 export const sessionEndedReasonFromError = (status: number | undefined, errorCode: string | undefined): SessionEndedReason | null => {
+  if (status === 429) {
+    return errorCode === 'MFA_LOCKED_OUT' ? 'locked' : null;
+  }
+
   if (status !== 401) {
     return null;
   }

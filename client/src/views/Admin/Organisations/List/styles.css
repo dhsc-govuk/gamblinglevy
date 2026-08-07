@@ -50,7 +50,9 @@
 
 .organisations-list-page .govuk-table-filter {
   display: grid;
-  grid-template-columns: 462px 191px;
+  /* max-content maximum on the filter track so a user text-spacing stylesheet (WCAG 1.4.12) widens the select
+     instead of clipping its chosen option; the 191px minimum preserves the default-spacing layout. */
+  grid-template-columns: minmax(0, 462px) minmax(191px, max-content);
   column-gap: 30px;
   align-items: end;
   margin-bottom: 30px;
@@ -70,9 +72,12 @@
   margin-bottom: 5px;
 }
 
+/* Floors rather than fixed heights so a user-defined line height grows these controls instead of clipping
+   their text (WCAG 1.4.12); they still render at 40px at default spacing. */
 .organisations-list-page .govuk-table-filter__input,
 .organisations-list-page .govuk-table-filter__search-button {
-  height: 40px;
+  min-height: 40px;
+  height: auto;
 }
 
 .organisations-list-page .govuk-table-filter .govuk-select {

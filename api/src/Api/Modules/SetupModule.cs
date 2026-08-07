@@ -157,6 +157,11 @@ internal static class SetupModule
                         .WithOrigins(allowedOrigins)
                         .AllowAnyHeader()
                         .AllowAnyMethod()
+                        // AllowAnyHeader above governs what the browser may *send*. Reading a non-safelisted
+                        // response header needs this instead, and none of the rate-limit headers is
+                        // safelisted — so without it the SPA sees a 429 with no idea when to come back, while
+                        // curl and the integration suite both show the headers present (BLUM-7239 AC5).
+                        .WithExposedHeaders(RateLimitHeaders.All)
                         .AllowCredentials()));
         }
 

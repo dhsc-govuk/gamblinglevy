@@ -11,7 +11,8 @@ import { getReportSubmissionDetail, type OrgSubmissionDetailDto } from '../queri
 import { downloadOrgReport } from '../mutations';
 import { formatDateTime, formatGovUkDate, reportingPeriodValue, SUBMISSION_STATUS_LABEL } from '../display';
 import { reportBreadcrumbs } from '../navigation';
-import { reportFailureMessage, reportLoadVerdict, reportPageTitle, reportQueryRetry, DOWNLOAD_ERROR_MESSAGE, SUBMISSION_NOT_FOUND_MESSAGE } from '../messages';
+import { reportFailureMessage, reportLoadVerdict, reportPageTitle, reportQueryRetry, SUBMISSION_NOT_FOUND_MESSAGE } from '../messages';
+import { downloadErrorMessage } from '../../../../helpers/downloadErrors';
 import ReportLoadFailure from '../../../../components/Global/Reports/ReportLoadFailure';
 import { composeTestId } from '../../../../helpers/testIds';
 import { ROUTES } from '../../../../helpers/routes';
@@ -192,7 +193,7 @@ const ReportSubmissionDetail = (): React.ReactElement => {
                   // role="alert" so a failed download is announced: focus stays on the button, and without a live
                   // region a screen-reader user is left waiting for a file that never arrives (WCAG 2.2 SC 4.1.3).
                   <p className="govuk-error-message reports-detail-page__file-error" role="alert" data-testid="admin-reports-detail-files-error">
-                    <span className="govuk-visually-hidden">Error:</span> {DOWNLOAD_ERROR_MESSAGE}
+                    <span className="govuk-visually-hidden">Error:</span> {downloadErrorMessage(downloadMutation.error)}
                   </p>
                 )}
               </>

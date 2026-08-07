@@ -107,15 +107,46 @@ public class UserMfa : IEntity<UserMfaId>
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public void RecordFailedAttempt(int maxAttempts = 5, int lockoutMinutes = 30)
+    /// <summary>
+    /// Counts one incorrect code and applies the lock when the threshold is reached (BLUM-7239 AC3).
+    /// </summary>
+    /// <returns>
+    /// True only when <em>this</em> call applied the lock, so the caller revokes sessions and writes the
+    /// lockout audit row once per lockout rather than once per subsequent failure.
+    /// </returns>
+    /// <remarks>
+    /// Both limits are required parameters. They used to default to 5 and 30 and every call site took the
+    /// defaults, so the numbers were unreachable from configuration while looking as though they were not —
+    /// making them required turns that drift into a compile error.
+    /// </remarks>
+    public bool RecordFailedAttempt(int maxAttempts, int lockoutMinutes)
     {
-        FailedAttempts++;
-        if (FailedAttempts >= maxAttempts)
+        // A lockout that has run its course ends the counting window with it. Without this the counter stayed
+        // at or above the threshold forever, so the first wrong digit after a lock expired re-locked
+        // immediately — a permanent lockout with no way out, and not only for codes: recovery-code
+        // verification consults the same lock, so the escape hatch designed for exactly this situation was
+        // shut too, leaving an administrator's mfa reset as the only route back.
+        if (LockedUntil.HasValue && LockedUntil.Value <= DateTime.UtcNow)
         {
-            LockedUntil = DateTime.UtcNow.AddMinutes(lockoutMinutes);
+            FailedAttempts = 0;
+            LockedUntil = null;
         }
 
+        FailedAttempts++;
         UpdatedAt = DateTime.UtcNow;
+
+        // Already locked means a caller reached here without checking, and re-locking would extend the
+        // lockout on every attempt made during it — an attacker could hold a victim out indefinitely by
+        // trickling guesses. maxAttempts of 0 disables the lockout entirely, matching the convention the
+        // settings use elsewhere.
+        if (LockedUntil.HasValue || maxAttempts <= 0 || FailedAttempts < maxAttempts)
+        {
+            return false;
+        }
+
+        LockedUntil = DateTime.UtcNow.AddMinutes(lockoutMinutes);
+
+        return true;
     }
 
     public void ResetFailedAttempts()

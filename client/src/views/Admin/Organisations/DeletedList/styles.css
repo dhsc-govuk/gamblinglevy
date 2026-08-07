@@ -12,10 +12,13 @@
   align-items: end;
   column-gap: 30px;
   display: grid;
-  grid-template-columns: 462px 191px;
+  /* max-content maximum on the filter track, and fit-content on the row itself, so a user text-spacing
+     stylesheet (WCAG 1.4.12) can widen the select rather than clip its chosen option. Both resolve to the
+     previous fixed values (191px track, 683px row) at default spacing. */
+  grid-template-columns: minmax(0, 462px) minmax(191px, max-content);
   margin: 0 0 30px;
   max-width: 100%;
-  width: 683px;
+  width: fit-content;
 }
 
 .deleted-organisations-page .govuk-table-filter > [class*='govuk-grid-column'] {
@@ -32,12 +35,15 @@
   margin-bottom: 5px;
 }
 
+/* Floors rather than fixed heights so a user-defined line height grows these controls instead of clipping
+   their text (WCAG 1.4.12); they still render at 40px at default spacing. */
 .deleted-organisations-page .govuk-table-filter__input,
-.deleted-organisations-page .govuk-table-filter__search-button,
-.deleted-organisations-page .govuk-table-filter .govuk-select {
-  height: 40px;
+.deleted-organisations-page .govuk-table-filter__search-button {
+  min-height: 40px;
+  height: auto;
 }
 
+/* Height is left to the base rule in GovUKComponents/GovUKTable/styles.css. */
 .deleted-organisations-page .govuk-table-filter .govuk-select {
   min-width: 0;
   width: 100% !important;
@@ -85,5 +91,8 @@
   .deleted-organisations-page .govuk-table-filter {
     grid-template-columns: 1fr;
     row-gap: 20px;
+    /* Restore the full content width: the desktop rule's fit-content would shrink the single stacked
+       column to the intrinsic width of the search control. */
+    width: 100%;
   }
 }

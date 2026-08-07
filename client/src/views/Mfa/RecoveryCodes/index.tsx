@@ -5,6 +5,7 @@ import { useMfa } from '../../../components/MfaProvider';
 import OtpInput from '../../../components/MfaProvider/OtpInput';
 import RecoveryCodesList from '../../../components/MfaProvider/RecoveryCodesList';
 import { useAuthProvider, roleToAreaMap } from '../../../components/AuthProvider';
+import { mfaTooManyRequestsMessage } from '../messages';
 
 const MfaRecoveryCodes = (): React.ReactElement => {
   const navigate = useNavigate();
@@ -32,6 +33,8 @@ const MfaRecoveryCodes = (): React.ReactElement => {
     } catch (err: any) {
       if (err?.response?.status === 401) {
         setError('Invalid code. Please check your authenticator app and try again.');
+      } else if (err?.response?.status === 429) {
+        setError(mfaTooManyRequestsMessage(err));
       } else if (err?.response?.status === 400) {
         setError('MFA is not enabled on your account.');
       } else {
@@ -90,7 +93,7 @@ const MfaRecoveryCodes = (): React.ReactElement => {
           </Typography>
 
           {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
+            <Alert severity="error" sx={{ mb: 3 }} data-testid="mfa-recovery-codes-error">
               {error}
             </Alert>
           )}

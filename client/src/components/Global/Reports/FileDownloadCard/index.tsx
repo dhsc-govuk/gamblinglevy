@@ -39,7 +39,10 @@ const FileDownloadCard = ({ title, metadata, onDownload, isLoading, errorMessage
       </button>
       <p className="govuk-hint report-file-attachment__metadata">{metadata}</p>
       {errorMessage && (
-        <p className="govuk-error-message" data-testid={errorTestId ?? composeTestId(testId, 'error')}>
+        // role="alert" so a failed download is announced: focus stays on the download button, so without a live
+        // region a screen-reader user waits for a file that never arrives (WCAG 2.2 SC 4.1.3). The Admin screens
+        // already did this inline; this is the shared card both LA surfaces render.
+        <p className="govuk-error-message" role="alert" data-testid={errorTestId ?? composeTestId(testId, 'error')}>
           <span className="govuk-visually-hidden">Error:</span> {errorMessage}
         </p>
       )}

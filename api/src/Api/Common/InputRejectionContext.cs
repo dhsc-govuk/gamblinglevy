@@ -53,8 +53,12 @@ public static class InputRejectionContext
     /// Routing has always run by the time either caller reaches this — model binding happens after endpoint
     /// selection, and the middleware's catch runs on the way back up — so the fallback is for the paths that
     /// match no endpoint at all.
+    ///
+    /// Internal rather than private because RateLimitContext buckets on the same thing, for the first of
+    /// those two reasons. Two definitions of "which bucket is this request in" is exactly the drift this
+    /// comment exists to prevent, so the limiter reuses this rather than growing its own copy.
     /// </summary>
-    private static string RouteTemplate(HttpContext context)
+    internal static string RouteTemplate(HttpContext context)
     {
         return context.GetEndpoint() is RouteEndpoint endpoint
             ? endpoint.RoutePattern.RawText ?? UnknownRoute

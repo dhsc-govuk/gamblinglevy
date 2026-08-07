@@ -16,6 +16,7 @@ import { getProfile } from '../../../components/AuthProvider/queries';
 import { GovUKHeaderLogo } from '../../../components/Logos';
 
 import LayoutFooter from '../../../layouts/General/LayoutFooter';
+import { mfaTooManyRequestsMessage } from '../messages';
 
 import { PageWrapper, Header, HeaderContainer, ServiceBanner, ServiceBannerContainer, ServiceName, MainContent, ContentContainer, ContentWrapper, InputWrapper } from './styles';
 
@@ -92,7 +93,7 @@ const MfaVerify = (): React.ReactElement => {
       if (err?.response?.status === 401) {
         setError('That code no longer works. You need to enter the 6-digit code currently shown in your app');
       } else if (err?.response?.status === 429) {
-        setError('Too many attempts. Wait a few minutes and try again.');
+        setError(mfaTooManyRequestsMessage(err));
       } else {
         setError('Verification failed. Try again.');
       }
@@ -128,7 +129,7 @@ const MfaVerify = (): React.ReactElement => {
         <ContentContainer>
           <GovUKBackLink onClick={signOut}>Back</GovUKBackLink>
 
-          {error && <ErrorSummary heading="There is a problem" errors={[{ targetName: 'code-input', text: error }]} />}
+          {error && <ErrorSummary testId="mfa-verify-error-summary" heading="There is a problem" errors={[{ targetName: 'code-input', text: error }]} />}
 
           <ContentWrapper>
             <H1>Check your authenticator app for a security code</H1>

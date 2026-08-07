@@ -34,10 +34,12 @@
   margin-bottom: 0;
 }
 
+/* min-height so the button's label can take a taller line box under a user text-spacing
+   stylesheet (WCAG 1.4.12) instead of being clipped. */
 .admin-users-list__add-user {
   display: flex;
   justify-content: flex-end;
-  height: 40px;
+  min-height: 40px;
   margin-bottom: 30px;
 }
 
@@ -63,11 +65,15 @@
   width: auto;
 }
 
+/* flex-basis auto + a 191px floor rather than a pinned 191px, so a user text-spacing stylesheet
+   (WCAG 1.4.12) can widen the select instead of clipping its chosen option. The floor keeps the
+   default-spacing width at 191px. */
 .admin-users-list__table .govuk-table-filter > .govuk-grid-column-one-third {
-  flex: 0 0 191px;
+  flex: 0 0 auto;
   float: none;
+  min-width: 191px;
   padding: 0;
-  width: 191px;
+  width: auto;
 }
 
 .admin-users-list__table .govuk-table {

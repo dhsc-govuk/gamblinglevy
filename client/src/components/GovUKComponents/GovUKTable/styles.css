@@ -23,20 +23,26 @@
   display: flex;
 }
 
-/* Extend govuk-input for flex layout */
+/* Extend govuk-input for flex layout.
+ * A floor rather than a fixed height: at line-height 1.5 the text needs a 28.5px line box, which a pinned
+ * 40px control clips to a 26px content box (WCAG 1.4.12). Same treatment as .govuk-select below. */
 .govuk-table-filter__input {
   flex: 1;
   margin-bottom: 0;
-  height: 40px;
+  min-height: 40px;
+  height: auto;
   box-sizing: border-box;
 }
 
-/* Search button styling - matches GOV.UK button colours */
+/* Search button styling - matches GOV.UK button colours.
+ * align-self: stretch keeps the button flush with the input when the input grows. */
 .govuk-table-filter__search-button {
   background-color: #1d70b8;
   border: none;
   width: 40px;
-  height: 40px;
+  min-height: 40px;
+  height: auto;
+  align-self: stretch;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -72,11 +78,17 @@
   box-sizing: border-box;
 }
 
-.govuk-table-filter__filter {
+.govuk-table-filter__filter,
+.govuk-table-filter__sort {
   min-width: 0;
 }
 
-.govuk-table-filter__filter .govuk-select {
+/* govuk-frontend gives .govuk-select a min-width of 11.5em, which at this row's 19px font size is 218.5px —
+   wider than the 191px column the filter rows are designed around, and min-width beats max-width. Zeroing it
+   lets the column size the control. It has to cover __sort as well as __filter: while the columns were pinned
+   at a fixed 191px the overflow was invisible, but they now size to their content (WCAG 1.4.12). */
+.govuk-table-filter__filter .govuk-select,
+.govuk-table-filter__sort .govuk-select {
   min-width: 0;
   width: 100% !important;
 }

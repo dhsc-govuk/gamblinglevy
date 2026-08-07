@@ -1,70 +1,54 @@
 using Application.Common.Interfaces;
+using Application.Common.Settings;
 using Domain.Users;
+using Infrastructure.Security;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Infrastructure.Mfa;
 
-public class MfaRateLimitService : IMfaRateLimitService
+/// <summary>
+/// Per-user damper on MFA attempts, built on the shared <see cref="FixedWindowCounter"/> (BLUM-7239 AC3).
+///
+/// It used to keep its own counter, and that counter had all three of the defects FixedWindowCounter now
+/// documents. IMemoryCache.GetOrCreate handed out a mutable object which was incremented without
+/// synchronisation, so two concurrent attempts each built their own and one was discarded — five per minute
+/// was not the cap actually applied. The expiry was re-armed on every write, so the window <em>slid</em>: a
+/// caller trickling one attempt just inside each minute stayed limited indefinitely while the counter never
+/// aged out. And the limit and window were consts, so no environment could tune them and no test could
+/// disable them.
+/// </summary>
+public class MfaRateLimitService(IMemoryCache cache, IDateTimeProvider dateTimeProvider, ApplicationSettings settings)
+    : IMfaRateLimitService
 {
-    private const int MaxAttemptsPerMinute = 5;
-    private static readonly TimeSpan WindowDuration = TimeSpan.FromMinutes(1);
+    private readonly FixedWindowCounter counter = new(dateTimeProvider);
 
-    private readonly IMemoryCache _cache;
-
-    public MfaRateLimitService(IMemoryCache cache)
+    public MfaRateLimitDecision Reserve(UserId userId)
     {
-        _cache = cache;
-    }
+        var limit = settings.Mfa.MaxAttemptsPerWindow;
 
-    public bool IsRateLimited(UserId userId)
-    {
-        var key = GetCacheKey(userId);
-        if (_cache.TryGetValue<RateLimitEntry>(key, out var entry) && entry != null)
+        // 0 disables the damper. The lockout tests depend on this: a damper and a lockout that both trip at
+        // five would mean the damper always answered first and the lockout could never be observed.
+        if (limit <= 0)
         {
-            return entry.Attempts >= MaxAttemptsPerMinute;
+            return new MfaRateLimitDecision(true, 0);
         }
 
-        return false;
-    }
+        var window = TimeSpan.FromSeconds(settings.Mfa.RateLimitWindowSeconds <= 0 ? 60 : settings.Mfa.RateLimitWindowSeconds);
 
-    public void RecordAttempt(UserId userId)
-    {
-        var key = GetCacheKey(userId);
-        var entry = _cache.GetOrCreate(key, cacheEntry =>
+        return this.counter.InTransaction(() =>
         {
-            cacheEntry.AbsoluteExpirationRelativeToNow = WindowDuration;
-            return new RateLimitEntry { Attempts = 0, WindowStart = DateTime.UtcNow };
+            var state = this.counter.Increment(cache, GetCacheKey(userId), window);
+
+            return state.Count <= limit
+                ? new MfaRateLimitDecision(true, 0)
+                : new MfaRateLimitDecision(false, this.counter.SecondsUntil(state.WindowEndsAt));
         });
-
-        if (entry != null)
-        {
-            entry.Attempts++;
-            _cache.Set(key, entry, WindowDuration);
-        }
     }
 
     public void ResetAttempts(UserId userId)
     {
-        var key = GetCacheKey(userId);
-        _cache.Remove(key);
-    }
-
-    public int GetRemainingAttempts(UserId userId)
-    {
-        var key = GetCacheKey(userId);
-        if (_cache.TryGetValue<RateLimitEntry>(key, out var entry) && entry != null)
-        {
-            return Math.Max(0, MaxAttemptsPerMinute - entry.Attempts);
-        }
-
-        return MaxAttemptsPerMinute;
+        this.counter.Remove(cache, GetCacheKey(userId));
     }
 
     private static string GetCacheKey(UserId userId) => $"mfa_rate_limit_{userId.Value}";
-
-    private class RateLimitEntry
-    {
-        public int Attempts { get; set; }
-        public DateTime WindowStart { get; set; }
-    }
 }

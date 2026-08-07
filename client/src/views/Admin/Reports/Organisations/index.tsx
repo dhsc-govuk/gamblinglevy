@@ -12,7 +12,8 @@ import { getReportSubmissions, type CollectionSubmissionSummaryDto, type OrgSubm
 import { downloadWindowSubmissionsExport } from '../mutations';
 import { formatGovUkDate, REPORT_COLLECTION_STATUS_LABEL } from '../display';
 import { reportBreadcrumbs } from '../navigation';
-import { reportFailureMessage, reportLoadVerdict, reportPageTitle, reportQueryRetry, DOWNLOAD_ERROR_MESSAGE, REPORT_NOT_FOUND_MESSAGE } from '../messages';
+import { reportFailureMessage, reportLoadVerdict, reportPageTitle, reportQueryRetry, REPORT_NOT_FOUND_MESSAGE } from '../messages';
+import { downloadErrorMessage } from '../../../../helpers/downloadErrors';
 import ReportLoadFailure from '../../../../components/Global/Reports/ReportLoadFailure';
 import './styles.css';
 
@@ -242,7 +243,7 @@ const ReportOrganisations = (): React.ReactElement => {
               // role="alert" so a failed download is announced — focus stays on the button and nothing else
               // signals the failure (WCAG 2.2 SC 4.1.3).
               <p className="govuk-error-message reports-orgs-file__error" role="alert" data-testid="admin-reports-orgs-files-error">
-                <span className="govuk-visually-hidden">Error:</span> {DOWNLOAD_ERROR_MESSAGE}
+                <span className="govuk-visually-hidden">Error:</span> {downloadErrorMessage(downloadMutation.error)}
               </p>
             )}
           </div>

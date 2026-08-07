@@ -1,7 +1,9 @@
 using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
+using Application.Common.Settings;
 using Application.Mfa.Dtos;
 using Application.Mfa.Exceptions;
+using Domain.AuditLogs;
 using Domain.Users;
 using LanguageExt;
 using MediatR;
@@ -14,13 +16,25 @@ public class RegenerateRecoveryCodesCommandHandler(
     ITotpService totpService,
     IMfaEncryptionService encryptionService,
     IRecoveryCodeService recoveryCodeService,
-    IUserMfaRepository userMfaRepository)
+    IMfaRateLimitService rateLimitService,
+    IUserMfaRepository userMfaRepository,
+    MfaAttemptGate attemptGate,
+    MfaFailureRecorder failureRecorder,
+    ApplicationSettings settings)
     : IRequestHandler<RegenerateRecoveryCodesCommand, Either<MfaException, MfaRecoveryCodesDto>>
 {
     public async Task<Either<MfaException, MfaRecoveryCodesDto>> Handle(
         RegenerateRecoveryCodesCommand request,
         CancellationToken cancellationToken)
     {
+        // Guessing here mints a fresh set of recovery codes and hands them to the caller, which is a
+        // complete takeover of the second factor — so it is counted like any other code-taking endpoint.
+        var refusal = await attemptGate.ReserveAsync(request.UserId, cancellationToken);
+        if (refusal is not null)
+        {
+            return refusal;
+        }
+
         var userMfaOption = await userMfaRepository.GetByUserIdAsync(request.UserId, cancellationToken);
 
         return await userMfaOption.MatchAsync(
@@ -35,12 +49,34 @@ public class RegenerateRecoveryCodesCommandHandler(
             : new MfaNotEnabledException(userId);
     }
 
-    private Either<MfaException, UserMfa> ValidateCode(UserMfa mfa, string code, UserId userId)
+    private Either<MfaException, UserMfa> ValidateNotLockedOut(UserMfa mfa, UserId userId)
+    {
+        return mfa.IsLockedOut()
+            ? new MfaLockedOutException(
+                userId,
+                mfa.LockedUntil!.Value,
+                MfaRetryAfter.Seconds(mfa.LockedUntil, DateTime.UtcNow, settings.Mfa.LockoutMinutes * 60))
+            : mfa;
+    }
+
+    private async Task<Either<MfaException, UserMfa>> ValidateCodeAsync(
+        UserMfa mfa,
+        RegenerateRecoveryCodesCommand request,
+        CancellationToken cancellationToken)
     {
         var secret = encryptionService.Decrypt(mfa.EncryptedSecret);
-        return totpService.ValidateCode(secret, code)
-            ? mfa
-            : new InvalidMfaCodeException(userId);
+        if (totpService.ValidateCode(secret, request.Code))
+        {
+            rateLimitService.ResetAttempts(request.UserId);
+            return mfa;
+        }
+
+        return await failureRecorder.RecordAsync(
+            request.UserId,
+            mfa,
+            AuditAction.MfaVerifyFailed,
+            MfaEndpoints.RegenerateRecoveryCodes,
+            new InvalidMfaCodeException(request.UserId));
     }
 
     private async Task<Either<MfaException, MfaRecoveryCodesDto>> ValidateAndRegenerateAsync(
@@ -49,7 +85,8 @@ public class RegenerateRecoveryCodesCommandHandler(
         CancellationToken cancellationToken)
     {
         return await ValidateIsEnabled(mfa, request.UserId)
-            .Bind(m => ValidateCode(m, request.Code, request.UserId))
+            .Bind(m => ValidateNotLockedOut(m, request.UserId))
+            .BindAsync(m => ValidateCodeAsync(m, request, cancellationToken))
             .BindAsync(m => RegenerateCodesAsync(m, cancellationToken));
     }
 

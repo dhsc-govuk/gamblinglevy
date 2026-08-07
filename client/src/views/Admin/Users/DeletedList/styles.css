@@ -34,11 +34,15 @@
   width: auto;
 }
 
+/* flex-basis auto + a 191px floor rather than a pinned 191px, so a user text-spacing stylesheet
+   (WCAG 1.4.12) can widen the select instead of clipping its chosen option. The floor keeps the
+   default-spacing width at 191px. */
 .admin-deleted-users-list__table .govuk-table-filter > .govuk-grid-column-one-third {
-  flex: 0 0 191px;
+  flex: 0 0 auto;
   float: none;
+  min-width: 191px;
   padding: 0;
-  width: 191px;
+  width: auto;
 }
 
 .admin-deleted-users-list__table .govuk-table {

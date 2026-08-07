@@ -58,6 +58,7 @@
     "dev": "vite",
     "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\"",
     "build": "tsc && vite build",
+    "postbuild": "node ./scripts/build-runtime.mjs && node ./scripts/check-headers.mjs",
     "prepare": "cd .. && husky client/.husky"
   },
   "lint-staged": {

@@ -22,7 +22,11 @@
 // every sessionStorage key whose name *contains* either (BrowserCacheManager.clear uses indexOf, not a prefix
 // test), and components/App calls it when logoutRedirect fails.
 
-export type SessionEndedReason = 'idle' | 'expired' | 'revoked';
+// 'locked' joins the three timeout reasons rather than living on its own: too many incorrect codes revokes
+// every session for the user (BLUM-7239 AC3), so what the browser has to do about it is identical — end the
+// CIAM sign-in rather than offer a code entry screen that would mint a replacement session. Only the banner
+// on the sign-in page differs.
+export type SessionEndedReason = 'idle' | 'expired' | 'revoked' | 'locked';
 
 const REASON_KEY = 'session_ended_reason';
 const ATTEMPTS_KEY = 'session_end_attempts';
@@ -62,7 +66,7 @@ const maxMarkerAgeMs = 24 * 60 * 60 * 1000;
 // (sessions_revoked_at on User, verified against the bearer token's auth_time), which is its own ticket.
 const releaseWindowMs = 5 * 60 * 1000;
 
-const isReason = (value: string | null): value is SessionEndedReason => value === 'idle' || value === 'expired' || value === 'revoked';
+const isReason = (value: string | null): value is SessionEndedReason => value === 'idle' || value === 'expired' || value === 'revoked' || value === 'locked';
 
 export const readSessionEndedReason = (): SessionEndedReason | null => {
   const reason = sessionStorage.getItem(REASON_KEY);

@@ -54,20 +54,7 @@
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
-    <!--
-      govuk-frontend scopes its JavaScript-dependent rules to this class, including the ones that hide an
-      unselected conditional reveal (.govuk-radios__conditional--hidden / .govuk-checkboxes__conditional--hidden).
-      Without it those panels are always visible (BLUM-7040). Set before React paints so none flashes open.
-
-      React — not govuk-frontend's JS — drives those reveals; this app loads govuk's CSS only, never initAll.
-      So the class also means any govuk component that needs JS renders in its JS-enabled state with nothing
-      to drive it: .govuk-accordion__section-content and .govuk-tabs__panel--hidden would be display:none and
-      never open. Nothing renders that markup today. If you add an accordion or tabs, drive it from React or
-      initialise govuk-frontend's JS module.
-    -->
-    <script>
-      document.body.classList.add('govuk-frontend-supported');
-    </script>
+    <!-- The govuk-frontend-supported class is added by src/index.tsx (BLUM-7040, moved there for BLUM-7237). -->
     <div id="root"></div>
 
     <script type="module" src="/src/index.tsx"></script>

@@ -15,9 +15,29 @@ import {
   Paragraph,
 } from '../../../components/GovUKComponents';
 import LayoutFooter from '../../../layouts/General/LayoutFooter';
-import { clearSessionEndedReason, readSessionEndedReason } from '../../../helpers/sessionEnd';
+import { clearSessionEndedReason, readSessionEndedReason, type SessionEndedReason } from '../../../helpers/sessionEnd';
 import { composeTestId } from '../../../helpers/testIds';
 import './styles.css';
+
+// Keyed rather than a chain of ternaries, so adding a reason to SessionEndedReason is a type error here
+// instead of silently falling through to whichever message happens to be last — which is what the old `else`
+// branch did, quietly describing every new reason as the 8-hour cap.
+//
+// Three of these numbers are published copy that has to agree with ApplicationSettings.MfaSettings: the
+// 30-minute idle window (IdleTimeoutMinutes), the 8-hour cap (SessionExpiryHours) and now the 30-minute
+// lockout (LockoutMinutes). The class comment on MfaSettings names this file for that reason — the client
+// has no unauthenticated endpoint to read them from, so they are stated in both places or they drift.
+const SESSION_ENDED_MESSAGES: Record<SessionEndedReason, string> = {
+  idle: 'For your security we signed you out because you were inactive for 30 minutes. Sign in again to continue.',
+  revoked:
+    'This session was ended \u2014 either by you from another device, by an administrator, or because you were signed in on more devices than we allow. Sign in again to continue. If you do not recognise a device on your account, tell your administrator.',
+  expired: 'For your security we sign you out 8 hours after you sign in. Sign in again to continue.',
+  // Deliberately not the 'revoked' wording: that copy offers three explanations, none of which is what
+  // happened, and it would leave someone who is locked out waiting for a sign-in that cannot succeed yet.
+  // "try again" rather than "sign in again" because CIAM sign-in is not what is blocked \u2014 entering the code is.
+  locked:
+    'For your security we signed you out after too many incorrect security codes. You can try again in 30 minutes. If you did not try to sign in, tell your administrator.',
+};
 
 const SignIn = () => {
   usePageTitle('Sign in');
@@ -139,11 +159,7 @@ const SignIn = () => {
                 <div ref={sessionEndedBannerRef} tabIndex={-1} className="signin-page__banner-focus-target" data-testid="public-signin-session-ended-banner-focus-target">
                   <GovUKNotificationBanner type="important" title="You have been signed out" testId="public-signin-session-ended-banner">
                     <Paragraph data-testid={composeTestId('public-signin-session-ended-banner', sessionEndedReason, 'message')}>
-                      {sessionEndedReason === 'idle'
-                        ? 'For your security we signed you out because you were inactive for 30 minutes. Sign in again to continue.'
-                        : sessionEndedReason === 'revoked'
-                          ? 'This session was ended \u2014 either by you from another device, by an administrator, or because you were signed in on more devices than we allow. Sign in again to continue. If you do not recognise a device on your account, tell your administrator.'
-                          : 'For your security we sign you out 8 hours after you sign in. Sign in again to continue.'}
+                      {SESSION_ENDED_MESSAGES[sessionEndedReason]}
                     </Paragraph>
                   </GovUKNotificationBanner>
                 </div>

@@ -46,6 +46,10 @@ await app.InitializeDb();
 await app.SeedData();
 app.UseCors();
 app.UseRouting();
+
+// After routing so the matched route template exists to bucket on, and before authentication so a flood is
+// shed before it costs a token validation and a user-profile read (BLUM-7239).
+app.UseRateLimiting();
 app.UseValidationExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();

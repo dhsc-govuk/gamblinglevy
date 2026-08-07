@@ -67,6 +67,8 @@ export const AUDIT_ACTIONS: { value: string; label: string }[] = [
   { value: 'mfa.verify.succeeded', label: 'MFA verify succeeded' },
   { value: 'mfa.verify.failed', label: 'MFA verify failed' },
   { value: 'mfa.recovery_code.used', label: 'MFA recovery code used' },
+  { value: 'mfa.recovery_code.failed', label: 'MFA recovery code rejected' },
+  { value: 'mfa.locked_out', label: 'Account locked after too many incorrect codes' },
   { value: 'mfa.session.created', label: 'MFA session created' },
   { value: 'mfa.session.revoked', label: 'MFA session revoked' },
   { value: 'mfa.session.expired', label: 'MFA session expired' },
@@ -74,6 +76,7 @@ export const AUDIT_ACTIONS: { value: string; label: string }[] = [
   { value: 'mfa.session.evicted', label: 'MFA session ended by concurrent session limit' },
   { value: 'mfa.session.notified', label: 'New sign-in notification sent' },
   { value: 'security.input_rejected', label: 'Malicious input rejected' },
+  { value: 'security.rate_limited', label: 'Too many requests blocked' },
 ];
 
 export const auditActionLabel = (action: string): string =>

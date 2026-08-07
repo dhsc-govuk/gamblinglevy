@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from 'react-query';
 import { defaultStaleTime, reportContextKey } from '../../helpers/queriesParams';
+import { isRateLimitedError } from '../../helpers/httpErrors';
 import { getReportContext } from './queries';
 
 // Same untyped-error read as mapReportError — axios errors reach react-query as `unknown`.
@@ -21,9 +22,11 @@ export const useReportContextFor = (collectionId: string) => {
     staleTime: defaultStaleTime,
     // A 404 is a verdict, not a blip — the collection is unknown, belongs to another organisation, or the URL is a
     // stale link from the old unparameterised flow (/reports/quarterly/tasks). Fail fast into the caller's redirect
-    // rather than retrying three times. Every other failure keeps react-query's default resilience: a single dropped
-    // request must not bounce someone out of the report they are part-way through authoring.
-    retry: (failureCount, requestError) => !isNotFound(requestError) && failureCount < 3,
+    // rather than retrying three times. A 429 is excluded too, for the opposite reason: it will pass on its own, and
+    // retrying it spends the budget that has to drain first (BLUM-7239). Every other failure keeps react-query's
+    // default resilience: a single dropped request must not bounce someone out of the report they are part-way
+    // through authoring.
+    retry: (failureCount, requestError) => !isNotFound(requestError) && !isRateLimitedError(requestError) && failureCount < 3,
   });
 
   // isError drives the callers' redirect back to the Reports landing: either the 404 above, or a request that kept

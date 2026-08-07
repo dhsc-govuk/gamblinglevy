@@ -15,6 +15,14 @@ export default tseslint.config(
   react.configs.flat['jsx-runtime'],
   jsxA11y.flatConfigs.recommended,
   {
+    // The static server that sets the security headers on the Azure deployments, its shared
+    // policy definition and the build scripts. Node globals, not browser ones.
+    files: ['server.mjs', 'security-headers.mjs', 'scripts/**/*.mjs'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
     files: ['src/**/*.{js,jsx,ts,tsx}'],
     languageOptions: {
       globals: globals.browser,

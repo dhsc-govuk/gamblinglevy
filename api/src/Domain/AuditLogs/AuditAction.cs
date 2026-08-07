@@ -40,6 +40,25 @@ public static class AuditAction
     public const string MfaVerifySucceeded = "mfa.verify.succeeded";
     public const string MfaVerifyFailed = "mfa.verify.failed";
     public const string MfaRecoveryCodeUsed = "mfa.recovery_code.used";
+
+    /// <summary>
+    /// A recovery code was rejected (BLUM-7239 AC3).
+    ///
+    /// The TOTP path has recorded its failures since BLUM-7240; this one never has, so a brute force against
+    /// the recovery codes — the more valuable target, since each one is a single-use bypass of the
+    /// authenticator entirely — left no trace at all. Without it the lockout this ticket adds is not
+    /// verifiable on that path.
+    /// </summary>
+    public const string MfaRecoveryCodeFailed = "mfa.recovery_code.failed";
+
+    /// <summary>
+    /// Too many incorrect codes locked the account, and its live sessions were revoked (BLUM-7239 AC3).
+    ///
+    /// Written once per lockout rather than once per failure — the failures either side of it already have
+    /// their own rows, and a row per attempt during a lockout would let an attacker choose how many the
+    /// service writes.
+    /// </summary>
+    public const string MfaLockedOut = "mfa.locked_out";
     public const string MfaSessionCreated = "mfa.session.created";
     public const string MfaSessionRevoked = "mfa.session.revoked";
     public const string MfaSessionExpired = "mfa.session.expired";
@@ -62,6 +81,18 @@ public static class AuditAction
     /// security log instead.
     /// </summary>
     public const string SecurityInputRejected = "security.input_rejected";
+
+    /// <summary>
+    /// A caller exceeded a request-rate budget (BLUM-7239 AC6).
+    ///
+    /// One row stands for a burst, not for a rejection. A flood is the entire scenario here, so auditing
+    /// every refused request would hand the caller the same power over this table that
+    /// <see cref="SecurityInputRejected"/> refuses them — and a flood is far cheaper to send than a hostile
+    /// payload. Two things bound it: only the first rejection in a partition's window is even a candidate,
+    /// and AuditFloodThrottle then caps what survives that. The row carries the size of the burst it stands
+    /// for, so nothing is lost except the row count.
+    /// </summary>
+    public const string SecurityRateLimited = "security.rate_limited";
 }
 
 public static class AuditTargetType

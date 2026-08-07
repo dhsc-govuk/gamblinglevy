@@ -69,11 +69,16 @@
 
 .collections-list-page .govuk-table-filter {
   display: grid;
-  /* No minimum floor on the first track: it must always resolve to exactly "container - 442px" so the third
-     column's right edge lines up with the button/table above regardless of viewport width. A minmax() floor
-     here would force the grid wider than its container on narrower screens, pushing the filter select past
-     the right edge instead of flush with it. */
-  grid-template-columns: 1fr 191px 191px;
+  /* No minimum floor on the first track: it resolves to "container - 442px" so the third column's right edge
+     lines up with the button/table above regardless of viewport width. A minmax() floor here would force the
+     grid wider than its container on narrower screens, pushing the filter select past the right edge instead
+     of flush with it. That 442px holds only while every option in both dropdowns measures under 191px — a
+     longer label widens its track (by design, see below) and narrows the search box to match.
+     The two filter tracks are minmax(191px, max-content), not a flat 191px, so a user text-spacing stylesheet
+     (WCAG 1.4.12) widens the select instead of clipping its selected option: "Select status..." needs ~164px
+     of text at 0.12em letter-spacing but only ~157px fits inside a pinned 191px control. At default spacing
+     max-content resolves below 191px, so the floor leaves the rendered width unchanged. */
+  grid-template-columns: minmax(0, 1fr) minmax(191px, max-content) minmax(191px, max-content);
   column-gap: 30px;
   row-gap: 20px;
   margin: 0 0 30px;
@@ -88,7 +93,7 @@
 }
 
 .collections-list-page .govuk-table-filter .govuk-select {
-  width: 191px !important;
+  width: 100% !important;
   min-width: 0;
 }
 

@@ -1,5 +1,6 @@
 using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
+using Application.Common.Settings;
 using Application.Mfa.Dtos;
 using Application.Mfa.Exceptions;
 using Domain.AuditLogs;
@@ -16,15 +17,33 @@ public class VerifyMfaSetupCommandHandler(
     ITotpService totpService,
     IMfaEncryptionService encryptionService,
     IRecoveryCodeService recoveryCodeService,
+    IMfaRateLimitService rateLimitService,
     IUserMfaRepository userMfaRepository,
     IMfaSessionService sessionService,
-    IAuditLogRepository auditLogRepository)
+    IAuditLogRepository auditLogRepository,
+    MfaAttemptGate attemptGate,
+    MfaFailureRecorder failureRecorder,
+    ApplicationSettings settings)
     : IRequestHandler<VerifyMfaSetupCommand, Either<MfaException, MfaSetupCompleteResponseDto>>
 {
     public async Task<Either<MfaException, MfaSetupCompleteResponseDto>> Handle(
         VerifyMfaSetupCommand request,
         CancellationToken cancellationToken)
     {
+        // Before BLUM-7239 this endpoint counted nothing whatsoever — no damper and no lockout — so it was
+        // an unbounded oracle against the pending secret. Somebody holding a stolen token for a user who was
+        // midway through enrolment could brute-force the code and complete enrolment on their behalf, ending
+        // up with the authenticator.
+        //
+        // It gets both, like the other four. The lockout half is enforced further down, once the row has
+        // been loaded — see the comment on IsLockedOut in ValidateAndCompleteSetupAsync for why a pending
+        // enrolment is worth locking.
+        var refusal = await attemptGate.ReserveAsync(request.UserId, cancellationToken);
+        if (refusal is not null)
+        {
+            return refusal;
+        }
+
         var userMfaOption = await userMfaRepository.GetByUserIdAsync(request.UserId, cancellationToken);
 
         return await userMfaOption.MatchAsync(
@@ -48,11 +67,34 @@ public class VerifyMfaSetupCommandHandler(
             return new MfaSetupExpiredException(request.UserId);
         }
 
+        // The lock covers this endpoint too. Guessing here is guessing at a real secret — one that, once
+        // enrolled, is the second factor — so an attacker holding a stolen token for a user who is mid-setup
+        // has the same oracle as anywhere else, and leaving it out would make the lock avoidable by simply
+        // attacking whoever has not finished enrolling yet.
+        if (mfa.IsLockedOut())
+        {
+            return new MfaLockedOutException(
+                request.UserId,
+                mfa.LockedUntil!.Value,
+                MfaRetryAfter.Seconds(mfa.LockedUntil, DateTime.UtcNow, settings.Mfa.LockoutMinutes * 60));
+        }
+
         var secret = encryptionService.Decrypt(mfa.EncryptedSecret);
         if (!totpService.ValidateCode(secret, request.Code))
         {
-            return new InvalidMfaCodeException(request.UserId);
+            // Until this was added, the one endpoint whose success hands the attacker the authenticator was
+            // also the only one that recorded nothing: no audit row and no increment of the persistent
+            // counter, so a brute force against a pending enrolment was invisible and unbounded except by an
+            // in-memory damper that resets whenever the App Service unloads.
+            return await failureRecorder.RecordAsync(
+                request.UserId,
+                mfa,
+                AuditAction.MfaVerifyFailed,
+                MfaEndpoints.SetupVerify,
+                new InvalidMfaCodeException(request.UserId));
         }
+
+        rateLimitService.ResetAttempts(request.UserId);
 
         var recoveryCodes = recoveryCodeService.GenerateRecoveryCodes();
         var hashedCodes = recoveryCodes.Select(recoveryCodeService.HashRecoveryCode).ToList();
