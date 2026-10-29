@@ -6,6 +6,10 @@ export interface GovUKNotification {
   type: 'success' | 'important';
   title: string;
   message?: string;
+  // Names this confirmation for test automation. Without it the banner falls back to the generic
+  // notification-banner-success, which is fine for a one-off but leaves a flow that also renders the same copy
+  // through its own page banner with two selectors for one confirmation.
+  testId?: string;
 }
 
 interface GovUKNotificationContextValue {
@@ -48,11 +52,7 @@ export function GovUKNotificationProvider({ children }: { children: React.ReactN
     }
   }, []);
 
-  return (
-    <GovUKNotificationContext.Provider value={{ notification, notificationKey, setNotification }}>
-      {children}
-    </GovUKNotificationContext.Provider>
-  );
+  return <GovUKNotificationContext.Provider value={{ notification, notificationKey, setNotification }}>{children}</GovUKNotificationContext.Provider>;
 }
 
 export function useGovUKNotification(): { setNotification: (n: GovUKNotification | null) => void } {
@@ -71,7 +71,7 @@ export function GovUKNotificationDisplay(): React.ReactElement | null {
   const { notification, notificationKey } = context;
 
   return (
-    <GovUKNotificationBanner key={notificationKey} type={notification.type} title={notification.title}>
+    <GovUKNotificationBanner key={notificationKey} type={notification.type} title={notification.title} testId={notification.testId}>
       {notification.message ? <p className="govuk-body">{notification.message}</p> : null}
     </GovUKNotificationBanner>
   );

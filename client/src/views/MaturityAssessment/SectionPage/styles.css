@@ -1,0 +1,55 @@
+.govuk-main-wrapper > .govuk-width-container > .govuk-back-link[data-testid='la-maturity-page-back'] {
+  margin-bottom: 50px;
+}
+
+.maturity-page {
+  display: flex;
+  width: 960px;
+  max-width: 100%;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.maturity-page__header,
+.maturity-page__form {
+  box-sizing: border-box;
+  width: 630px;
+  max-width: 100%;
+}
+
+.maturity-page__header .govuk-caption-l,
+.maturity-page__header .govuk-heading-xl {
+  margin-top: 0;
+}
+
+.maturity-page__header .govuk-caption-l {
+  margin-bottom: 0;
+}
+
+.maturity-page__details {
+  margin-bottom: 0;
+}
+
+.maturity-page__details .govuk-summary-list {
+  margin-bottom: 0;
+}
+
+.maturity-page__actions {
+  gap: 10px;
+  margin: 0;
+}
+
+.maturity-page__actions .govuk-button {
+  margin-right: 0;
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .govuk-main-wrapper > .govuk-width-container > .govuk-back-link[data-testid='la-maturity-page-back'] {
+    margin-bottom: 30px;
+  }
+
+  .maturity-page {
+    gap: 20px;
+  }
+}

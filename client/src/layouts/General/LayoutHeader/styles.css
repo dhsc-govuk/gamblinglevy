@@ -1,0 +1,43 @@
+/* The blue header bar (HeaderBar.tsx). #1d70b8 is load-bearing: govuk-frontend's crown link paints
+   :not(:focus) { background-color: #1d70b8 }, so a bar of any other colour shows a blue rectangle behind it. */
+.app-header-bar {
+  background-color: #1d70b8;
+  box-sizing: border-box;
+  height: 60px;
+  padding: 12px 0 18px;
+}
+
+.app-header-bar__container {
+  max-width: 990px;
+  margin: 0 auto;
+  padding: 0 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Sign out, styled as a link in the bar (the GOV.UK header user-link pattern). */
+.app-header-bar__sign-out {
+  font-family: "GDS Transport", arial, sans-serif;
+  font-size: 19px;
+  color: #ffffff;
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.1em;
+}
+
+.app-header-bar__sign-out:hover {
+  text-decoration-thickness: 3px;
+}
+
+.app-header-bar__sign-out:focus {
+  outline: 3px solid #ffdd00;
+  outline-offset: 0;
+  background-color: #ffdd00;
+  color: #0b0c0c;
+  text-decoration: none;
+}

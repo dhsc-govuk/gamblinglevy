@@ -1,0 +1,7 @@
+/* GeneralLayout's page column: the footer sits at the bottom of a short page. */
+.app-general-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+}

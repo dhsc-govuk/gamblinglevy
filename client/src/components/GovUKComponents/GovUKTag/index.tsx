@@ -1,18 +1,7 @@
 import React from 'react';
 import './styles.css';
 
-export type TagColour = 
-  | 'grey' 
-  | 'green' 
-  | 'turquoise' 
-  | 'blue' 
-  | 'light-blue' 
-  | 'purple' 
-  | 'pink' 
-  | 'red' 
-  | 'orange' 
-  | 'yellow'
-  | 'white';
+export type TagColour = 'grey' | 'green' | 'turquoise' | 'blue' | 'light-blue' | 'purple' | 'pink' | 'red' | 'orange' | 'yellow' | 'white';
 
 interface GovUKTagProps extends React.HTMLAttributes<HTMLElement> {
   children: React.ReactNode;

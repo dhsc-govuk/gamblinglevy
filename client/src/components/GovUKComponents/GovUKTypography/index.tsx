@@ -10,12 +10,19 @@ interface HeadingProps extends React.HTMLAttributes<HTMLHeadingElement> {
   children: React.ReactNode;
 }
 
+interface H1Props extends HeadingProps {
+  // Selects the govuk-frontend heading token rather than restating one in a stylesheet. A page whose H1
+  // is drawn at 36px in the design wants `govuk-heading-l`, not `govuk-heading-xl` with the l token's
+  // font-size and line-height copied into view CSS at both breakpoints.
+  size?: 'l' | 'xl';
+}
+
 interface TextProps extends React.HTMLAttributes<HTMLElement> {
   children: React.ReactNode;
 }
 
-export const H1 = ({ children, className, ...rest }: HeadingProps): React.ReactElement => (
-  <h1 className={['govuk-heading-xl', className].filter(Boolean).join(' ')} {...rest}>
+export const H1 = ({ children, className, size = 'xl', ...rest }: H1Props): React.ReactElement => (
+  <h1 className={[`govuk-heading-${size}`, className].filter(Boolean).join(' ')} {...rest}>
     {children}
   </h1>
 );

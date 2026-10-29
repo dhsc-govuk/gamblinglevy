@@ -11,3 +11,11 @@ public class FormModuleEmptyOnPublishException(FormModuleId id)
 
 public class FormModuleAlreadyPublishedException(FormModuleId id)
     : Exception($"Form module {id} is already published.");
+
+public class FormModuleNotPublishedException(FormModuleId id)
+    : Exception($"Form module {id} is not published, so there is no published form to start a draft from.");
+
+// BLUM-9102: thrown by IFormModuleVersionRepository when the (module, version number) unique index refuses a version,
+// i.e. a concurrent publish of the same module took the number first.
+public class FormModuleVersionNumberTakenException(FormModuleId id, int versionNumber)
+    : Exception($"Version {versionNumber} of form module {id} already exists.");

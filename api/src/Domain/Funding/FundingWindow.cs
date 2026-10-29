@@ -17,12 +17,12 @@ public class FundingWindow : IEntity<FundingWindowId>
         CreatedAt = createdAt;
     }
 
-    public static FundingWindow New(FundingWindowId id, string financialYear, string windowLabel)
+    public static FundingWindow New(FundingWindowId id, string financialYear, string windowLabel, DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNullOrEmptyOrWhiteSpace(financialYear, nameof(financialYear));
         Guard.NotNullOrEmptyOrWhiteSpace(windowLabel, nameof(windowLabel));
 
-        return new FundingWindow(id, financialYear, windowLabel, DateTime.UtcNow);
+        return new FundingWindow(id, financialYear, windowLabel, utcNow);
     }
 }

@@ -1,0 +1,35 @@
+.la-users-list-page {
+  padding-top: 20px;
+}
+
+/* GovUKTable drops every control to a quarter-width column as soon as a second filter is present
+   (GovUKTable/index.tsx), which for this view's three controls means 248px each and a visibly blank quarter
+   of the row — and it shrank the search box from two-thirds to a quarter just as email became searchable.
+   This page is full-width (GeneralLayout), so it can take the Admin/Reports/List idiom directly: one
+   flexible search track plus a fixed track per dropdown. minmax(191px, max-content) rather than a pinned
+   width so a user text-spacing stylesheet (WCAG 1.4.12) widens the select instead of clipping its chosen
+   option, with the growth coming out of the 1fr track rather than overflowing the page. */
+.la-users-list-page .govuk-table-filter {
+  align-items: end;
+  column-gap: 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(2, minmax(191px, max-content));
+  margin-bottom: 30px;
+  row-gap: 20px;
+}
+
+/* Below govuk's desktop breakpoint the three tracks stop fitting: two pinned 191px dropdowns plus gutters
+   leave the search box around 120px. Drop to two columns so the DOM order (search, status, access level)
+   falls into two rows on its own — no spanning, no positional selector — and search keeps ~340px.
+   Must precede the mobile rule below: both are max-width, so the later one wins where they overlap. */
+@media (max-width: 48.0525em) {
+  .la-users-list-page .govuk-table-filter {
+    grid-template-columns: minmax(0, 1fr) minmax(191px, max-content);
+  }
+}
+
+@media (max-width: 40.0525em) {
+  .la-users-list-page .govuk-table-filter {
+    grid-template-columns: 1fr;
+  }
+}

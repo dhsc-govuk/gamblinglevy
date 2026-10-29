@@ -1,22 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { PageLoading } from '../../../../components/GovUKComponents';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
 import { ErrorSummary, GovUKButton, GovUKGroupedInputs, Paragraph } from '../../../../components/GovUKComponents';
 import ReportFundingPageHeader from '../../../../components/Global/Reports/ReportFundingPageHeader';
 import { useAuthProvider } from '../../../../components/AuthProvider';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import { reportContextKey, reportFundingSpendKey, reportTaskListKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
 import { getFundingSpend } from '../../queries';
 import { saveFundingForecast } from '../../mutations';
 import { mapReportError } from '../../messages';
-import { reportingPeriodLabel } from '../../display';
+import { reportingPeriodValue } from '../../display';
 import { useReportContext } from '../../context';
 import { canEditReport } from '../../navigation';
-import { amountToInput, FORECAST_INTRO, forecastQuarterLabel, parseAmount, validateMoney } from '../display';
+import { parseAmount } from '../../../../helpers/currency';
+import { amountToInput, FORECAST_INTRO, forecastQuarterLabel, moneySubjectForForecast, moneySubjectForOtherForecast, validateMoney } from '../display';
 import { trackEvent } from '../../../../helpers/analytics';
 import './styles.css';
 
@@ -26,7 +26,6 @@ const otherQuarterCode = (quarter: number): string => `other-forecast-q${quarter
 // "Forecast spend" (BLUM-6612, screen 2): the expected levy spend per reportable activity for each
 // remaining quarter of the financial year, plus a non-activity "Other planned spend" per quarter.
 const Forecast = (): React.ReactElement => {
-  usePageTitle('Forecast spend');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { userRole } = useAuthProvider();
@@ -37,12 +36,16 @@ const Forecast = (): React.ReactElement => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitAttempts, setSubmitAttempts] = useState(0);
 
+  usePageTitle(`${Object.keys(errors).length > 0 ? 'Error: ' : ''}Forecast spend`);
+
   const { collectionId, context, isLoading: contextLoading, isError: contextError } = useReportContext();
   const spendingPath = ROUTES.reports.fundingSpent(collectionId);
   const checkPath = ROUTES.reports.fundingSpentCheck(collectionId);
   const tasksPath = ROUTES.reports.tasks(collectionId);
 
-  const fundingQuery = useQuery(reportFundingSpendKey(collectionId), () => getFundingSpend(collectionId), {
+  const fundingQuery = useQuery({
+    queryKey: reportFundingSpendKey(collectionId),
+    queryFn: () => getFundingSpend(collectionId),
     enabled: !!collectionId && !!context?.submissionId,
   });
   const funding = fundingQuery.data?.data;
@@ -64,13 +67,12 @@ const Forecast = (): React.ReactElement => {
     }
   }, [funding]);
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
-
-  const saveMutation = useMutation(saveFundingForecast, {
+  const saveMutation = useMutation({
+    mutationFn: saveFundingForecast,
     onSuccess: () => {
-      queryClient.invalidateQueries(reportContextKey(collectionId));
-      queryClient.invalidateQueries(reportTaskListKey(collectionId));
-      queryClient.invalidateQueries(reportFundingSpendKey(collectionId));
+      queryClient.invalidateQueries({ queryKey: reportContextKey(collectionId) });
+      queryClient.invalidateQueries({ queryKey: reportTaskListKey(collectionId) });
+      queryClient.invalidateQueries({ queryKey: reportFundingSpendKey(collectionId) });
     },
   });
 
@@ -96,7 +98,7 @@ const Forecast = (): React.ReactElement => {
     (funding?.activities ?? []).forEach((activity) => {
       (funding?.remainingQuarters ?? []).forEach((quarter) => {
         const code = activityQuarterCode(activity.activityId, quarter.quarter);
-        const error = validateMoney(values[code] ?? '', { required, label: 'the amount you expect to spend' });
+        const error = validateMoney(values[code] ?? '', { required, subject: moneySubjectForForecast(activity.title, quarter.quarter) });
         if (error) {
           next[code] = error;
         }
@@ -104,7 +106,7 @@ const Forecast = (): React.ReactElement => {
     });
     (funding?.remainingQuarters ?? []).forEach((quarter) => {
       const code = otherQuarterCode(quarter.quarter);
-      const error = validateMoney(values[code] ?? '', { required, label: 'the other planned spend' });
+      const error = validateMoney(values[code] ?? '', { required, subject: moneySubjectForOtherForecast(quarter.quarter) });
       if (error) {
         next[code] = error;
       }
@@ -179,10 +181,10 @@ const Forecast = (): React.ReactElement => {
           <PageLoading />
         ) : (
           <>
-            {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+            <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
             <div className="reports-funding-forecast__header">
-              <ReportFundingPageHeader heading="Forecast spend" reportingPeriod={reportingPeriodLabel(context)} />
+              <ReportFundingPageHeader heading="Forecast spend" reportingPeriod={reportingPeriodValue(context.quarter, context.reportingPeriodStart, context.reportingPeriodEnd)} />
 
               <div className="reports-funding-forecast__intro">
                 {FORECAST_INTRO.map((line) => (
@@ -238,14 +240,14 @@ const Forecast = (): React.ReactElement => {
             </div>
 
             <div className="govuk-button-group reports-funding-forecast__actions">
-              <GovUKButton onClick={handleContinue} isLoading={saveMutation.isLoading} data-testid="reports-funding-spent-forecast-continue">
+              <GovUKButton onClick={handleContinue} isLoading={saveMutation.isPending} data-testid="reports-funding-spent-forecast-continue">
                 Continue
               </GovUKButton>
               {canEdit && (
                 <GovUKButton
                   className="govuk-button govuk-button--secondary"
                   onClick={handleSaveDraft}
-                  isLoading={saveMutation.isLoading}
+                  isLoading={saveMutation.isPending}
                   data-testid="reports-funding-spent-forecast-save">
                   Save and come back later
                 </GovUKButton>

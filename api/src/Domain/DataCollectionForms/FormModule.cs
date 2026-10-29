@@ -60,6 +60,7 @@ public class FormModule : IEntity<FormModuleId>
         string name,
         int displayOrder,
         UserId createdBy,
+        DateTime utcNow,
         string? description = null)
     {
         Guard.NotNull(id, nameof(id));
@@ -76,17 +77,17 @@ public class FormModule : IEntity<FormModuleId>
             isActive: true,
             FormStatus.Draft,
             createdBy,
-            DateTime.UtcNow);
+            utcNow);
     }
 
-    public void UpdateDetails(string name, string? description, UserId actor)
+    public void UpdateDetails(string name, string? description, UserId actor, DateTime utcNow)
     {
         Guard.NotNullOrEmptyOrWhiteSpace(name, nameof(name));
         Guard.NotNull(actor, nameof(actor));
 
         Name = name.Trim();
         Description = Normalise(description);
-        Touch(actor);
+        Touch(actor, utcNow);
     }
 
     public DcFormSection AddSection(
@@ -94,6 +95,7 @@ public class FormModule : IEntity<FormModuleId>
         int sectionNumber,
         string title,
         UserId actor,
+        DateTime utcNow,
         string? description = null,
         string? helpText = null)
     {
@@ -102,11 +104,11 @@ public class FormModule : IEntity<FormModuleId>
 
         var section = DcFormSection.Create(id, Id, sectionNumber, title, description, helpText);
         _sections.Add(section);
-        Touch(actor);
+        Touch(actor, utcNow);
         return section;
     }
 
-    public void RemoveSection(DcFormSectionId sectionId)
+    public void RemoveSection(DcFormSectionId sectionId, DateTime utcNow)
     {
         EnsureNotPublished();
 
@@ -114,7 +116,7 @@ public class FormModule : IEntity<FormModuleId>
         if (section is not null)
         {
             _sections.Remove(section);
-            UpdatedAt = DateTime.UtcNow;
+            UpdatedAt = utcNow;
         }
     }
 
@@ -125,10 +127,14 @@ public class FormModule : IEntity<FormModuleId>
         Domain.Forms.QuestionType questionType,
         int displayOrder,
         UserId actor,
+        DateTime utcNow,
         DcFormSectionId? sectionId = null,
         bool isRequired = false,
         string? hint = null,
-        string? helpText = null)
+        string? helpText = null,
+        string? errorMessage = null,
+        int? maxLength = null,
+        string? maxLengthErrorMessage = null)
     {
         EnsureNotPublished();
         Guard.NotNull(actor, nameof(actor));
@@ -143,14 +149,17 @@ public class FormModule : IEntity<FormModuleId>
             sectionId,
             isRequired,
             hint,
-            helpText);
+            helpText,
+            errorMessage,
+            maxLength,
+            maxLengthErrorMessage);
 
         _questions.Add(question);
-        Touch(actor);
+        Touch(actor, utcNow);
         return question;
     }
 
-    public void RemoveQuestion(DcFormQuestionId questionId)
+    public void RemoveQuestion(DcFormQuestionId questionId, DateTime utcNow)
     {
         EnsureNotPublished();
 
@@ -158,11 +167,30 @@ public class FormModule : IEntity<FormModuleId>
         if (question is not null)
         {
             _questions.Remove(question);
-            UpdatedAt = DateTime.UtcNow;
+            UpdatedAt = utcNow;
         }
     }
 
-    public void Publish(UserId actor)
+    // BLUM-9102: the delete of a question a saved version published. The row stays, inactive, so readers of the live
+    // form can still label the answers older reports gave, and it leaves its section so the section can be deleted.
+    // Returns false when it was already withdrawn, so the caller can skip a second audit row.
+    public bool WithdrawQuestion(DcFormQuestionId questionId, DateTime utcNow)
+    {
+        EnsureNotPublished();
+
+        var question = _questions.FirstOrDefault(q => q.Id == questionId);
+        if (question is null || (!question.IsActive && question.SectionId is null))
+        {
+            return false;
+        }
+
+        question.Deactivate();
+        question.SetSection(null);
+        UpdatedAt = utcNow;
+        return true;
+    }
+
+    public void Publish(UserId actor, DateTime utcNow)
     {
         Guard.NotNull(actor, nameof(actor));
 
@@ -171,33 +199,50 @@ public class FormModule : IEntity<FormModuleId>
             throw new FormModuleAlreadyPublishedException(Id);
         }
 
-        if (!_questions.Any())
+        // An inactive question is one no LA sees (a withdrawn one keeps its row), so it does not make a form non-empty.
+        if (!_questions.Any(q => q.IsActive))
         {
             throw new FormModuleEmptyOnPublishException(Id);
         }
 
         Status = FormStatus.Published;
-        PublishedAt = DateTime.UtcNow;
+        PublishedAt = utcNow;
         PublishedBy = actor;
-        Touch(actor);
+        Touch(actor, utcNow);
     }
 
-    public void Archive()
+    // BLUM-9102: reopens a published module for editing. Its last publish is kept as a FormModuleVersion, so the draft
+    // can change freely and the next Publish decides whether it is a new version. PublishedAt/PublishedBy keep the
+    // last publish: they are what tells a reopened draft from one that was never published.
+    public void StartDraft(UserId actor, DateTime utcNow)
+    {
+        Guard.NotNull(actor, nameof(actor));
+
+        if (!Status.IsPublished)
+        {
+            throw new FormModuleNotPublishedException(Id);
+        }
+
+        Status = FormStatus.Draft;
+        Touch(actor, utcNow);
+    }
+
+    public void Archive(DateTime utcNow)
     {
         Status = FormStatus.Archived;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void Activate()
+    public void Activate(DateTime utcNow)
     {
         IsActive = true;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void Deactivate()
+    public void Deactivate(DateTime utcNow)
     {
         IsActive = false;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
     private void EnsureNotPublished()
@@ -208,10 +253,10 @@ public class FormModule : IEntity<FormModuleId>
         }
     }
 
-    private void Touch(UserId actor)
+    private void Touch(UserId actor, DateTime utcNow)
     {
         UpdatedBy = actor;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
     private static string? Normalise(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

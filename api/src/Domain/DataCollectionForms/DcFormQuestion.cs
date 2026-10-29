@@ -22,6 +22,16 @@ public class DcFormQuestion : IEntity<DcFormQuestionId>
     public string? HelpText { get; private set; }
     public bool IsActive { get; private set; }
 
+    // Question Protocol copy (BLUM-7620), mirroring Domain.Forms.FormQuestion. ErrorMessage is the protocol's
+    // "empty on submit" message; MaxLength drives the GDS character count and the over-length rule, whose message
+    // is separate because the protocol names the field differently there ("Description of progress ...") than the
+    // question asks it ("What progress have you made?").
+    public string? ErrorMessage { get; private set; }
+
+    public int? MaxLength { get; private set; }
+
+    public string? MaxLengthErrorMessage { get; private set; }
+
     public IReadOnlyCollection<DcFormQuestionOption> Options => _options.AsReadOnly();
 
     private DcFormQuestion(
@@ -35,6 +45,9 @@ public class DcFormQuestion : IEntity<DcFormQuestionId>
         bool isRequired,
         string? hint,
         string? helpText,
+        string? errorMessage,
+        int? maxLength,
+        string? maxLengthErrorMessage,
         bool isActive)
     {
         Id = id;
@@ -47,6 +60,9 @@ public class DcFormQuestion : IEntity<DcFormQuestionId>
         IsRequired = isRequired;
         Hint = hint;
         HelpText = helpText;
+        ErrorMessage = errorMessage;
+        MaxLength = maxLength;
+        MaxLengthErrorMessage = maxLengthErrorMessage;
         IsActive = isActive;
     }
 
@@ -60,7 +76,10 @@ public class DcFormQuestion : IEntity<DcFormQuestionId>
         DcFormSectionId? sectionId = null,
         bool isRequired = false,
         string? hint = null,
-        string? helpText = null)
+        string? helpText = null,
+        string? errorMessage = null,
+        int? maxLength = null,
+        string? maxLengthErrorMessage = null)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(formModuleId, nameof(formModuleId));
@@ -79,6 +98,9 @@ public class DcFormQuestion : IEntity<DcFormQuestionId>
             isRequired,
             Normalise(hint),
             Normalise(helpText),
+            Normalise(errorMessage),
+            maxLength,
+            Normalise(maxLengthErrorMessage),
             isActive: true);
     }
 
@@ -97,6 +119,17 @@ public class DcFormQuestion : IEntity<DcFormQuestionId>
         IsRequired = isRequired;
         Hint = Normalise(hint);
         HelpText = Normalise(helpText);
+    }
+
+    // Deliberately NOT part of UpdateDetails: that is the module editor's surface, and its caller has no fields
+    // for these, so folding them in would null the protocol's error copy and character limit every time an admin
+    // edited a label — with no seeder left to restore them (SeedQuarterlyReportModuleAsync no-ops once the module
+    // is published).
+    public void SetProtocolCopy(string? errorMessage, int? maxLength, string? maxLengthErrorMessage)
+    {
+        ErrorMessage = Normalise(errorMessage);
+        MaxLength = maxLength;
+        MaxLengthErrorMessage = Normalise(maxLengthErrorMessage);
     }
 
     public void SetSection(DcFormSectionId? sectionId)

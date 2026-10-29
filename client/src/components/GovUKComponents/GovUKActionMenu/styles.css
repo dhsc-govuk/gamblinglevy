@@ -37,28 +37,21 @@
   transform: rotate(180deg);
 }
 
+/* Fixed, placed above or below the button and capped to the room there by index.tsx, so a scrolling ancestor — a
+   too-wide table's GovUKTableScroll box — cannot clip it. A fixed menu is outside the page's scrollable area, so
+   focusing an item scrolls this list, never the page: hence overflow-y. At least as wide as the button. */
 .govuk-action-menu__list {
-  position: absolute;
-  top: 100%;
+  position: fixed;
   z-index: 100;
   box-sizing: border-box;
-  min-width: 100%;
+  min-width: var(--app-action-menu-button-width, 0);
+  overflow-y: auto;
   width: max-content;
   max-width: calc(100vw - 30px);
   margin: 0;
   padding: 0;
   list-style: none;
   background-color: #f3f2f1; /* govuk-colour("light-grey") */
-}
-
-.govuk-action-menu__list--align-right {
-  right: 0;
-  left: auto;
-}
-
-.govuk-action-menu__list--align-left {
-  right: auto;
-  left: 0;
 }
 
 /*
@@ -85,7 +78,7 @@
 }
 
 .govuk-action-menu__item:hover {
-  background-color: #e5e5e5; /* slightly darker grey for hover */
+  background-color: #dbdad9; /* govuk-frontend 5's secondary-button hover grey, the palette the rest of this file uses */
   color: #0b0c0c;
 }
 

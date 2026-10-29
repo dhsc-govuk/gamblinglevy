@@ -1,0 +1,93 @@
+version: "2.4"
+services:
+  traefik:
+    image: "traefik:v2.4"
+    container_name: "${APP_PREFIX}-traefik"
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+  gambling-levy-pgserver:
+    image: postgres:15.1-alpine
+    container_name: ${APP_PREFIX}-pgserver
+    user: postgres
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    # No init script: the API applies its EF Core migrations and seed data on startup.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ALLOW_IP_RANGE: 0.0.0.0/0
+      POSTGRES_DB_EXTENSION: uuid-ossp
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "PGPASSWORD=${POSTGRES_PASSWORD} pg_isready --username=${POSTGRES_USER} --dbname=${POSTGRES_DB_NAME}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  gambling-levy-api:
+    image: ${APP_PREFIX}-api
+    container_name: ${APP_PREFIX}-api
+    build:
+      context: ${API_ROOT_DIR}
+      dockerfile: /src/Api/Dockerfile
+    ports:
+      - 5000:80
+    depends_on:
+      - "gambling-levy-pgserver"
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=gambling-levy-pgserver;port=5432;Database=${POSTGRES_DB_NAME};User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
+      AzureAd__Instance: ${AD_INSTANCE}
+      AzureAd__TenantId: ${AD_TENANT_ID}
+      AzureAd__ClientId: ${AD_CLIENT_ID_API}
+      AzureAd__ClientSecret: ${AD_CLIENT_SECRET}
+      Graph__ApplicationId: ${GRAPH_APPLICATION_ID}
+      Graph__ApplicationObjectId: ${GRAPH_APPLICATION_OBJECT_ID}
+      Graph__EnterpriseApplicationObjectId: ${GRAPH_ENTERPRISE_APPLICATION_OBJECT_ID}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.gambling-levy-api.rule=Host(`${APP_PREFIX}-api.localtest.me`)"
+      - "traefik.http.routers.gambling-levy-api.entrypoints=web"
+  gambling-levy-client:
+    image: ${APP_PREFIX}-client
+    container_name: ${APP_PREFIX}-client
+    build:
+      context: ${WORK_DIR}
+      dockerfile: ${CLIENT_ROOT_DIR}/Dockerfile.dev
+    volumes:
+      - ${CLIENT_ROOT_DIR}:/app
+      # Anonymous volume so the bind mount above does not shadow the node_modules the
+      # image installed. Without it /app/node_modules is the host's — absent on a fresh
+      # clone, and built for darwin-arm64 on a developer machine, so the alpine (musl)
+      # container dies on @rollup/rollup-linux-x64-musl or esbuild's platform check.
+      - /app/node_modules
+    ports:
+      - 3000:80
+    depends_on:
+      - "gambling-levy-api"
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
+      REACT_APP_API_URL: http://${APP_PREFIX}-api.localtest.me/graphql
+      REACT_APP_AD_CLIENT_ID: ${AD_CLIENT_ID_CLIENT}
+      REACT_APP_AD_AUTHORITY: ${AD_AUTHORITY}
+      REACT_APP_AD_REDIRECT_URI: ${AD_REDIRECT_URI}
+      REACT_APP_AD_SCOPES: ${AD_SCOPES}
+      PORT: 80
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.gambling-levy-client.rule=Host(`${APP_PREFIX}-client.localtest.me`)"
+      - "traefik.http.routers.gambling-levy-client.entrypoints=web"

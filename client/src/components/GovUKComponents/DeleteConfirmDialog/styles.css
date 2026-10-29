@@ -1,21 +1,38 @@
-.delete-confirm-dialog__title {
-  background-color: #f3f2f1;
+.delete-confirm-dialog {
+  box-sizing: border-box;
+  width: calc(100% - 30px);
+  max-width: 600px;
+  padding: 0;
+  border: 0;
   color: #0b0c0c;
+  background-color: #ffffff;
+}
+
+.delete-confirm-dialog::backdrop {
+  background-color: rgba(11, 12, 12, 0.5); /* govuk text colour #0b0c0c at half opacity */
+}
+
+.delete-confirm-dialog__title {
+  margin: 0;
+  padding: 15px 20px;
+  background-color: #f3f2f1;
   border-bottom: 1px solid #b1b4b6;
 }
 
 .delete-confirm-dialog__content {
-  margin-top: 16px;
+  padding: 20px 20px 0;
 }
 
 .delete-confirm-dialog__item-name {
-  margin-top: 8px;
-  font-weight: bold;
+  font-weight: 700;
 }
 
-.delete-confirm-dialog__actions {
-  padding: 16px;
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
+/* No showModal: rendered in place, in the page flow, as a bordered panel. */
+.delete-confirm-dialog--inline {
+  display: block;
+  position: static;
+  width: auto;
+  max-width: none;
+  margin: 30px 0;
+  border: 1px solid #b1b4b6;
 }

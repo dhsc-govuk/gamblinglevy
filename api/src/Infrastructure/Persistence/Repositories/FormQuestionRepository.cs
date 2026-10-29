@@ -1,3 +1,4 @@
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Domain.Forms;
 using LanguageExt;
@@ -5,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Infrastructure.Persistence.Repositories;
 
-public class FormQuestionRepository(ApplicationDbContext dbContext)
+public class FormQuestionRepository(ApplicationDbContext dbContext, IDateTimeProvider dateTimeProvider)
     : RepositoryBase<FormQuestion, FormQuestionId>(dbContext), IFormQuestionRepository
 {
     // Tracked + options, for mutation (the update flow mutates the options collection then SaveChangesAsync).
@@ -66,7 +67,7 @@ public class FormQuestionRepository(ApplicationDbContext dbContext)
         {
             if (orderById.TryGetValue(question.Id.Value, out var index))
             {
-                question.SetDisplayOrder(index);
+                question.SetDisplayOrder(index, dateTimeProvider.GetUtcNow());
             }
         }
 

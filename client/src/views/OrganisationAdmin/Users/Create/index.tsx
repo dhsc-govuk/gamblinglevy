@@ -5,7 +5,6 @@ import { OrganisationManagementLayout } from '../../../../layouts';
 import { GovUKFieldset, GovUKButton, ErrorSummary, H1 } from '../../../../components/GovUKComponents';
 import { ROLE_LABELS, laAdminAssignableRoles, useAuthProvider } from '../../../../components/AuthProvider';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import { validateEmailAddress } from '../../../../helpers/validators';
 
 export interface OrgCreateFormState {
@@ -39,8 +38,6 @@ const UsersCreate = (): React.ReactElement => {
   const [email, setEmail] = useState(initialState?.email ?? '');
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitAttempts, setSubmitAttempts] = useState(0);
-
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
 
   if (!organisationId) return <PageLoading />;
 
@@ -80,7 +77,7 @@ const UsersCreate = (): React.ReactElement => {
 
   return (
     <OrganisationManagementLayout backLink={{ href: '/organisation-admin/users' }}>
-      {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+      <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
       <span className="govuk-caption-l">Add user</span>
       <H1>User details</H1>

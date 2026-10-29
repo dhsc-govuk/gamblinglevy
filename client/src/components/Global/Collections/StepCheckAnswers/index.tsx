@@ -1,8 +1,9 @@
 import React from 'react';
 import { GovUKSummaryCard, SummaryList } from '../../../GovUKComponents';
-import { datePartsValid, isoFromParts, type CollectionFormState } from '../../../../views/Admin/Collections/reducer';
+import { datePartsValid, formVersionShown, isoFromParts, type CollectionFormState } from '../../../../views/Admin/Collections/reducer';
 import type { CollectionFormOptionDto, ReportingLaDto } from '../../../../views/Admin/Collections/queries';
 import { formatGovUkDate, quarterLabel, typeLabel } from '../../../../views/Admin/Collections/display';
+import useFeature from '../../../../hooks/useFeature';
 
 // Step indices the "Change" links jump back to (mirrors the wizard's step order):
 // 0 details, 1 window, 2 forms, 3 reporting LAs, 4 reminders.
@@ -49,6 +50,7 @@ const formatDateParts = (day: string, month: string, year: string): string => {
 };
 
 const StepCheckAnswers = ({ state, onChange, formOptions, reportingLas }: Props): React.ReactElement => {
+  const versionsEnabled = useFeature('BLUM_9087');
   const sameWindow = state.windowSameAsReportingPeriod === 'yes';
   const allLas = state.isSubmittedByAllLas === 'yes';
   const quarter = quarterLabel(state.quarter);
@@ -74,7 +76,18 @@ const StepCheckAnswers = ({ state, onChange, formOptions, reportingLas }: Props)
   }
 
   // Card 3 — Forms (selected module names, stacked one per line).
-  const selectedFormNames = state.formModuleIds.map((id) => formOptions.find((option) => option.moduleId === id)?.name).filter((name): name is string => Boolean(name));
+  // With versions offered (BLUM-9103), each versioned form also says which version the collection will use.
+  const formLabel = (option: CollectionFormOptionDto): string => {
+    if (!versionsEnabled || (option.versions?.length ?? 0) === 0) {
+      return option.name;
+    }
+    const version = formVersionShown(state, option.moduleId);
+    return version ? `${option.name} (version ${version})` : `${option.name} (latest version)`;
+  };
+  const selectedFormNames = state.formModuleIds
+    .map((id) => formOptions.find((option) => option.moduleId === id))
+    .filter((option): option is CollectionFormOptionDto => Boolean(option))
+    .map(formLabel);
 
   // Card 4 — Reporting organisations.
   const selectedLaNames = reportingLas.filter((la) => state.selectedLaIds.includes(la.id)).map((la) => la.name);
@@ -87,19 +100,24 @@ const StepCheckAnswers = ({ state, onChange, formOptions, reportingLas }: Props)
   }
 
   // Card 5 — Automatic reminders (one row per configured reminder, or a single em-dash row when none).
+  // Row labels are "Reminder 1"/"Reminder 2" (or plain "Reminder" for a single one) — matching
+  // CollectionReminderBlock's own headings — rather than repeating the question text, which gave every
+  // row the same label with no way to tell which answer belonged to which reminder.
   const configuredReminders = state.reminders.filter((reminder) => reminder.offsetType);
+  // "More than one" is keyed off the raw reminders array, matching reducer.ts's reminderSuffix and
+  // CollectionReminderBlock's `total` prop, not the filtered configuredReminders count below.
+  const reminderLabel = (index: number): string => (state.reminders.length > 1 ? `Reminder ${index + 1}` : 'Reminder');
   const reminderItems =
     configuredReminders.length > 0
       ? configuredReminders.map((reminder, index) => ({
-        label: 'When do you want to send the reminder?',
-        value: reminder.offsetType === 'after_open' ? `${reminder.days || '0'} days after the collection opens` : `${reminder.days || '0'} days before the submission deadline`,
-        testId: `${TEST_ID}-reminders-row-${index}`,
-      }))
-      : [{ label: 'When do you want to send the reminder?', value: '—' }];
+          label: reminderLabel(index),
+          value: reminder.offsetType === 'after_open' ? `${reminder.days || '0'} days after the collection opens` : `${reminder.days || '0'} days before the submission deadline`,
+          testId: `${TEST_ID}-reminders-row-${index}`,
+        }))
+      : [{ label: 'Reminder', value: '—' }];
 
   return (
     <div data-testid={TEST_ID}>
-
       <GovUKSummaryCard
         title="Data collection details"
         testId={`${TEST_ID}-details`}

@@ -1,8 +1,8 @@
 // The decision half of the axios error interceptor in components/App: given a failed response and what the
-// app currently knows, what should happen? Kept pure — no MSAL, no window, no React, no storage — because
-// there is no frontend test runner in this repo, and this is the code that decides whether a user whose
-// session was just destroyed is offered a screen that can mint them a new one. Effects (navigation, ending the
-// CIAM sign-in, writing storage) stay in the interceptor.
+// app currently knows, what should happen? Kept pure — no MSAL, no window, no React, no storage — so that it
+// can be tested without a browser (authFailure.test.ts runs it under plain Node), because this is the code that
+// decides whether a user whose session was just destroyed is offered a screen that can mint them a new one.
+// Effects (navigation, ending the CIAM sign-in, writing storage) stay in the interceptor.
 
 import type { SessionEndedReason } from './sessionEnd';
 
@@ -44,6 +44,24 @@ export type AuthFailureContext = {
 // Mirrors the paths the app is served under. `replace` rather than a join because BASE_URL always carries its
 // trailing slash and the suffixes never lead with one; it is there for the case where that stops being true.
 const joinBase = (basePath: string, suffix: string): string => `${basePath}${suffix}`.replace('//', '/');
+
+// The inverse of joinBase, and the other half of the contract it documents. `window.location.pathname` is
+// always basename-inclusive (the browser's real path, e.g. "/share-progress-preventing-gambling-harms/reports"),
+// but React Router's basename-aware `navigate()` expects a basename-*relative* path and re-adds the prefix
+// itself — so handing it an already-prefixed one doubles it into a 404. Exported for the two callers that
+// hand a native pathname to `navigate()`: `mfa_redirect_path` in components/App, and the anchor href an
+// intercepted link click resolves to in hooks/useUnsavedChangesGuard.
+export const stripBasePath = (basePath: string, pathname: string): string => {
+  const normalisedBase = basePath.replace(/\/$/, '');
+
+  // A path-segment boundary, not a bare startsWith: normalisedBase="/foo" must not match "/foobar/x" — that
+  // would strip to "bar/x", a relative path navigate() resolves against the *current* location rather than
+  // the basename, silently landing the user somewhere unintended (a variant of the bug this function fixes).
+  if (normalisedBase === '' || (pathname !== normalisedBase && !pathname.startsWith(`${normalisedBase}/`))) {
+    return pathname;
+  }
+  return pathname.slice(normalisedBase.length) || '/';
+};
 
 // The envelopes that mean the session is gone server-side, mapped to the banner the sign-in page shows.
 // Exported separately from the decision below because the caller has to record the signed-out account on
@@ -104,6 +122,16 @@ export const decideAuthFailureAction = (context: AuthFailureContext): AuthFailur
 
   if (status !== 403) {
     return { kind: 'reject' };
+  }
+
+  // Deactivation outranks both of the branches below, matching UseUserDeactivated sitting ahead of
+  // UseOrganisationSuspended and UseMfaRequired in Program.cs. It is the answer with nothing to act on:
+  // the account is off, so neither "your organisation is suspended" nor an authenticator prompt is a
+  // thing the user could do anything about. Not gated on sessionEndHandled for the same reason suspension
+  // is not — this is a different answer, not a session problem (BLUM-6386).
+  if (errorCode === 'USER_DEACTIVATED') {
+    const deactivatedPath = joinBase(basePath, 'account-deactivated');
+    return currentPath === deactivatedPath ? { kind: 'suspend' } : { kind: 'redirect', to: deactivatedPath, rememberPath: false };
   }
 
   // Suspension outranks an MFA prompt, matching the middleware order in Program.cs, and is deliberately not

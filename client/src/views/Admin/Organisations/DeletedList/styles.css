@@ -16,31 +16,15 @@
      stylesheet (WCAG 1.4.12) can widen the select rather than clip its chosen option. Both resolve to the
      previous fixed values (191px track, 683px row) at default spacing. */
   grid-template-columns: minmax(0, 462px) minmax(191px, max-content);
-  margin: 0 0 30px;
+  margin-bottom: 30px;
   max-width: 100%;
   width: fit-content;
-}
-
-.deleted-organisations-page .govuk-table-filter > [class*='govuk-grid-column'] {
-  box-sizing: border-box;
-  float: none;
-  min-width: 0;
-  padding: 0;
-  width: auto;
 }
 
 .deleted-organisations-page .govuk-table-filter .govuk-label {
   font-size: 19px;
   line-height: 25px;
   margin-bottom: 5px;
-}
-
-/* Floors rather than fixed heights so a user-defined line height grows these controls instead of clipping
-   their text (WCAG 1.4.12); they still render at 40px at default spacing. */
-.deleted-organisations-page .govuk-table-filter__input,
-.deleted-organisations-page .govuk-table-filter__search-button {
-  min-height: 40px;
-  height: auto;
 }
 
 /* Height is left to the base rule in GovUKComponents/GovUKTable/styles.css. */

@@ -76,6 +76,8 @@ public class MfaLockoutTests : BaseIntegrationTest, IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        await RejectedInserts.RestoreAsync(this.Context);
+
         this.settings.Mfa.BypassForTesting = true;
         this.settings.Mfa.MaxAttemptsPerWindow = 5;
         this.rateLimiter.ResetAttempts(User);
@@ -107,7 +109,7 @@ public class MfaLockoutTests : BaseIntegrationTest, IAsyncLifetime
 
         var mfa = await this.MfaRecordAsync();
         mfa.LockedUntil.Should().NotBeNull();
-        mfa.IsLockedOut().Should().BeTrue();
+        mfa.IsLockedOut(DateTime.UtcNow).Should().BeTrue();
     }
 
     [Fact]
@@ -149,7 +151,7 @@ public class MfaLockoutTests : BaseIntegrationTest, IAsyncLifetime
         var third = await this.PostCodeAsync("mfa/disable", "000000");
 
         third.StatusCode.Should().Be(HttpStatusCode.TooManyRequests, "three failures across three endpoints is still three failures");
-        (await this.MfaRecordAsync()).IsLockedOut().Should().BeTrue();
+        (await this.MfaRecordAsync()).IsLockedOut(DateTime.UtcNow).Should().BeTrue();
     }
 
     [Fact]
@@ -186,6 +188,38 @@ public class MfaLockoutTests : BaseIntegrationTest, IAsyncLifetime
 
         replay.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         (await ErrorCodeAsync(replay)).Should().Be("SESSION_REVOKED");
+    }
+
+    [Fact]
+    public async Task ShouldStillLockAndRevoke_WhenTheFailuresCannotBeAudited()
+    {
+        // PR #87 review: the count once committed only if its audit row did, so while audit inserts were failing
+        // every wrong code rolled its own count back — the lock and the revocation never came, and an attacker had
+        // only the per-minute damper (switched off in this class) in their way. The rows are the record of the
+        // control, not the control.
+        await this.CompleteSetupAsync();
+        var sessionId = await this.SeedDeviceBoundSessionAsync(User);
+        await RejectedInserts.RejectAuditAsync(this.Context, AuditAction.MfaVerifyFailed);
+        await RejectedInserts.RejectAuditAsync(this.Context, AuditAction.MfaLockedOut);
+
+        var statuses = new List<HttpStatusCode>();
+        for (var i = 0; i < MaxFailedAttempts; i++)
+        {
+            statuses.Add((await this.VerifyAsync("000000")).StatusCode);
+        }
+
+        statuses.Take(MaxFailedAttempts - 1).Should().OnlyContain(status => status == HttpStatusCode.Unauthorized);
+        statuses[^1].Should().Be(HttpStatusCode.TooManyRequests);
+
+        var mfa = await this.MfaRecordAsync();
+        mfa.FailedAttempts.Should().Be(MaxFailedAttempts);
+        mfa.IsLockedOut(DateTime.UtcNow).Should().BeTrue();
+
+        var session = await this.Context.MfaSessions.AsNoTracking().FirstAsync(x => x.Id == new MfaSessionId(sessionId));
+        session.IsRevoked.Should().BeTrue();
+
+        (await this.Context.AuditLogs.AsNoTracking().AnyAsync(x => x.Action == AuditAction.MfaVerifyFailed || x.Action == AuditAction.MfaLockedOut))
+            .Should().BeFalse("the triggers refused every one of them, which is the premise of the test");
     }
 
     [Fact]
@@ -257,7 +291,7 @@ public class MfaLockoutTests : BaseIntegrationTest, IAsyncLifetime
 
         var mfa = await this.MfaRecordAsync();
         mfa.FailedAttempts.Should().Be(1, "the counter restarted with the window rather than carrying on from the threshold");
-        mfa.IsLockedOut().Should().BeFalse();
+        mfa.IsLockedOut(DateTime.UtcNow).Should().BeFalse();
     }
 
     [Fact]
@@ -537,7 +571,8 @@ public class MfaLockoutTests : BaseIntegrationTest, IAsyncLifetime
             ipAddressHash: HashForBinding(ClientIp),
             userAgentHash: HashForBinding(TestUserAgent),
             ipAddress: ClientIp,
-            deviceLabel: "Chrome on Windows");
+            deviceLabel: "Chrome on Windows",
+            utcNow: DateTime.UtcNow);
 
         await this.Context.MfaSessions.AddAsync(session);
         await this.SaveChangesAsync();

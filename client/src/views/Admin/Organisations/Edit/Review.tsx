@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { composeTestId } from '../../../../helpers/testIds';
+import { httpDataOf, httpMessageOf, httpStatusOf } from '../../../../helpers/httpErrors';
 import { ErrorSummary, GovUKButton, GovUKSummaryCard, H1, SummaryList } from '../../../../components/GovUKComponents';
 import { ManagementLayout } from '../../../../layouts';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import usePageTitle from '../../../../hooks/usePageTitle';
 import { localAuthoritiesListKey, localAuthorityKey, organisationUsersListKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
@@ -38,7 +39,6 @@ const LocalAuthoritiesEditReview = (): React.ReactElement => {
   const [submitAttempts, setSubmitAttempts] = useState(0);
 
   usePageTitle(`${Object.keys(errors).length > 0 ? 'Error: ' : ''}Check your answers`);
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
 
   useEffect(() => {
     if (!state?.organisation?.organisationId) {
@@ -46,8 +46,8 @@ const LocalAuthoritiesEditReview = (): React.ReactElement => {
     }
   }, [state, organisationId, navigate]);
 
-  const { mutate, isLoading } = useMutation(
-    async (confirmOnsCodeChange: boolean) => {
+  const { mutate, isPending } = useMutation({
+    mutationFn: async (confirmOnsCodeChange: boolean) => {
       if (!state) throw new Error('Organisation details are missing.');
 
       await updateLocalAuthority(organisationId, {
@@ -77,43 +77,41 @@ const LocalAuthoritiesEditReview = (): React.ReactElement => {
         }
       }
     },
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(localAuthoritiesListKey());
-        queryClient.invalidateQueries(localAuthorityKey(organisationId));
-        queryClient.invalidateQueries(organisationUsersListKey(organisationId));
-        navigate(ROUTES.admin.organisations.detail(organisationId), {
-          replace: true,
-          state: {
-            banner: {
-              title: 'Edits saved',
-              body: `'${state?.organisation.name ?? 'The organisation'}' is now up to date.`,
-            },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: localAuthoritiesListKey() });
+      queryClient.invalidateQueries({ queryKey: localAuthorityKey(organisationId) });
+      queryClient.invalidateQueries({ queryKey: organisationUsersListKey(organisationId) });
+      navigate(ROUTES.admin.organisations.detail(organisationId), {
+        replace: true,
+        state: {
+          banner: {
+            title: 'Edits saved',
+            body: `'${state?.organisation.name ?? 'The organisation'}' is now up to date.`,
           },
-        });
-      },
-      onError: (error: any) => {
-        const status = error?.response?.status;
-        const message = error?.response?.data?.toString() ?? 'Could not save the changes. Try again.';
-        setSubmitAttempts((n) => n + 1);
+        },
+      });
+    },
+    onError: (error) => {
+      const status = httpStatusOf(error);
+      const message = httpMessageOf(error) ?? 'Could not save the changes. Try again.';
+      setSubmitAttempts((n) => n + 1);
 
-        if (status === 409) {
-          if (message.toLowerCase().includes('email')) {
-            setErrors({ submit: 'A user with this email address already exists.' });
-          } else if (message.startsWith('Organisation with ONS code')) {
-            setErrors({ submit: 'An organisation with this ONS code already exists.' });
-          } else if (message.startsWith('Organisation with name')) {
-            setErrors({ submit: 'An organisation with this name already exists.' });
-          } else {
-            setErrors({ submit: 'Could not save the changes. Try again.' });
-          }
-          return;
+      if (status === 409) {
+        if (message.toLowerCase().includes('email')) {
+          setErrors({ submit: 'A user with this email address already exists.' });
+        } else if (message.startsWith('Organisation with ONS code')) {
+          setErrors({ submit: 'An organisation with this ONS code already exists.' });
+        } else if (message.startsWith('Organisation with name')) {
+          setErrors({ submit: 'An organisation with this name already exists.' });
+        } else {
+          setErrors({ submit: 'Could not save the changes. Try again.' });
         }
+        return;
+      }
 
-        setErrors(errorsAsSubmitError(organisationServerErrors(error?.response?.data, 'Could not save the changes. Try again.'), 'Could not save the changes. Try again.'));
-      },
-    }
-  );
+      setErrors(errorsAsSubmitError(organisationServerErrors(httpDataOf(error), 'Could not save the changes. Try again.'), 'Could not save the changes. Try again.'));
+    },
+  });
 
   if (!state?.organisation?.organisationId) return <></>;
 
@@ -132,7 +130,7 @@ const LocalAuthoritiesEditReview = (): React.ReactElement => {
   return (
     <ManagementLayout backLink={{ href: ROUTES.admin.organisations.edit(organisationId), onClick: goBackToDetails }}>
       <div className="organisations-edit-page">
-        {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} testId="admin-local-authorities-edit-review-error-summary" />}
+        <ErrorSummary heading="There is a problem" errors={errorList} testId="admin-local-authorities-edit-review-error-summary" focusTrigger={submitAttempts} />
 
         <div className="organisations-edit-page__heading">
           <span className="govuk-caption-l">Edit organisation</span>
@@ -186,7 +184,10 @@ const LocalAuthoritiesEditReview = (): React.ReactElement => {
                       <span className="organisations-edit-page__review-contact">
                         <span>{contact.fullName}</span>
                         <span className="organisations-edit-page__review-muted">{displayContactJobRole(contact)}</span>
-                        <a href={`mailto:${contact.email}`} className="govuk-link">
+                        <a
+                          href={`mailto:${contact.email}`}
+                          className="govuk-link"
+                          data-testid={composeTestId('admin-local-authorities-edit-review', 'contact', index + 1, 'email')}>
                           {contact.email}
                         </a>
                       </span>
@@ -199,13 +200,13 @@ const LocalAuthoritiesEditReview = (): React.ReactElement => {
         </GovUKSummaryCard>
 
         <div className="govuk-button-group">
-          <GovUKButton onClick={handleSave} id={SUBMIT_BUTTON_ID} isLoading={isLoading} disabled={isLoading} data-testid="admin-local-authorities-edit-review-save">
+          <GovUKButton onClick={handleSave} id={SUBMIT_BUTTON_ID} isLoading={isPending} disabled={isPending} data-testid="admin-local-authorities-edit-review-save">
             Save
           </GovUKButton>
           <GovUKButton
             className="govuk-button govuk-button--secondary"
             onClick={() => navigate(ROUTES.admin.organisations.editDiscard(organisationId), { state })}
-            disabled={isLoading}
+            disabled={isPending}
             data-testid="admin-local-authorities-edit-review-discard">
             Discard edits
           </GovUKButton>

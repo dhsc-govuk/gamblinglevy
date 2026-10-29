@@ -10,8 +10,8 @@ namespace Application.Tests.Unit.Users;
 /// in an integration test that would need a container to assert the same arithmetic.
 ///
 /// Every "now" below is derived from the session's own CreatedAt. MfaSession.New stamps CreatedAt,
-/// LastActivityAt and ExpiresAt from the wall clock in one go, so anchoring on it is what keeps these
-/// assertions deterministic whatever time of day the suite runs.
+/// LastActivityAt and ExpiresAt from the one instant it is handed, and that instant is fixed here, so
+/// these assertions are deterministic whatever time of day the suite runs.
 /// </summary>
 public class MfaSessionTests
 {
@@ -19,6 +19,8 @@ public class MfaSessionTests
     private const string UserAgentHash = "user-agent-hash";
     private const int IdleTimeoutMinutes = 30;
     private const int ExpiryHours = 8;
+
+    private static readonly DateTime CreatedAt = new(2026, 8, 4, 9, 0, 0, DateTimeKind.Utc);
 
     [Fact]
     public void New_StartsTheIdleWindowAtCreation()
@@ -109,7 +111,7 @@ public class MfaSessionTests
     [InlineData("other-ip-hash", UserAgentHash)]
     [InlineData(IpHash, "other-user-agent-hash")]
     [InlineData("other-ip-hash", "other-user-agent-hash")]
-    public void Evaluate_IsDeviceMismatch_WhenTheBindingDoesNotMatch(string ipHash, string userAgentHash)
+    public void Evaluate_IsDeviceMismatch_WhenTheBindingDoesNotMatch_AndIpBindingIsOn(string ipHash, string userAgentHash)
     {
         var session = NewSession();
 
@@ -117,9 +119,43 @@ public class MfaSessionTests
             ipHash,
             userAgentHash,
             session.CreatedAt.AddMinutes(1),
-            IdleTimeoutMinutes);
+            IdleTimeoutMinutes,
+            bindToIpAddress: true);
 
         status.Should().Be(MfaSessionStatus.DeviceMismatch);
+    }
+
+    [Theory]
+    [InlineData(IpHash, "other-user-agent-hash")]
+    [InlineData("other-ip-hash", "other-user-agent-hash")]
+    public void Evaluate_IsDeviceMismatch_WhenTheUserAgentChanges_AndIpBindingIsOff(string ipHash, string userAgentHash)
+    {
+        var session = NewSession();
+
+        var status = session.Evaluate(
+            ipHash,
+            userAgentHash,
+            session.CreatedAt.AddMinutes(1),
+            IdleTimeoutMinutes,
+            bindToIpAddress: false);
+
+        status.Should().Be(MfaSessionStatus.DeviceMismatch);
+    }
+
+    [Fact]
+    public void Evaluate_IsValid_WhenOnlyTheIpChanges_AndIpBindingIsOff()
+    {
+        // BLUM-7848 — proxy pools and edge connection recycling move the address of a user who has not moved.
+        var session = NewSession();
+
+        var status = session.Evaluate(
+            "other-ip-hash",
+            UserAgentHash,
+            session.CreatedAt.AddMinutes(1),
+            IdleTimeoutMinutes,
+            bindToIpAddress: false);
+
+        status.Should().Be(MfaSessionStatus.Valid);
     }
 
     [Fact]
@@ -134,7 +170,8 @@ public class MfaSessionTests
             "other-ip-hash",
             "other-user-agent-hash",
             session.CreatedAt.AddMinutes(45),
-            IdleTimeoutMinutes);
+            IdleTimeoutMinutes,
+            bindToIpAddress: true);
 
         status.Should().Be(MfaSessionStatus.IdleTimeout);
     }
@@ -153,8 +190,8 @@ public class MfaSessionTests
     }
 
     private static MfaSessionStatus Evaluate(MfaSession session, DateTime utcNow) =>
-        session.Evaluate(IpHash, UserAgentHash, utcNow, IdleTimeoutMinutes);
+        session.Evaluate(IpHash, UserAgentHash, utcNow, IdleTimeoutMinutes, bindToIpAddress: true);
 
     private static MfaSession NewSession() =>
-        MfaSession.New(MfaSessionId.New(), UserId.New(), IpHash, UserAgentHash, "198.51.100.7", "Chrome on Windows", ExpiryHours);
+        MfaSession.New(MfaSessionId.New(), UserId.New(), IpHash, UserAgentHash, "198.51.100.7", "Chrome on Windows", CreatedAt, ExpiryHours);
 }

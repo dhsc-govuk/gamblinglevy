@@ -28,5 +28,9 @@ public class UsersConfiguration : IEntityTypeConfiguration<User>
         builder.Property(x => x.UpdatedAt)
             .HasConversion(new DateTimeUtcConverter())
             .IsRequired(false);
+
+        builder.Property(x => x.InvitationHeldAt)
+            .HasConversion(new DateTimeUtcConverter())
+            .IsRequired(false);
     }
 }

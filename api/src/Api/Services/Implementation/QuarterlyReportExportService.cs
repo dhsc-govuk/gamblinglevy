@@ -1,7 +1,8 @@
 using System.Globalization;
-using System.Text;
 using Api.Services.Abstract;
+using Api.Services.ReportSnapshot;
 using Application.Common.Csv;
+using Application.Common.Features;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Permissions;
 using Application.Common.ReportSnapshots;
@@ -21,7 +22,8 @@ public class QuarterlyReportExportService(
     IReportSnapshotService snapshotService,
     ICollectionQueries collectionQueries,
     IOrganisationQueries organisationQueries,
-    ISubmissionQueries submissionQueries) : IQuarterlyReportExportService
+    ISubmissionQueries submissionQueries,
+    IFeatureFlags featureFlags) : IQuarterlyReportExportService
 {
     // Every collection setup field is nullable on the entity: a quarterly collection can be saved as a partial draft,
     // and an admin can revert a published one to draft and clear it. A submitted report against such a collection is
@@ -30,10 +32,24 @@ public class QuarterlyReportExportService(
     // having.
     private const string NotRecorded = "Not recorded";
 
+    // The identity column prepended to every row of every CSV in the ZIP (BLUM-7647). "Local authority" rather than
+    // "Organisation" to match the field label report-summary.csv has always used.
+    private const string LocalAuthorityColumn = "Local authority";
+
     private static readonly CultureInfo EnGb = CultureInfo.GetCultureInfo("en-GB");
     private static readonly TimeZoneInfo UkTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
 
-    public async Task<Option<ReportExportFile>> GenerateAsync(Permission permission, Guid collectionId, CancellationToken cancellationToken)
+    public Task<Option<ReportExportFile>> GenerateAsync(Permission permission, Guid collectionId, CancellationToken cancellationToken) =>
+        GenerateForCallerAsync(permission, collectionId, allowLiveRender: true, cancellationToken);
+
+    public Task<Option<ReportExportFile>> GenerateFromFrozenSnapshotAsync(Permission permission, Guid collectionId, CancellationToken cancellationToken) =>
+        GenerateForCallerAsync(permission, collectionId, allowLiveRender: false, cancellationToken);
+
+    private async Task<Option<ReportExportFile>> GenerateForCallerAsync(
+        Permission permission,
+        Guid collectionId,
+        bool allowLiveRender,
+        CancellationToken cancellationToken)
     {
         // IsNone/ValueUnsafe, not Match — Option.Match throws on a null result (see
         // ActivitiesControllerService.ResolveOrg), which would defeat the null guard immediately below.
@@ -72,6 +88,12 @@ public class QuarterlyReportExportService(
         if (!submission.IsSubmitted)
         {
             return Option<ReportExportFile>.None;
+        }
+
+        if (!allowLiveRender)
+        {
+            var frozen = TryDeserializeSnapshot(submission.ReportSnapshotJson);
+            return frozen is null ? Option<ReportExportFile>.None : BuildExportFile(collection, organisation.Name, submission, frozen);
         }
 
         var snapshot = await GetOrBuildSnapshotAsync(submission.ReportSnapshotJson, permission, collectionId, cancellationToken);
@@ -126,55 +148,94 @@ public class QuarterlyReportExportService(
         string localAuthorityName,
         Domain.Submissions.Submission submission,
         ReportSnapshotDocument snapshot)
-        => BuildExportFile(collection, localAuthorityName, submission.ReferenceNumber!, submission.SubmittedAt!.Value, snapshot);
+        => BuildExportFile(
+            collection,
+            localAuthorityName,
+            submission.ReferenceNumber!,
+            submission.SubmittedAt!.Value,
+            submission.Sections.Select(s => s.ModuleCode).ToHashSet(StringComparer.Ordinal),
+            snapshot);
 
     private ReportExportFile BuildExportFile(
         Collection collection,
         string localAuthorityName,
         string referenceNumber,
         DateTime submittedAt,
+        IReadOnlySet<string> moduleCodes,
         ReportSnapshotDocument snapshot)
     {
-        // One organisation, so the shared row builders get an empty identity prefix — the cross-organisation export
-        // passes {Organisation, ONS code, E-code} instead and otherwise produces the same rows.
-        ReportSnapshotCsvSource[] sources = [new([], snapshot)];
+        // One organisation, so the shared row builders get a single identity cell — the cross-organisation export
+        // passes {Organisation, Region, ONS code, E-code} instead and otherwise produces the same rows. The name is
+        // on every row (BLUM-7647) because a downloaded file gets moved, renamed and mailed on, and a sheet of
+        // answers that does not say whose answers they are is unusable once that happens.
+        ReportSnapshotCsvSource[] sources = [new([localAuthorityName], snapshot)];
 
-        var summaryCsv = BuildSummaryCsv(collection, localAuthorityName, referenceNumber, submittedAt);
-        var keyResultsCsv = CsvWriter.Build(
-            ["Activity", "Question", "Answer"],
-            ReportSnapshotCsv.SectionRows(sources, s => s.ActivitySections));
-        var fundingCsv = snapshot.Funding is null
-            ? Utf8("No funding spend data was recorded.")
-            : BuildFundingCsv(sources, snapshot.Funding);
-        var feedbackCsv = snapshot.FeedbackSections.Count == 0
-            ? Utf8("No strategic feedback was recorded.")
-            : CsvWriter.Build(["Section", "Question", "Answer"], ReportSnapshotCsv.SectionRows(sources, s => s.FeedbackSections));
-
-        var content = ZipWriter.Build(
-        [
-            ("report-summary.csv", summaryCsv),
-            ("activity-key-results.csv", keyResultsCsv),
-            ("funding-spend.csv", fundingCsv),
-            ("strategic-feedback.csv", feedbackCsv),
-        ]);
-
-        var fileName = $"quarterly-report-{referenceNumber}.zip";
-        return new ReportExportFile(fileName, content);
-    }
-
-    private ReportSnapshotDocument DeserializeSnapshotOrEmpty(string? snapshotJson)
-    {
-        if (!string.IsNullOrEmpty(snapshotJson))
+        // Entry names are a downstream data contract for the analysts who consume the ZIP, pinned by tests.
+        // BLUM-7716 renamed activity-key-results.csv to activity-results.csv to match the "Activity results"
+        // wording BLUM-7563 introduced; the activity_key_results module code is a stored identifier and stays.
+        //
+        // A section file is written only when the report HAD that section (BLUM-8106): a form deselected on the
+        // collection gives the LA no section for it, so its file does not belong in their copy of the report. Keyed
+        // on the submission's sections rather than on the snapshot's content, because an empty snapshot part cannot
+        // tell "not part of this report" from "part of it, nothing recorded" — the latter keeps its placeholder file.
+        var entries = new List<(string Name, byte[] Content)>
         {
-            var stored = snapshotService.Deserialize(snapshotJson);
-            if (stored is not null)
-            {
-                return stored;
-            }
+            ("report-summary.csv", BuildSummaryCsv(collection, localAuthorityName, referenceNumber, submittedAt)),
+        };
+
+        if (moduleCodes.Contains(SubmissionModules.ActivityKeyResults))
+        {
+            entries.Add(("activity-results.csv", CsvWriter.Build(
+                [LocalAuthorityColumn, "Activity", "Question", "Answer"],
+                ReportSnapshotCsv.SectionRows(sources, s => s.ActivitySections))));
         }
 
-        return new ReportSnapshotDocument([], null, []);
+        if (moduleCodes.Contains(SubmissionModules.FundingSpent))
+        {
+            entries.Add(("funding-spend.csv", snapshot.Funding is null
+                ? EmptySectionCsv(localAuthorityName, "No funding spend data was recorded.")
+                : BuildFundingCsv(sources, snapshot.Funding)));
+        }
+
+        if (moduleCodes.Contains(SubmissionModules.StrategicFeedback))
+        {
+            entries.Add(("strategic-feedback.csv", snapshot.FeedbackSections.Count == 0
+                ? EmptySectionCsv(localAuthorityName, "No strategic feedback was recorded.")
+                : BuildStrategicFeedbackCsv(localAuthorityName, sources, snapshot)));
+        }
+
+        var content = ZipWriter.Build(entries);
+
+        return new ReportExportFile(BuildFileName(localAuthorityName, collection, referenceNumber), content);
     }
+
+    // Behind BLUM_8329 the file is the LA's single row, one column per question (the same answer cells DHSC's window
+    // export gives this organisation); otherwise one row per question under a Section column.
+    private byte[] BuildStrategicFeedbackCsv(
+        string localAuthorityName,
+        IReadOnlyList<ReportSnapshotCsvSource> sources,
+        ReportSnapshotDocument snapshot)
+    {
+        if (!featureFlags.IsEnabled(Feature.BLUM_8329))
+        {
+            return CsvWriter.Build([LocalAuthorityColumn, "Section", "Question", "Answer"], ReportSnapshotCsv.SectionRows(sources, s => s.FeedbackSections));
+        }
+
+        // Only reached for a snapshot holding strategic feedback (the caller writes the placeholder otherwise), so null
+        // is a broken caller — fail rather than write a one-cell row under a five-column header.
+        var answers = ReportSnapshotCsv.StrategicFeedbackAnswers(snapshot)
+            ?? throw new InvalidOperationException("The strategic feedback file was built for a snapshot with no strategic feedback.");
+        return CsvWriter.Build(
+            [LocalAuthorityColumn, .. ReportSnapshotCsv.StrategicFeedbackQuestionColumns],
+            [[localAuthorityName, .. answers]]);
+    }
+
+    // Null when nothing is stored or the stored JSON does not read as a snapshot document.
+    private ReportSnapshotDocument? TryDeserializeSnapshot(string? snapshotJson) =>
+        string.IsNullOrEmpty(snapshotJson) ? null : snapshotService.Deserialize(snapshotJson);
+
+    private ReportSnapshotDocument DeserializeSnapshotOrEmpty(string? snapshotJson) =>
+        TryDeserializeSnapshot(snapshotJson) ?? new ReportSnapshotDocument([], null, []);
 
     // Prefer the snapshot frozen at submit time so the finalised report never drifts. Submissions finalised before
     // snapshots existed have none stored — render live from the current data as a best-effort fallback.
@@ -184,13 +245,10 @@ public class QuarterlyReportExportService(
         Guid collectionId,
         CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrEmpty(snapshotJson))
+        var stored = TryDeserializeSnapshot(snapshotJson);
+        if (stored is not null)
         {
-            var stored = snapshotService.Deserialize(snapshotJson);
-            if (stored is not null)
-            {
-                return stored;
-            }
+            return stored;
         }
 
         return (await snapshotService.BuildAsync(permission, collectionId, cancellationToken))
@@ -204,15 +262,18 @@ public class QuarterlyReportExportService(
             : NotRecorded;
         var ukSubmittedAt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(submittedAt, DateTimeKind.Utc), UkTimeZone);
 
+        // The identity cell leads every row here too, so all four files in the ZIP share one shape. The
+        // "Local authority" field row below is redundant against it and stays: it is the labelled statement of whose
+        // report this is, and dropping it would change a file shape nothing asked to change.
         var rows = new List<IReadOnlyList<string>>();
-        rows.Add(["Reference number", referenceNumber]);
-        rows.Add(["Local authority", localAuthorityName]);
-        rows.Add(["Financial year", string.IsNullOrWhiteSpace(collection.FinancialYear) ? NotRecorded : collection.FinancialYear]);
-        rows.Add(["Quarter", collection.Quarter is { } quarter ? quarter.ToString(CultureInfo.InvariantCulture) : NotRecorded]);
-        rows.Add(["Reporting period", period]);
-        rows.Add(["Submission deadline", collection.SubmissionDeadline is { } deadline ? FormatDate(deadline) : NotRecorded]);
-        rows.Add(["Submitted", $"{ukSubmittedAt.ToString("d MMMM yyyy 'at' HH:mm", EnGb)} (UK time)"]);
-        return CsvWriter.Build(["Field", "Value"], rows);
+        rows.Add([localAuthorityName, "Reference number", referenceNumber]);
+        rows.Add([localAuthorityName, LocalAuthorityColumn, localAuthorityName]);
+        rows.Add([localAuthorityName, "Financial year", string.IsNullOrWhiteSpace(collection.FinancialYear) ? NotRecorded : collection.FinancialYear]);
+        rows.Add([localAuthorityName, "Quarter", collection.Quarter is { } quarter ? quarter.ToString(CultureInfo.InvariantCulture) : NotRecorded]);
+        rows.Add([localAuthorityName, "Reporting period", period]);
+        rows.Add([localAuthorityName, "Submission deadline", collection.SubmissionDeadline is { } deadline ? FormatDate(deadline) : NotRecorded]);
+        rows.Add([localAuthorityName, "Submitted", $"{ukSubmittedAt.ToString("d MMMM yyyy 'at' HH:mm", EnGb)} (UK time)"]);
+        return CsvWriter.Build([LocalAuthorityColumn, "Field", "Value"], rows);
     }
 
     // The LA's funding file keeps both grains together — the per-activity table, then a spacer, a sub-header and the
@@ -222,14 +283,44 @@ public class QuarterlyReportExportService(
     {
         var rows = new List<IReadOnlyList<string>>(ReportSnapshotCsv.FundingRows(sources));
         rows.Add([]);
-        rows.Add(ReportSnapshotCsv.FundingSummaryColumns);
+        // The sub-header takes the identity cell as well, so it stays aligned with the summary rows underneath it,
+        // which carry the source prefix like every other row.
+        rows.Add([LocalAuthorityColumn, .. ReportSnapshotCsv.FundingSummaryColumns]);
         rows.AddRange(ReportSnapshotCsv.FundingSummaryRows(sources));
-        return CsvWriter.Build(funding.Header, rows);
+
+        // "Row type" closes the header because FundingRows closes every per-activity row and the subtotal with it
+        // (BLUM-7668). The spacer and the summary block below stay their own narrower shape, as they already did.
+        return CsvWriter.Build([LocalAuthorityColumn, .. funding.Header, ReportSnapshotCsv.RowTypeColumn], rows);
     }
 
     private string FormatDate(DateOnly date) => date.ToString("d MMMM yyyy", EnGb);
 
-    // The two "nothing was recorded" placeholders are prose, not CSV, so they bypass CsvWriter. UTF-8 without a BOM,
-    // matching every other entry in the ZIP.
-    private static byte[] Utf8(string text) => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(text);
+    // The saved file names the organisation and the period it covers (BLUM-7647), e.g.
+    // "Manchester-City-Council-Q2-2025-26.zip" — the reference number alone said nothing to anyone holding the file
+    // outside the service. MVC's File(..., fileDownloadName) writes both filename and filename*, and CORS exposes
+    // Content-Disposition (RateLimitHeaders.All), so the client saves this name rather than its own fallback.
+    //
+    // Every collection setup field is nullable (see NotRecorded above), so each segment is dropped independently
+    // rather than rendering a placeholder into a filename, and a name that slugs away to nothing falls back to the
+    // original shape. A download must never fail over what an organisation is called.
+    private static string BuildFileName(string localAuthorityName, Collection collection, string referenceNumber)
+    {
+        var name = ExportFileName.NameSegment(localAuthorityName);
+        if (name.Length == 0)
+        {
+            return $"quarterly-report-{referenceNumber}.zip";
+        }
+
+        var quarter = collection.Quarter is { } q ? $"-Q{q.ToString(CultureInfo.InvariantCulture)}" : string.Empty;
+        var financialYear = ExportFileName.Slug(collection.FinancialYear ?? string.Empty);
+        var year = financialYear.Length == 0 ? string.Empty : $"-{financialYear}";
+        return $"{name}{quarter}{year}.zip";
+    }
+
+    // A section with nothing in it is still that organisation's file. The two "nothing was recorded" placeholders
+    // used to be bare prose, which left the sparsest reports — the ones whose only content is the name of whoever
+    // filed them — as the one case a reader could not attribute. They are now a one-row CSV carrying the same
+    // sentence behind the same identity cell as every other file in the ZIP.
+    private static byte[] EmptySectionCsv(string localAuthorityName, string notice) =>
+        CsvWriter.Build([LocalAuthorityColumn, "Note"], [[localAuthorityName, notice]]);
 }

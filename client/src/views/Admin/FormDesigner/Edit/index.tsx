@@ -1,14 +1,15 @@
 import React, { useEffect, useReducer, useRef } from 'react';
 import { PageLoading } from '../../../../components/GovUKComponents';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
-import { ErrorSummary, GovUKButton, H1 } from '../../../../components/GovUKComponents';
+import { ErrorSummary, GovUKButton, H1, NotFound } from '../../../../components/GovUKComponents';
 import QuestionForm from '../../../../components/Global/FormDesigner/QuestionForm';
 import { useAuthProvider } from '../../../../components/AuthProvider';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import { activityFormSchemaKey, adminActivityFormSchemaKey, defaultStaleTime } from '../../../../helpers/queriesParams';
+import { isNotFoundError } from '../../../../helpers/httpErrors';
+import { retryUnlessNotFound } from '../../../../helpers/queryRetry';
 import { isChoiceType, type QuestionType } from '../../../../types/formSchema';
 import { canManageFormDesigner, formDesignerBreadcrumbs } from '../navigation';
 import { questionFormReducer, createInitialQuestionFormState, validateQuestion } from '../reducer';
@@ -32,7 +33,7 @@ const FormQuestionsEdit = (): React.ReactElement => {
     }
   }, [userRole, navigate]);
 
-  const schemaQuery = useQuery(adminActivityFormSchemaKey, getFormSchema, { staleTime: defaultStaleTime });
+  const schemaQuery = useQuery({ queryKey: adminActivityFormSchemaKey, queryFn: getFormSchema, staleTime: defaultStaleTime, retry: retryUnlessNotFound });
   const sections = (schemaQuery.data?.data.sections ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder);
   const questions = schemaQuery.data?.data.questions ?? [];
   const question = questions.find((q) => q.id === questionId);
@@ -64,16 +65,13 @@ const FormQuestionsEdit = (): React.ReactElement => {
     }
   }, [question]);
 
-  const availableParents = questions.filter(
-    (q) => q.sectionId === state.sectionId && q.isActive && isChoiceType(q.questionType) && q.code !== state.code,
-  );
+  const availableParents = questions.filter((q) => q.sectionId === state.sectionId && q.isActive && isChoiceType(q.questionType) && q.code !== state.code);
 
-  useErrorSummaryFocus(state.submitAttempts, Object.keys(state.errors).length > 0);
-
-  const updateMutation = useMutation((input: Parameters<typeof updateQuestion>[1]) => updateQuestion(questionId, input), {
+  const updateMutation = useMutation({
+    mutationFn: (input: Parameters<typeof updateQuestion>[1]) => updateQuestion(questionId, input),
     onSuccess: () => {
-      queryClient.invalidateQueries(adminActivityFormSchemaKey);
-      queryClient.invalidateQueries(activityFormSchemaKey);
+      queryClient.invalidateQueries({ queryKey: adminActivityFormSchemaKey });
+      queryClient.invalidateQueries({ queryKey: activityFormSchemaKey });
       navigate('/admin/activity-record-questions');
     },
     onError: (error) => {
@@ -100,9 +98,7 @@ const FormQuestionsEdit = (): React.ReactElement => {
       helpTextSummary: state.helpTextSummary.trim() || null,
       conditionalQuestionCode: state.conditionalEnabled ? state.conditionalQuestionCode : null,
       conditionalValue: state.conditionalEnabled ? state.conditionalValue : null,
-      options: isChoiceType(state.questionType)
-        ? state.options.map((option, index) => ({ value: option.value.trim(), label: option.label.trim(), displayOrder: index }))
-        : [],
+      options: isChoiceType(state.questionType) ? state.options.map((option, index) => ({ value: option.value.trim(), label: option.label.trim(), displayOrder: index })) : [],
     });
   };
 
@@ -110,32 +106,31 @@ const FormQuestionsEdit = (): React.ReactElement => {
     .filter(([, message]) => Boolean(message))
     .map(([key, message]) => ({ targetName: key, text: message }));
 
+  // The API answers a bodiless 404 only when BLUM_9395 has been switched off since this tab loaded. Without this the
+  // page would wait for ever: it shows the loader until the question is found.
+  if (isNotFoundError(schemaQuery.error)) {
+    return <NotFound goBack={navigate} />;
+  }
+
   return (
     <GeneralLayout
       breadcrumbs={formDesignerBreadcrumbs([{ label: 'Edit question', link: `/admin/activity-record-questions/${questionId}/edit` }])}
-      backLink={{ href: '/admin/activity-record-questions' }}
-    >
+      backLink={{ href: '/admin/activity-record-questions' }}>
       <div style={{ paddingTop: '20px' }}>
         {schemaQuery.isLoading || !question ? (
           <PageLoading />
         ) : (
           <>
-            {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+            <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={state.submitAttempts} />
             <H1>Edit question</H1>
 
             <QuestionForm state={state} dispatch={dispatch} sections={sections} availableParents={availableParents} isEdit />
 
             <div className="govuk-button-group">
-              <GovUKButton onClick={handleSubmit} disabled={updateMutation.isLoading} data-testid="admin-activity-questions-edit-submit">
+              <GovUKButton onClick={handleSubmit} disabled={updateMutation.isPending} data-testid="admin-activity-questions-edit-submit">
                 Save changes
               </GovUKButton>
-              <button
-                type="button"
-                className="govuk-link"
-                style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
-                onClick={() => navigate('/admin/activity-record-questions')}
-                data-testid="admin-activity-questions-edit-cancel"
-              >
+              <button type="button" className="govuk-link" onClick={() => navigate('/admin/activity-record-questions')} data-testid="admin-activity-questions-edit-cancel">
                 Cancel
               </button>
             </div>

@@ -28,8 +28,8 @@ export interface ReportLoadFailureProps {
 // Focus moves to the wrapper on mount rather than announcing through a live region, matching NotAuthorised,
 // NotFound and UserLoadFailed: all four are the same event — an async response replacing the page with no route
 // change — and one mechanism is one thing to verify. Focus also relocates the user, which role="alert" does not.
-// The mount-only effect covers the retry path too: react-query v3 resets a query with no cached data back to
-// `loading` on refetch, so this component unmounts to PageLoading and remounts on each failure.
+// The mount-only effect covers the retry path too: react-query resets a query with no cached data back to
+// `pending` on refetch, so this component unmounts to PageLoading and remounts on each failure.
 // The ref sits on the wrapper because the shared H1 is a plain function component, not a forwardRef.
 const ReportLoadFailure = ({ kind, notFoundHeading, message, returnTo, returnLabel, onRetry, testId }: ReportLoadFailureProps): React.ReactElement => {
   const containerRef = useRef<HTMLDivElement>(null);

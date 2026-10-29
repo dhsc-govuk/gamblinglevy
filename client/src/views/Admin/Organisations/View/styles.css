@@ -95,19 +95,12 @@
   align-items: flex-end;
   column-gap: 30px;
   display: flex;
+  flex-wrap: wrap;
   margin-bottom: 20px;
-  margin-left: 0;
-  margin-right: 0;
   width: 100%;
 }
 
-.organisations-view-page .govuk-table-filter > [class*='govuk-grid-column'] {
-  box-sizing: border-box;
-  padding-left: 0;
-  padding-right: 0;
-}
-
-.organisations-view-page .govuk-table-filter .govuk-grid-column-two-thirds {
+.organisations-view-page .govuk-table-filter__search {
   flex: 1 1 auto;
   width: auto;
 }
@@ -124,15 +117,6 @@
 .organisations-view-page .govuk-table-filter .govuk-label {
   line-height: 25px;
   margin-bottom: 5px;
-}
-
-/* Floors rather than fixed heights so a user-defined line height grows these controls instead of clipping
-   their text (WCAG 1.4.12); they still render at 40px at default spacing. */
-.organisations-view-page .govuk-table-filter__search,
-.organisations-view-page .govuk-table-filter__input,
-.organisations-view-page .govuk-table-filter__search-button {
-  min-height: 40px;
-  height: auto;
 }
 
 .organisations-view-page .govuk-table {
@@ -168,7 +152,7 @@
     display: block;
   }
 
-  .organisations-view-page .govuk-table-filter .govuk-grid-column-two-thirds {
+  .organisations-view-page .govuk-table-filter__search {
     width: 100%;
   }
 

@@ -1,4 +1,5 @@
 using Application.Forms.Answers;
+using Application.Submissions.Offline;
 using Domain.Activities;
 using Domain.Collections;
 using Domain.Submissions;
@@ -40,6 +41,11 @@ public class SubmissionNotReadyToSubmitException(SubmissionId id)
 // Mapped to 409 Conflict.
 public class SubmissionAlreadySubmittedException(SubmissionId id)
     : SubmissionException(id, "This report has already been submitted and can no longer be changed.");
+
+// A submission that was never finalised has no frozen ReportSnapshotJson to regenerate — there is nothing to
+// rebuild until the LA actually submits. Mapped to 422, mirroring SubmissionNotReadyToSubmitException.
+public class SubmissionNotSubmittedException(SubmissionId id)
+    : SubmissionException(id, "This report has not been submitted yet, so it has no snapshot to regenerate.");
 
 public class SubmissionActivityNotReportableException(SubmissionId id, ActivityId activityId, string reason)
     : SubmissionException(id, $"Activity {activityId} cannot be reported on: {reason}")
@@ -83,3 +89,36 @@ public class SubmissionForbiddenException(SubmissionId id, string message)
 
 public class SubmissionUnknownException(SubmissionId id, Exception innerException)
     : SubmissionException(id, $"Unknown exception for the submission {id}", innerException);
+
+// An offline report upload (BLUM-8310) refused as a whole before any answer is read: no file, not a CSV, not one of
+// our templates, a template for another report or an out-of-date one. Code is the OFFLINE_* envelope code and
+// Message is the fixed GDS copy the page shows (never built from the file's content). Mapped to 400.
+public class OfflineUploadRejectedException(SubmissionId id, string code, string message)
+    : SubmissionException(id, message)
+{
+    public string Code { get; } = code;
+}
+
+// An offline report upload whose answers have problems. Nothing is saved; the page lists Errors and offers
+// AnnotatedFile — the person's own file with each row's problems written into its Errors column. Mapped to 422
+// OFFLINE_UPLOAD_INVALID.
+public class OfflineUploadInvalidException(
+    SubmissionId id,
+    string moduleCode,
+    IReadOnlyList<OfflineCellError> errors,
+    byte[] annotatedFile,
+    string annotatedFileName)
+    : SubmissionException(id, "The selected file has errors")
+{
+    public string ModuleCode { get; } = moduleCode;
+
+    public IReadOnlyList<OfflineCellError> Errors { get; } = errors;
+
+    public byte[] AnnotatedFile { get; } = annotatedFile;
+
+    public string AnnotatedFileName { get; } = annotatedFileName;
+}
+
+// An offline template asked for a section this report does not have. Mapped to 404.
+public class OfflineSectionNotInReportException(SubmissionId id, string moduleCode)
+    : SubmissionException(id, $"This report has no {moduleCode} section.");

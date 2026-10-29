@@ -18,20 +18,24 @@ export const viewPatientTestMetricsCacheKey = (organisationId: string, locationI
 export const viewPatientTestReportSummaryCacheKey = (organisationId: string, locationId: string, patientTestReportId: string) =>
   `organisations-${organisationId}-locations-${locationId}-patient-test-reports-${patientTestReportId}-summary`;
 
-export const profileDateCacheKey = 'profile-data';
+export const profileDateCacheKey = ['profile-data'] as const;
+export const mfaStatusKey = ['mfa-status'] as const;
 
 // The caller's own active sessions (BLUM-7241). Scoped server-side to the signed-in user, so no id in the
 // key — and deliberately no defaultStaleTime at the call site: the user acts on this list to shut somebody
 // out, so a cached answer is the one thing it must not give them.
-export const mySessionsKey = 'my-sessions';
+export const mySessionsKey = ['my-sessions'] as const;
 
-export const adminUsersListKey = 'admin-users-list';
+export const adminUsersListKey = ['admin-users-list'] as const;
 export const adminUserKey = (userId: string) => ['admin-user', userId] as const;
-export const deletedUsersListKey = 'admin-deleted-users-list';
+export const deletedUsersListKey = ['admin-deleted-users-list'] as const;
 export const deletedUserLogsKey = (userId: string) => ['admin-deleted-user-logs', userId] as const;
 export const deletedUserDetailKey = (auditLogId: string) => ['admin-deleted-user-detail', auditLogId] as const;
 
 export const organisationUsersListKey = (organisationId: string) => ['organisation-users-list', organisationId] as const;
+// An LA's own deleted users: the audit-log entries, and one entry's snapshot.
+export const orgDeletedUsersListKey = (organisationId: string | null) => ['org-deleted-users-list', organisationId] as const;
+export const orgDeletedUserDetailKey = (auditLogId: string) => ['org-deleted-user-detail', auditLogId] as const;
 export const organisationUserKey = (organisationId: string, userId: string) => ['organisation-user', organisationId, userId] as const;
 
 export const auditLogsListKey = (filterKey: string) => ['audit-logs', filterKey] as const;
@@ -39,38 +43,45 @@ export const auditLogKey = (auditLogId: string) => ['audit-log', auditLogId] as 
 
 export const localAuthoritiesListKey = (onboardingStatus?: string) => ['local-authorities-list', onboardingStatus ?? 'all'] as const;
 export const localAuthorityKey = (organisationId: string) => ['local-authority', organisationId] as const;
-export const deletedOrganisationsListKey = 'admin-deleted-organisations-list';
+export const deletedOrganisationsListKey = ['admin-deleted-organisations-list'] as const;
 
 // Funding dashboard (BLUM-6213). Scoped server-side to the signed-in user's organisation, so no
 // org id is part of the key.
-export const laFundingDashboardKey = 'la-funding-dashboard';
+export const laFundingDashboardKey = ['la-funding-dashboard'] as const;
 
-export const activitiesListKey = 'activities-list';
-export const activitiesDeletedKey = 'activities-deleted';
+export const activitiesListKey = ['activities-list'] as const;
+export const activitiesDeletedKey = ['activities-deleted'] as const;
 export const activityKey = (activityId: string) => ['activity', activityId] as const;
-export const activityTaxonomyKey = 'activity-taxonomy';
+export const activityTaxonomyKey = ['activity-taxonomy'] as const;
 
 // Activity-record form designer (BLUM-6444). The consumption read (active schema) and the DHSC authoring read
 // (full schema) hit different endpoints, so they use separate keys; authoring mutations invalidate both.
-export const activityFormSchemaKey = 'activity-form-schema';
-export const adminActivityFormSchemaKey = 'admin-activity-form-schema';
+export const activityFormSchemaKey = ['activity-form-schema'] as const;
+// One category's schema. Spreads the key above, which is what lets the designer's invalidation of it reach these.
+export const activityFormSchemaKeyFor = (categoryId: string | null | undefined) => [...activityFormSchemaKey, categoryId] as const;
+export const adminActivityFormSchemaKey = ['admin-activity-form-schema'] as const;
+export const adminActivityFormCategoriesKey = ['admin-activity-form-categories'] as const;
 
 // Data collection management (DHSC admin).
-export const collectionsListKey = 'data-collections-list';
-export const collectionsDeletedKey = 'data-collections-deleted';
+export const collectionsListKey = ['data-collections-list'] as const;
+export const collectionsDeletedKey = ['data-collections-deleted'] as const;
 export const collectionKey = (id: string) => ['data-collection', id] as const;
-export const collectionFormOptionsKey = 'data-collection-form-options';
-export const collectionReportingLasKey = 'data-collection-reporting-las';
+export const collectionFormOptionsKey = ['data-collection-form-options'] as const;
+export const collectionReportingLasKey = ['data-collection-reporting-las'] as const;
 
 // DHSC submission visibility (BLUM-6095 / BLUM-6445): the per-window organisation status list and a single
 // organisation's submission detail.
 export const reportSubmissionsKey = (collectionId: string) => ['report-submissions', collectionId] as const;
 export const reportSubmissionDetailKey = (collectionId: string, organisationId: string) => ['report-submission-detail', collectionId, organisationId] as const;
 
-// Forms builder (data-collection form modules, DHSC admin). The list read and the single-module
+// Forms builder (data-collection form modules, DHSC admin, behind BLUM_9087). The list read and the single-module
 // read use separate keys; authoring mutations invalidate both as needed.
-export const formModulesKey = 'form-modules';
+export const formModulesKey = ['form-modules'] as const;
 export const formModuleKey = (id: string) => ['form-module', id] as const;
+// A form's saved versions (BLUM-9102). The single-version key spreads the list key, so invalidating the list after a
+// publish catches every version page of that form too. A version never changes, so only the list goes stale.
+export const formModuleVersionsKey = (id: string) => ['form-module-versions', id] as const;
+export const formModuleVersionKey = (id: string, versionNumber: number) => [...formModuleVersionsKey(id), versionNumber] as const;
 
 // Quarterly report (BLUM-6611). Every key carries the collection id: an organisation can have two quarterly
 // windows open at once, and collection-agnostic keys served one window's task list, activities and answers from
@@ -87,5 +98,18 @@ export const reportStrategicFeedbackKey = (collectionId: string) => ['quarterly-
 
 // LA submission history + detail (BLUM-6097 / BLUM-6098). The collections list is scoped server-side to the
 // signed-in user's organisation, so it carries no org id; the detail key carries the collection id.
-export const myReportCollectionsKey = 'la-report-collections';
+export const myReportCollectionsKey = ['la-report-collections'] as const;
 export const mySubmissionDetailKey = (collectionId: string) => ['la-submission-detail', collectionId] as const;
+
+// Annual maturity assessment (BLUM-7855). Collection-scoped like the quarterly keys; the section key spreads the
+// sections prefix so one invalidation catches every section of a collection.
+//
+// The two root keys match every collection at once. Submitting a quarterly report can pre-fill any open assessment
+// the organisation has started (BLUM-8927), and the quarterly Submit page does not know which, so it drops them all.
+export const maturityTaskListsRootKey = ['maturity-task-list'] as const;
+export const maturitySectionsRootKey = ['maturity-section'] as const;
+export const maturityContextKey = (collectionId: string) => ['maturity-context', collectionId] as const;
+export const maturityTaskListKey = (collectionId: string) => [...maturityTaskListsRootKey, collectionId] as const;
+export const maturitySectionsKey = (collectionId: string) => [...maturitySectionsRootKey, collectionId] as const;
+export const maturitySectionKey = (collectionId: string, sectionCode: string) => [...maturitySectionsKey(collectionId), sectionCode] as const;
+export const maturitySubmittedKey = (collectionId: string) => ['maturity-submitted', collectionId] as const;

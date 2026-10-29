@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
 import { LoadingBox } from '../../../../components/GovUKComponents';
 import ConfirmationPanel from '../../../../components/Global/Activities/ConfirmationPanel';
@@ -16,16 +16,15 @@ const CollectionsRestore = (): React.ReactElement => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery(collectionKey(collectionId), () => getCollection(collectionId), {
-    enabled: !!collectionId,
-  });
+  const { data, isLoading } = useQuery({ queryKey: collectionKey(collectionId), queryFn: () => getCollection(collectionId), enabled: !!collectionId });
   const name = data?.data?.name ?? 'this data collection';
 
-  const restoreMutation = useMutation(() => restoreCollection(collectionId), {
+  const restoreMutation = useMutation({
+    mutationFn: () => restoreCollection(collectionId),
     onSuccess: () => {
-      queryClient.invalidateQueries(collectionsListKey);
-      queryClient.invalidateQueries(collectionsDeletedKey);
-      queryClient.invalidateQueries(collectionKey(collectionId));
+      queryClient.invalidateQueries({ queryKey: collectionsListKey });
+      queryClient.invalidateQueries({ queryKey: collectionsDeletedKey });
+      queryClient.invalidateQueries({ queryKey: collectionKey(collectionId) });
       navigate('/admin/collections/deleted', {
         state: {
           banner: {
@@ -66,7 +65,7 @@ const CollectionsRestore = (): React.ReactElement => {
           onConfirm={() => restoreMutation.mutate()}
           cancelLabel="Go back to deleted data collections"
           onCancel={() => navigate('/admin/collections/deleted')}
-          isLoading={restoreMutation.isLoading}
+          isLoading={restoreMutation.isPending}
         />
       </div>
     </GeneralLayout>

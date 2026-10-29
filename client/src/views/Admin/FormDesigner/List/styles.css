@@ -1,0 +1,10 @@
+/* The category tag beside a section's title. Spaced by padding inside an inline-block capped at the title's width rather
+   than by a margin outside the tag: when a long category ("Education, campaigns and outreach") breaks onto its own line
+   at 320px, a margin travelled with it and pushed the tag 10px past the title (BLUM-9350). Same 10px gap as
+   govuk-!-margin-left-2 gave it at every width. */
+.form-designer-section-category {
+  box-sizing: border-box;
+  display: inline-block;
+  max-width: 100%;
+  padding-left: 10px;
+}

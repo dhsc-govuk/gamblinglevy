@@ -40,6 +40,10 @@
   margin-top: 45px;
 }
 
+.activities-list-page__draft-name {
+  color: var(--govuk-secondary-text-colour, #484949);
+}
+
 /* Quarterly-report variant — desktop measurements from Figma 420:27364.
    The standalone activities page retains its existing layout above. */
 .govuk-main-wrapper > .govuk-width-container > .govuk-back-link[data-testid='reports-confirm-activities-back'] {

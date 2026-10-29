@@ -189,8 +189,6 @@ public class InputRejectionThrottleTests
     {
         public DateTime UtcNow { get; set; }
 
-        public DateTime GetNow() => UtcNow;
-
         public DateTime GetUtcNow() => UtcNow;
     }
 }

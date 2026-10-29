@@ -10,6 +10,40 @@ namespace Infrastructure.Persistence.Repositories;
 public class ActivityRepository(ApplicationDbContext dbContext)
     : RepositoryBase<Activity, ActivityId>(dbContext), IActivityRepository, IActivityQueries
 {
+    public async Task<IReadOnlyList<ActivityAnswer>> GetAnswersForActivitiesAsync(
+        IReadOnlyCollection<ActivityId> activityIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (activityIds.Count == 0)
+        {
+            return [];
+        }
+
+        // Contains over a List<ActivityId> translates through the id's value converter (the CollectionReminderDispatch
+        // and AuditLog repositories rely on the same); reaching for .Value inside the predicate does NOT.
+        var ids = activityIds.ToList();
+        return await Context.ActivityAnswers
+            .AsNoTracking()
+            .Where(a => ids.Contains(a.ActivityId))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ActivityExpectedResult>> GetExpectedResultsForActivitiesAsync(
+        IReadOnlyCollection<ActivityId> activityIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (activityIds.Count == 0)
+        {
+            return [];
+        }
+
+        var ids = activityIds.ToList();
+        return await Context.ActivityExpectedResults
+            .AsNoTracking()
+            .Where(r => ids.Contains(r.ActivityId))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<Option<Activity>> GetByIdForOrgAsync(
         ActivityId id,
         OrganisationId organisationId,

@@ -40,6 +40,13 @@ public class MfaSessionConfiguration : IEntityTypeConfiguration<MfaSession>
             .HasColumnType("varchar(100)")
             .IsRequired();
 
+        // BLUM-7848. Nullable, so existing rows need no backfill: null reads as "still on the sign-in address".
+        builder.Property(x => x.LastSeenIpAddress)
+            .HasColumnType("varchar(45)");
+
+        builder.Property(x => x.LastSeenIpAddressHash)
+            .HasColumnType("varchar(64)");
+
         builder.Property(x => x.ExpiresAt)
             .HasConversion(new DateTimeUtcConverter())
             .IsRequired();

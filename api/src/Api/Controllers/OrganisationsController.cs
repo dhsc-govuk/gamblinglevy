@@ -106,11 +106,14 @@ public class OrganisationsController(
             Type = request.Type,
             ECode = request.ECode,
             AllocatedAmount = request.AllocatedAmount,
+            FinancialYear = request.FinancialYear,
+            NextYearAllocatedAmount = request.NextYearAllocatedAmount,
+            ActivateImmediately = request.ActivateImmediately,
         };
 
         var result = await sender.Send(command, cancellationToken);
         return result.Match<ActionResult<LocalAuthorityDto>>(
-            r => LocalAuthorityDto.FromDomainModel(r.Organisation, r.Allocation, null),
+            r => LocalAuthorityDto.FromDomainModel(r.Organisation, r.Allocation, r.Window, r.NextYearAllocation, r.NextYearWindow),
             error => error.ToObjectResult());
     }
 
@@ -148,11 +151,13 @@ public class OrganisationsController(
         {
             Id = organisationId,
             AllocatedAmount = request.AllocatedAmount,
+            FinancialYear = request.FinancialYear,
+            NextYearAllocatedAmount = request.NextYearAllocatedAmount,
         };
 
         var result = await sender.Send(command, cancellationToken);
         return result.Match<ActionResult<LocalAuthorityDto>>(
-            r => LocalAuthorityDto.FromDomainModel(r.Organisation, r.Allocation, null),
+            r => LocalAuthorityDto.FromDomainModel(r.Organisation, r.Allocation, r.Window, r.NextYearAllocation, r.NextYearWindow),
             error => error.ToObjectResult());
     }
 
@@ -209,7 +214,18 @@ public class OrganisationsController(
                 r.UpdatedCount,
                 r.SkippedCount,
                 r.FailedCount,
-                r.Rows.Select(row => new BulkImportRowOutcomeDto(row.RowNumber, row.OnsCode, row.Name, row.Outcome.ToString(), row.Reason)).ToList()),
+                r.Rows.Select(row => new BulkImportRowOutcomeDto(
+                    row.RowNumber,
+                    row.OnsCode,
+                    row.Name,
+                    row.Outcome.ToString(),
+                    row.Reason,
+                    row.AdminUserOutcome.ToString(),
+                    row.AdminUserEmail,
+                    row.AdminUserReason)).ToList(),
+                r.AdminUsersCreatedCount,
+                r.AdminUsersFailedCount,
+                r.AdminUsersNotAttemptedCount),
             error => error.ToObjectResult());
     }
 

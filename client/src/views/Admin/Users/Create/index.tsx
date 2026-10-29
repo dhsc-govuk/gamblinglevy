@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { ManagementLayout } from '../../../../layouts';
-import { GovUKFieldset, GovUKButton, ErrorSummary, H1 } from '../../../../components/GovUKComponents';
+import { GovUKFieldset, GovUKButton, GovUKInsetText, GovUKWarningText, ErrorSummary, H1 } from '../../../../components/GovUKComponents';
+import { AccessLevelGuidance } from '../../../../components/Global/OrganisationUsers';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import { defaultStaleTime, localAuthoritiesListKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
 import { validateEmailAddress } from '../../../../helpers/validators';
 import { getLocalAuthorities } from '../../Organisations/queries';
-import { ROLE_ADMIN, createAccessLevelOptions } from '../accessLevels';
+import { accessLevelOptionsFor, organisationRequiredFor } from '../accessLevels';
+import useAccessLevelClamp from '../useAccessLevelClamp';
 import './styles.css';
 
 interface FormErrors {
@@ -30,7 +31,6 @@ export interface CreateUserFormState {
 }
 
 const UsersCreate = (): React.ReactElement => {
-  usePageTitle('Add user');
   const navigate = useNavigate();
   const location = useLocation();
   const initialState = location.state as CreateUserFormState | null;
@@ -43,9 +43,16 @@ const UsersCreate = (): React.ReactElement => {
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitAttempts, setSubmitAttempts] = useState(0);
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
+  usePageTitle(`${Object.keys(errors).length > 0 ? 'Error: ' : ''}Add user`);
 
-  const { data: organisationsData } = useQuery(localAuthoritiesListKey(), () => getLocalAuthorities(), {
+  // Changing the organisation is the only place the organisation/role pair can go out of step, so the clamp
+  // lives in the handler rather than an effect — an effect would also fire on the draft restored from
+  // location.state and undo it.
+  const { accessLevelNotice, handleOrganisationChange, handleRoleChange } = useAccessLevelClamp({ role, setRole, setOrganisationId, setErrors });
+
+  const { data: organisationsData, isError: organisationsFailed } = useQuery({
+    queryKey: localAuthoritiesListKey(),
+    queryFn: () => getLocalAuthorities(),
     staleTime: defaultStaleTime,
     refetchOnWindowFocus: false,
   });
@@ -53,14 +60,27 @@ const UsersCreate = (): React.ReactElement => {
   const organisations = organisationsData?.data ?? [];
 
   const organisationOptions = [{ value: '', label: 'Select organisation' }, ...organisations.map((o) => ({ value: o.id, label: o.name }))];
-  const accessLevelOptions = createAccessLevelOptions();
+  const accessLevelOptions = accessLevelOptionsFor(organisationId, role);
+
+  // The access levels are derived from the organisation, so an unusable organisation list silently reduces the
+  // form to "Super Admin only" — the LA roles simply stop being reachable. Say why rather than let a DHSC admin
+  // conclude the LA roles have been withdrawn.
+  //
+  // Three states, not two, following views/Account/Sessions: react-query keeps `data` when a refetch fails,
+  // so `isError` on its own is true while a populated list is on screen. Warning that only a Super Admin can be
+  // created *there* would be simply untrue, and it would point the admin at the promotion path the conditional
+  // dropdown exists to keep them off.
+  const organisationsUnavailable = organisationsFailed && organisations.length === 0;
+  const organisationsStale = organisationsFailed && organisations.length > 0;
+  const noOrganisationsExist = !organisationsFailed && !!organisationsData && organisations.length === 0;
 
   const validate = (): FormErrors => {
     const next: FormErrors = {};
     if (!firstName.trim()) next.firstName = 'Enter the user’s first name';
     if (!lastName.trim()) next.lastName = 'Enter the user’s last name';
+    // Insertion order is the error-summary order, so it must match the order the fields appear on the page.
+    if (organisationRequiredFor(role) && !organisationId) next.organisationId = 'Select an organisation';
     if (!role) next.role = 'Select an access level';
-    if (role !== ROLE_ADMIN && !organisationId) next.organisationId = 'Select an organisation';
     if (!email.trim()) {
       next.email = 'Enter the user’s email address';
     } else if (!validateEmailAddress(email.trim())) {
@@ -95,11 +115,29 @@ const UsersCreate = (): React.ReactElement => {
   return (
     <ManagementLayout backLink={{ href: ROUTES.admin.users.list }}>
       <div className="users-create-page">
-        {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+        <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
         <div className="users-create-page__heading">
           <span className="govuk-caption-l">Add user</span>
           <H1>User details</H1>
+        </div>
+
+        {/* Permanently mounted: the query can fail after first paint, and a live region inserted alongside its
+            own text announces nothing. */}
+        <div role="status" aria-live="polite" aria-atomic="true" data-testid="admin-users-create-organisations-status">
+          {organisationsUnavailable && (
+            <GovUKWarningText data-testid="admin-users-create-organisations-unavailable">
+              The list of organisations could not be loaded, so only a Super Admin account can be created. Reload the page to try again.
+            </GovUKWarningText>
+          )}
+          {organisationsStale && (
+            <GovUKWarningText data-testid="admin-users-create-organisations-stale">
+              We could not check for changes to the list of organisations just now, so it may be out of date. Reload the page to see the latest.
+            </GovUKWarningText>
+          )}
+          {noOrganisationsExist && (
+            <GovUKInsetText data-testid="admin-users-create-no-organisations">No organisations have been added yet, so only a Super Admin account can be created.</GovUKInsetText>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} noValidate>
@@ -128,26 +166,32 @@ const UsersCreate = (): React.ReactElement => {
               id="organisationId"
               name="organisationId"
               label="Organisation"
-              hint="Type the name of the organisation, then select from the list. Leave blank to create a Super Admin user."
+              hint="Select the organisation from the list. Leave blank to create a Super Admin user. Changing the organisation resets the access level."
               value={organisationId}
               options={organisationOptions}
               error={errors.organisationId}
-              onChange={(e) => setOrganisationId(e.target.value)}
+              onChange={(e) => handleOrganisationChange(e.target.value)}
             />
             <div className="users-create-page__access-level">
-              <GovUKFieldset.Select
-                id="role"
-                name="role"
-                label="Access level"
-                value={role}
-                options={accessLevelOptions}
-                error={errors.role}
-                onChange={(e) => setRole(e.target.value)}
-                required
-              />
-              <RouterLink to={ROUTES.admin.users.accessLevelTypes} className="govuk-link">
-                Access level types
-              </RouterLink>
+              {/* The select and its status region share one flex item so the region contributes no `gap` while
+                  it is empty. It stays mounted either way: a live region inserted in the same commit as its
+                  text is the classic way to make an announcement that never happens. */}
+              <div className="users-create-page__access-level-field">
+                <GovUKFieldset.Select
+                  id="role"
+                  name="role"
+                  label="Access level"
+                  value={role}
+                  options={accessLevelOptions}
+                  error={errors.role}
+                  onChange={(e) => handleRoleChange(e.target.value)}
+                  required
+                />
+                <div role="status" aria-live="polite" aria-atomic="true" data-testid="admin-users-create-access-level-status">
+                  {accessLevelNotice && <GovUKInsetText data-testid="admin-users-create-access-level-status-message">{accessLevelNotice}</GovUKInsetText>}
+                </div>
+              </div>
+              <AccessLevelGuidance view="dhsc" variant="details" testId="admin-users-create-access-level-guidance" />
             </div>
             <GovUKFieldset.Input
               id="email"

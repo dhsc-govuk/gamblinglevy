@@ -1,20 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PageLoading } from '../../../components/GovUKComponents';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../layouts';
 import { ErrorSummary, GovUKButton, GovUKDynamicQuestionRenderer } from '../../../components/GovUKComponents';
 import ReportStrategicFeedbackPageHeader from '../../../components/Global/Reports/ReportStrategicFeedbackPageHeader';
 import { useAuthProvider } from '../../../components/AuthProvider';
 import usePageTitle from '../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../hooks/useErrorSummaryFocus';
 import { reportContextKey, reportStrategicFeedbackKey, reportTaskListKey } from '../../../helpers/queriesParams';
 import { ROUTES } from '../../../helpers/routes';
 import { questionErrorTargetId, validateAnswers } from '../../Activities/answers';
 import { getStrategicFeedback } from '../queries';
 import { saveStrategicFeedback } from '../mutations';
 import { mapReportError } from '../messages';
-import { answersToRecord, reportingPeriodLabel, toFormQuestion } from '../display';
+import { answersToRecord, reportingPeriodValue, toFormQuestion } from '../display';
 import { useReportContext } from '../context';
 import { canEditReport } from '../navigation';
 import { trackEvent } from '../../../helpers/analytics';
@@ -52,7 +51,9 @@ const StrategicFeedbackQuestionsPage = ({ page }: Props): React.ReactElement => 
   const checkPath = ROUTES.reports.strategicFeedbackCheck(collectionId);
   const tasksPath = ROUTES.reports.tasks(collectionId);
 
-  const feedbackQuery = useQuery(reportStrategicFeedbackKey(collectionId), () => getStrategicFeedback(collectionId), {
+  const feedbackQuery = useQuery({
+    queryKey: reportStrategicFeedbackKey(collectionId),
+    queryFn: () => getStrategicFeedback(collectionId),
     enabled: !!collectionId && !!context?.submissionId,
   });
   const feedback = feedbackQuery.data?.data;
@@ -70,13 +71,12 @@ const StrategicFeedbackQuestionsPage = ({ page }: Props): React.ReactElement => 
   const allQuestions = useMemo(() => (feedback?.pages ?? []).flatMap((p) => p.questions).map(toFormQuestion), [feedback]);
   const pageQuestions = useMemo(() => allQuestions.filter((question) => question.sectionId === page), [allQuestions, page]);
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
-
-  const saveMutation = useMutation(saveStrategicFeedback, {
+  const saveMutation = useMutation({
+    mutationFn: saveStrategicFeedback,
     onSuccess: () => {
-      queryClient.invalidateQueries(reportContextKey(collectionId));
-      queryClient.invalidateQueries(reportTaskListKey(collectionId));
-      queryClient.invalidateQueries(reportStrategicFeedbackKey(collectionId));
+      queryClient.invalidateQueries({ queryKey: reportContextKey(collectionId) });
+      queryClient.invalidateQueries({ queryKey: reportTaskListKey(collectionId) });
+      queryClient.invalidateQueries({ queryKey: reportStrategicFeedbackKey(collectionId) });
     },
   });
 
@@ -161,10 +161,13 @@ const StrategicFeedbackQuestionsPage = ({ page }: Props): React.ReactElement => 
           <PageLoading />
         ) : (
           <>
-            {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+            <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
             <div className="reports-strategic-feedback-questions__header">
-              <ReportStrategicFeedbackPageHeader heading={copy.heading} reportingPeriod={reportingPeriodLabel(context)} />
+              <ReportStrategicFeedbackPageHeader
+                heading={copy.heading}
+                reportingPeriod={reportingPeriodValue(context.quarter, context.reportingPeriodStart, context.reportingPeriodEnd)}
+              />
             </div>
 
             <div className="reports-strategic-feedback-questions__form">
@@ -180,14 +183,14 @@ const StrategicFeedbackQuestionsPage = ({ page }: Props): React.ReactElement => 
             </div>
 
             <div className="govuk-button-group reports-strategic-feedback-questions__actions">
-              <GovUKButton onClick={handleContinue} isLoading={saveMutation.isLoading} data-testid={`reports-strategic-feedback-${page}-continue`}>
+              <GovUKButton onClick={handleContinue} isLoading={saveMutation.isPending} data-testid={`reports-strategic-feedback-${page}-continue`}>
                 Continue
               </GovUKButton>
               {canEdit && (
                 <GovUKButton
                   className="govuk-button govuk-button--secondary"
                   onClick={handleSaveDraft}
-                  isLoading={saveMutation.isLoading}
+                  isLoading={saveMutation.isPending}
                   data-testid={`reports-strategic-feedback-${page}-save`}>
                   Save and come back later
                 </GovUKButton>

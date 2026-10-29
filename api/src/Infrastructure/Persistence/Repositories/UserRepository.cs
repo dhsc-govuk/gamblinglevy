@@ -1,8 +1,10 @@
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
+using Application.Common.Permissions;
 using Domain.AuditLogs;
 using Domain.Users;
 using Domain.ValueObjects;
+using Infrastructure.Persistence.Extensions;
 using LanguageExt;
 using Microsoft.EntityFrameworkCore;
 
@@ -44,6 +46,11 @@ public class UserRepository(ApplicationDbContext dbContext)
             .ToList();
     }
 
+    public async Task<IReadOnlyList<User>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        return await Context.Users.AsNoTracking().ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<User>> GetActiveAdminsAsync(CancellationToken cancellationToken = default)
     {
         return await Context.Users
@@ -56,6 +63,15 @@ public class UserRepository(ApplicationDbContext dbContext)
     public async Task<Option<User>> FindById(UserId id, CancellationToken cancellationToken = default)
     {
         var user = await Context.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        return user ?? Option<User>.None;
+    }
+
+    public async Task<Option<User>> FindInScope(UserId id, Permission permission, CancellationToken cancellationToken = default)
+    {
+        var user = await Context.Users
+            .AsNoTracking()
+            .ScopedTo(permission, orgId => u => Context.OrganisationUsers.Any(m => m.UserId == u.Id && m.OrganisationId == orgId))
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         return user ?? Option<User>.None;
     }
 
@@ -139,6 +155,7 @@ public class UserRepository(ApplicationDbContext dbContext)
             orgUser?.Organisation?.Name,
             orgUser?.Organisation?.Id.Value,
             mfa?.IsEnabled ?? false,
+            user.PasswordLoginEnabled,
             GetHistoryEntry(createdAudit),
             GetHistoryEntry(updatedAudit),
             GetHistoryEntry(deletedAudit));
@@ -148,7 +165,19 @@ public class UserRepository(ApplicationDbContext dbContext)
         string email,
         CancellationToken cancellationToken = default)
     {
-        var entity = await Context.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Email == email, cancellationToken);
+        // Case-insensitive on purpose. Email addresses are not case-sensitive in practice, and Microsoft Graph's
+        // `mail eq '...'` filter is not either — so an ordinal comparison here lets "J.Smith@x" and "j.smith@x"
+        // both miss this guard, both receive the *same* subId back from Graph, and both write a users row.
+        // Nothing constrains that: neither users.email nor users.sub_id has a unique index, and
+        // UserProfileRepository.GetUserProfile resolves the profile with SingleOrDefaultAsync on sub_id, so
+        // from that point every request either account makes throws — an unrecoverable 500 at sign-in for two
+        // real people, fixable only in the database. Reachable from any create path; the CSV importer just
+        // makes a hand-maintained 153-row spreadsheet the likely way in.
+        //
+        // ToLower rather than EF.Functions.ILike: '_' is legal in a local part and ILike would treat it as a
+        // single-character wildcard.
+        var normalised = email.ToLower();
+        var entity = await Context.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Email.ToLower() == normalised, cancellationToken);
         return entity ?? Option<User>.None;
     }
 
@@ -157,7 +186,10 @@ public class UserRepository(ApplicationDbContext dbContext)
         UserId sourceId,
         CancellationToken cancellationToken = default)
     {
-        var entity = await Context.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Email == targetEmail && x.Id != sourceId, cancellationToken);
+        // Case-insensitive for the same reason as FindByEmailAsync above — an ordinal comparison here
+        // would let an update collide with an existing row that differs only by case.
+        var normalised = targetEmail.ToLower();
+        var entity = await Context.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Email.ToLower() == normalised && x.Id != sourceId, cancellationToken);
         return entity ?? Option<User>.None;
     }
 }

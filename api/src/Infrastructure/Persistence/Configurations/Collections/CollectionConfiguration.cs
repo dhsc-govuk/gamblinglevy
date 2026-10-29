@@ -29,6 +29,9 @@ public class CollectionConfiguration : IEntityTypeConfiguration<Collection>
         builder.Property(x => x.IsSubmittedByAllLas);
         builder.Property(x => x.IsDraft).IsRequired();
         builder.Property(x => x.IsManuallyClosed).IsRequired();
+        builder.Property(x => x.ManuallyClosedAt).HasConversion(new DateTimeUtcConverter());
+        builder.Property(x => x.ClosureNotifiedAt).HasConversion(new DateTimeUtcConverter());
+        builder.Property(x => x.WindowClosedLaNotifiedAt).HasConversion(new DateTimeUtcConverter());
         builder.Property(x => x.CreatedBy).HasConversion(x => x.Value, x => new UserId(x));
         builder.Property(x => x.CreatedAt).HasConversion(new DateTimeUtcConverter());
         builder.Property(x => x.UpdatedBy)
@@ -41,7 +44,9 @@ public class CollectionConfiguration : IEntityTypeConfiguration<Collection>
         // Status is DERIVED via GetStatus() from the draft/manually-closed flags and the window dates — it is not
         // a persisted property, so no Status column is mapped.
 
-        builder.HasIndex(x => x.Name).IsUnique();
+        // Unique among live collections only, matching ExistsByNameAsync: a soft-deleted collection must not block
+        // re-using its name (BLUM-9093). HasFilter is raw SQL, so the column is snake_case by hand.
+        builder.HasIndex(x => x.Name).IsUnique().HasFilter("deleted_at IS NULL");
         builder.HasIndex(x => x.DeletedAt);
 
         builder.HasMany(x => x.Forms)

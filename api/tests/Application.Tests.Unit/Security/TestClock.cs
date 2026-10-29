@@ -16,7 +16,5 @@ public sealed class TestClock : IDateTimeProvider
 {
     public DateTime UtcNow { get; set; } = new(2026, 8, 4, 9, 0, 0, DateTimeKind.Utc);
 
-    public DateTime GetNow() => this.UtcNow;
-
     public DateTime GetUtcNow() => this.UtcNow;
 }

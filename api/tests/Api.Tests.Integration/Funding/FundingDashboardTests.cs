@@ -22,10 +22,10 @@ public class FundingDashboardTests(IntegrationTestWebFactory factory)
     private static readonly Guid MainOrgLeadUserId = Guid.Parse("c0000000-0000-0000-0000-000000000001");
     private static readonly Guid SecondOrgLeadUserId = Guid.Parse("c0000000-0000-0000-0000-000000000002");
 
-    private static readonly string CurrentFy = ComputeCurrentFinancialYear();
+    private static readonly string CurrentFy = TestFinancialYears.Current;
 
     private readonly FundingWindow _currentWindow =
-        FundingWindow.New(FundingWindowId.New(), CurrentFy, $"Annual Allocation {CurrentFy}");
+        FundingWindow.New(FundingWindowId.New(), CurrentFy, $"Annual Allocation {CurrentFy}", DateTime.UtcNow);
 
     [Fact]
     public async Task GetDashboard_ReturnsAllocation_SpendZero_AndRemaining_ForCurrentWindow()
@@ -75,6 +75,57 @@ public class FundingDashboardTests(IntegrationTestWebFactory factory)
         dto.HasAllocation.Should().BeFalse();
     }
 
+    // BLUM-7608 made the financial year something the admin chooses rather than something the clock stamps, so
+    // an LA onboarded in, say, February for the year starting in April holds only that later year. A bare
+    // current-window lookup showed it "£0, no allocation set" until April — the money is recorded, the LA just
+    // could not see it.
+    [Fact]
+    public async Task GetDashboard_ShowsAnAllocationHeldOnlyForTheUpcomingYear()
+    {
+        var upcomingFy = TestFinancialYears.Next(CurrentFy);
+        var upcomingWindow = FundingWindow.New(FundingWindowId.New(), upcomingFy, $"Annual Allocation {upcomingFy}", DateTime.UtcNow);
+        await Context.FundingWindows.AddAsync(upcomingWindow);
+        await SaveChangesAsync();
+
+        await Context.OrgFundingAllocations.AddAsync(OrgFundingAllocation.New(
+            OrgFundingAllocationId.New(), MainOrg.Id, upcomingWindow.Id, 90_000m, UserId.New(), DateTime.UtcNow));
+        await SaveChangesAsync();
+
+        AuthenticateAs(Role.Lead, MainOrgLeadUserId, MainOrg.Id.Value);
+
+        var response = await Client.GetAsync("funding/dashboard");
+
+        response.IsSuccessStatusCode.Should().BeTrue();
+        var dto = await response.ToResponseModel<FundingDashboardDto>();
+        dto.AllocatedAmount.Should().Be(90_000m);
+        dto.HasAllocation.Should().BeTrue();
+        // Labelled with the year it is actually for, so the tile never implies the money belongs to this year.
+        dto.FinancialYear.Should().Be(upcomingFy);
+    }
+
+    // The year in progress still wins over a later one when both exist — the fall-forward above is a fallback,
+    // not a preference.
+    [Fact]
+    public async Task GetDashboard_PrefersTheYearInProgress_WhenBothYearsAreHeld()
+    {
+        await SeedAllocationAsync(MainOrg, 150_000m);
+
+        var upcomingFy = TestFinancialYears.Next(CurrentFy);
+        var upcomingWindow = FundingWindow.New(FundingWindowId.New(), upcomingFy, $"Annual Allocation {upcomingFy}", DateTime.UtcNow);
+        await Context.FundingWindows.AddAsync(upcomingWindow);
+        await SaveChangesAsync();
+        await Context.OrgFundingAllocations.AddAsync(OrgFundingAllocation.New(
+            OrgFundingAllocationId.New(), MainOrg.Id, upcomingWindow.Id, 90_000m, UserId.New(), DateTime.UtcNow));
+        await SaveChangesAsync();
+
+        AuthenticateAs(Role.Lead, MainOrgLeadUserId, MainOrg.Id.Value);
+
+        var dto = await (await Client.GetAsync("funding/dashboard")).ToResponseModel<FundingDashboardDto>();
+
+        dto.AllocatedAmount.Should().Be(150_000m);
+        dto.FinancialYear.Should().Be(CurrentFy);
+    }
+
     private async Task SeedAllocationAsync(Organisation organisation, decimal amount)
     {
         await Context.OrgFundingAllocations.AddAsync(OrgFundingAllocation.New(
@@ -82,7 +133,8 @@ public class FundingDashboardTests(IntegrationTestWebFactory factory)
             organisation.Id,
             _currentWindow.Id,
             amount,
-            UserId.New()));
+            UserId.New(),
+            DateTime.UtcNow));
         await SaveChangesAsync();
     }
 
@@ -102,14 +154,5 @@ public class FundingDashboardTests(IntegrationTestWebFactory factory)
         Context.Organisations.RemoveRange(Context.Organisations);
         await SaveChangesAsync();
         AuthenticateAsAdmin();
-    }
-
-    // Mirrors FundingWindowResolver.CurrentFinancialYear so the seeded window matches the one the
-    // endpoint resolves at test runtime (UK financial year boundary: 6 April).
-    private static string ComputeCurrentFinancialYear()
-    {
-        var now = DateTime.UtcNow;
-        var fyStartYear = (now.Month > 4 || (now.Month == 4 && now.Day >= 6)) ? now.Year : now.Year - 1;
-        return $"{fyStartYear}/{(fyStartYear + 1) % 100:D2}";
     }
 }

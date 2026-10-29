@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { downloadFile } from '../../helpers/downloadFile';
 import type { SubmissionStatus } from '../Admin/Reports/queries';
 import type { CollectionStatus, CollectionType } from '../Admin/Collections/queries';
 
@@ -18,7 +19,7 @@ export interface QuarterlyReportContextDto {
   reportingPeriodEnd: string;
   submissionDeadline: string;
   localAuthorityName: string;
-  // Null until the LA clicks "Create report".
+  // Null until the task-list entry route creates the draft submission.
   submissionId: string | null;
   // Null until the report is finalised (submitted).
   submittedAt: string | null;
@@ -74,6 +75,11 @@ export interface ReportQuestionDto {
   maxValue: number | null;
   // "%" for percentages, else null.
   suffix: string | null;
+  // Question Protocol copy (BLUM-7620): the blank-on-submit message, the free-text character limit and the
+  // over-limit message. Only the "Activity delivery" and strategic-feedback questions carry a limit.
+  errorMessage: string | null;
+  maxLength: number | null;
+  maxLengthErrorMessage: string | null;
   // 'results' | 'delivery' for activity key results; 'wider-progress' | 'working-together' for strategic feedback.
   section: string;
 }
@@ -119,10 +125,14 @@ export interface FundingSpendActivityDto {
   taskName: string | null;
   // Saved "levy funding spent this quarter"; null until answered.
   actualThisQuarter: number | null;
-  // Accumulated actual spend from earlier quarters of the same financial year (the "Total spent so far" inset).
+  // Accumulated actual spend from every earlier quarter this activity has been reported in, earlier financial
+  // years included (the "Total spent so far" inset, BLUM-7703) — unlike the summary's year-scoped spendToDate.
   totalSpentSoFar: number;
   // Saved expected spend keyed by quarter number (JSON object keys are strings).
   forecast: Record<number, number | null>;
+  // A Planned activity (BLUM-7672): it takes a forecast on "Forecast spend" but has no input on "Activity
+  // spending", so actualThisQuarter is always null. Decided by the server — never re-derive it from a status.
+  forecastOnly: boolean;
 }
 
 export interface FundingSpendSummaryDto {
@@ -130,6 +140,13 @@ export interface FundingSpendSummaryDto {
   totalSpendThisQuarter: number;
   expectedSpendForYear: number;
   spendToDate: number;
+  // spendToDate INCLUDING the current quarter's own actuals, unlike spendToDate itself.
+  totalSpendToDate: number;
+  // totalGrantAllocation - totalSpendToDate. Added to the API for the CSV exports (BLUM-7130) but always
+  // on the wire, which is why declaring it here needs no backend change.
+  remainingBudget: number;
+  // The forecast for the quarters still ahead. Zero on a Q4 report — nothing is left to forecast.
+  totalForecast: number;
 }
 
 export interface FundingSpendDto {
@@ -140,6 +157,8 @@ export interface FundingSpendDto {
   remainingQuarters: FundingSpendQuarterDto[];
   activities: FundingSpendActivityDto[];
   otherActualThisQuarter: number | null;
+  // Actual "Other" spend accumulated through the current reporting quarter.
+  otherTotalActualToDate: number;
   otherForecast: Record<number, number | null>;
   summary: FundingSpendSummaryDto;
 }
@@ -183,6 +202,8 @@ export interface MyCollectionSummaryDto {
   collectionStatus: CollectionStatus;
   submissionStatus: SubmissionStatus;
   submittedAt: string | null;
+  // A maturity-assessment row (type 'maturity_assessment', quarter null) is named by its financial year (BLUM-7859).
+  financialYear?: string | null;
 }
 
 export const getMyReportCollections = () => axios.get<MyCollectionSummaryDto[]>('quarterly-report/collections');
@@ -200,6 +221,58 @@ export interface MySubmissionDetailDto {
   submittedByName: string | null;
   submittedByEmail: string | null;
   submittedAt: string | null;
+  // The collection type routes the detail to the maturity read-only view (BLUM-7859); referenceNumber is the
+  // finalised report's reference.
+  type?: CollectionType | null;
+  financialYear?: string | null;
+  referenceNumber?: string | null;
+  // The finalised ZIP's byte length for the Files caption (BLUM-9018). Null until submitted, or when the server could
+  // not measure it — the caption then shows the format alone.
+  exportSizeBytes?: number | null;
 }
 
 export const getMySubmissionDetail = (collectionId: string) => axios.get<MySubmissionDetailDto>(`quarterly-report/submissions/${collectionId}`);
+
+// --- "Complete your report offline" (BLUM-8310, behind the BLUM_8310 flag) ---
+
+// The route slug of each section's CSV template (QuarterlyReportOfflineController).
+export const OFFLINE_TEMPLATE_SLUG: Record<ReportModuleCode, string> = {
+  activity_key_results: 'activity-results',
+  funding_spent: 'funding-spent',
+  strategic_feedback: 'strategic-feedback',
+};
+
+// A section's template, pre-filled with what is saved, saved by the browser. Refused with the report's own write
+// envelopes (REPORT_NOT_OPEN, ACTIVITIES_NOT_CONFIRMED, 409 once submitted); a bodiless 404 when the flag is off.
+export const downloadOfflineTemplate = (collectionId: string, moduleCode: ReportModuleCode) =>
+  downloadFile(`quarterly-report/${collectionId}/offline/${OFFLINE_TEMPLATE_SLUG[moduleCode]}/template`, `${OFFLINE_TEMPLATE_SLUG[moduleCode]}.csv`);
+
+// A successful upload: the section it saved and completed, and the task list as it now stands.
+export interface OfflineUploadResultDto {
+  moduleCode: ReportModuleCode;
+  taskList: SubmissionTaskListDto;
+}
+
+// One problem in an uploaded file, located as the spreadsheet shows it. column is a letter ("K"), question "Q7";
+// both null for a problem with a whole row.
+export interface OfflineUploadErrorDto {
+  row: number;
+  column: string | null;
+  question: string | null;
+  message: string;
+}
+
+export interface OfflineAnnotatedFileDto {
+  fileName: string;
+  contentBase64: string;
+}
+
+// The 422 OFFLINE_UPLOAD_INVALID body. errors is capped at 100; errorCount and the annotated file have them all.
+export interface OfflineUploadInvalidDto {
+  error: 'OFFLINE_UPLOAD_INVALID';
+  message: string;
+  moduleCode: ReportModuleCode;
+  errorCount: number;
+  errors: OfflineUploadErrorDto[];
+  annotatedFile: OfflineAnnotatedFileDto;
+}

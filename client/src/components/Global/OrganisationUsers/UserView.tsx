@@ -1,24 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ManagementLayout } from '../../../layouts';
-import {
-  GovUKActionMenu,
-  GovUKSummaryCard,
-  SummaryList,
-  PageLoading,
-  H1,
-  DeleteConfirmDialog,
-} from '../../GovUKComponents';
+import { GovUKActionMenu, GovUKSummaryCard, SummaryList, PageLoading, H1, DeleteConfirmDialog } from '../../GovUKComponents';
 import { ROLE_LABELS, useAuthProvider } from '../../AuthProvider';
 import usePageTitle from '../../../hooks/usePageTitle';
 import { organisationUserKey, organisationUsersListKey } from '../../../helpers/queriesParams';
 import { getOrganisationUser } from './api';
-import {
-  deactivateOrganisationUser,
-  reactivateOrganisationUser,
-  deleteOrganisationUser,
-} from './api';
+import { deactivateOrganisationUser, reactivateOrganisationUser, deleteOrganisationUser } from './api';
 import type { Breadcrumb } from './UsersListView';
 import './UserView.css';
 
@@ -41,51 +30,47 @@ const formatHistoryDate = (iso: string): string => {
   return `${date}, ${time}`;
 };
 
-const UserView = ({
-  organisationId,
-  userId,
-  pageTitle,
-  breadcrumbs,
-  editHref,
-  deleteSuccessNavigateHref,
-  testIdPrefix,
-}: UserViewProps): React.ReactElement => {
+const UserView = ({ organisationId, userId, pageTitle, breadcrumbs, editHref, deleteSuccessNavigateHref, testIdPrefix }: UserViewProps): React.ReactElement => {
   usePageTitle(pageTitle);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { userId: actorId } = useAuthProvider();
   const [confirm, setConfirm] = useState<Confirm>(null);
 
-  const { data, isLoading } = useQuery(
-    organisationUserKey(organisationId, userId),
-    () => getOrganisationUser(organisationId, userId),
-    { enabled: !!organisationId && !!userId },
-  );
+  const { data, isLoading } = useQuery({
+    queryKey: organisationUserKey(organisationId, userId),
+    queryFn: () => getOrganisationUser(organisationId, userId),
+    enabled: !!organisationId && !!userId,
+  });
   const user = data?.data;
 
   const invalidate = () => {
-    queryClient.invalidateQueries(organisationUsersListKey(organisationId));
-    queryClient.invalidateQueries(organisationUserKey(organisationId, userId));
+    queryClient.invalidateQueries({ queryKey: organisationUsersListKey(organisationId) });
+    queryClient.invalidateQueries({ queryKey: organisationUserKey(organisationId, userId) });
   };
 
-  const deactivateM = useMutation(
-    () => deactivateOrganisationUser(organisationId, userId),
-    { onSuccess: () => { invalidate(); setConfirm(null); } },
-  );
-  const reactivateM = useMutation(
-    () => reactivateOrganisationUser(organisationId, userId),
-    { onSuccess: () => { invalidate(); setConfirm(null); } },
-  );
-  const deleteM = useMutation(
-    () => deleteOrganisationUser(organisationId, userId),
-    {
-      onSuccess: () => {
-        invalidate();
-        setConfirm(null);
-        navigate(deleteSuccessNavigateHref);
-      },
+  const deactivateM = useMutation({
+    mutationFn: () => deactivateOrganisationUser(organisationId, userId),
+    onSuccess: () => {
+      invalidate();
+      setConfirm(null);
     },
-  );
+  });
+  const reactivateM = useMutation({
+    mutationFn: () => reactivateOrganisationUser(organisationId, userId),
+    onSuccess: () => {
+      invalidate();
+      setConfirm(null);
+    },
+  });
+  const deleteM = useMutation({
+    mutationFn: () => deleteOrganisationUser(organisationId, userId),
+    onSuccess: () => {
+      invalidate();
+      setConfirm(null);
+      navigate(deleteSuccessNavigateHref);
+    },
+  });
 
   const isSelf = actorId !== null && user?.id === actorId;
   const isActive = user?.status === 'active';
@@ -131,9 +116,7 @@ const UserView = ({
               <H1 className="organisation-user-view-page__title">
                 {user.firstName} {user.lastName}
               </H1>
-              {actionItems.length > 0 && (
-                <GovUKActionMenu buttonLabel="Actions" items={actionItems} testId={`${testIdPrefix}-view-actions`} />
-              )}
+              {actionItems.length > 0 && <GovUKActionMenu buttonLabel="Actions" items={actionItems} testId={`${testIdPrefix}-view-actions`} />}
             </div>
 
             <GovUKSummaryCard
@@ -210,11 +193,7 @@ const UserView = ({
               />
             </GovUKSummaryCard>
 
-            {isSelf && (
-              <p className="govuk-hint organisation-user-view-page__self-hint">
-                You cannot deactivate or delete your own account.
-              </p>
-            )}
+            {isSelf && <p className="govuk-hint organisation-user-view-page__self-hint">You cannot deactivate or delete your own account.</p>}
           </>
         )}
 
@@ -227,7 +206,7 @@ const UserView = ({
             confirmLabel="Deactivate"
             onCancel={() => setConfirm(null)}
             onConfirm={() => deactivateM.mutate()}
-            isLoading={deactivateM.isLoading}
+            isLoading={deactivateM.isPending}
           />
         )}
         {confirm === 'reactivate' && (
@@ -239,7 +218,7 @@ const UserView = ({
             confirmLabel="Reactivate"
             onCancel={() => setConfirm(null)}
             onConfirm={() => reactivateM.mutate()}
-            isLoading={reactivateM.isLoading}
+            isLoading={reactivateM.isPending}
           />
         )}
         {confirm === 'delete' && (
@@ -251,7 +230,7 @@ const UserView = ({
             confirmLabel="Delete"
             onCancel={() => setConfirm(null)}
             onConfirm={() => deleteM.mutate()}
-            isLoading={deleteM.isLoading}
+            isLoading={deleteM.isPending}
           />
         )}
       </div>

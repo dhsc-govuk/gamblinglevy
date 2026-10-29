@@ -1,5 +1,6 @@
+/* No top padding: the layout's breadcrumb already carries the Figma 60px gap to the page content
+   (General/Content/styles.css), so padding here doubled it (BLUM-9017). */
 .reports-detail-page {
-  padding-top: 60px;
   color: #0b0c0c;
 }
 
@@ -89,16 +90,15 @@
   line-height: 25px;
 }
 
+/* min-width: 0 lets the value shrink to its share of the row, so overflow-wrap can break an email address longer
+   than the cell instead of pushing the row past the list's width (BLUM-9018). */
 .reports-detail-page__summary-row dd {
   flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   font-size: 19px;
   line-height: 25px;
-}
-
-.reports-detail-page__summary-action {
-  flex: 0 0 auto !important;
-  text-align: right;
+  overflow-wrap: break-word;
 }
 
 .reports-detail-page__file {
@@ -192,10 +192,6 @@
 }
 
 @media (max-width: 48.0525em) {
-  .reports-detail-page {
-    padding-top: 30px;
-  }
-
   .reports-detail-page__overview,
   .reports-detail-page .reports-detail-page__title,
   .reports-detail-page .reports-detail-page__intro,

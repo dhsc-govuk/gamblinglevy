@@ -4,7 +4,10 @@ using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
+using Application.MaturityAssessments.Prefill;
+using Application.Submissions.Audit;
 using Application.Submissions.Exceptions;
+using Domain.AuditLogs;
 using Domain.Collections;
 using Domain.Organisations;
 using Domain.Submissions;
@@ -37,7 +40,12 @@ public class SubmitReportCommandHandler(
     IOrganisationQueries organisationQueries,
     IUserQueries userQueries,
     ISubmissionConfirmationEmailService confirmationEmailService,
+    ActivityResultCarryForward carryForward,
+    MaturityPrefillRefresher maturityPrefillRefresher,
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner,
     PermissionsService permissionsService,
+    IDateTimeProvider dateTimeProvider,
     ILogger<SubmitReportCommandHandler> logger)
     : IRequestHandler<SubmitReportCommand, Either<SubmissionException, Submission>>
 {
@@ -55,6 +63,8 @@ public class SubmitReportCommandHandler(
         Permission permission,
         CancellationToken cancellationToken)
     {
+        var utcNow = dateTimeProvider.GetUtcNow();
+
         if (permission.OrganisationId.IsNone || permission.UserId.IsNone)
         {
             return new SubmissionForbiddenException(SubmissionId.Empty(), "You are not associated with an organisation.");
@@ -83,9 +93,9 @@ public class SubmitReportCommandHandler(
             return new SubmissionCollectionNotEligibleException(collectionId);
         }
 
-        if (!SubmissionEligibility.IsOpen(collection))
+        if (!SubmissionEligibility.IsOpen(collection, utcNow))
         {
-            return new SubmissionCollectionNotOpenException(collectionId, collection.GetStatus());
+            return new SubmissionCollectionNotOpenException(collectionId, collection.GetStatus(utcNow));
         }
 
         var submissionLookup = await submissionQueries.GetByCollectionAndOrgAsync(collectionId, organisationId, cancellationToken);
@@ -96,6 +106,126 @@ public class SubmitReportCommandHandler(
 
         var submission = submissionLookup.ValueUnsafe();
 
+        var notReady = RefuseUnlessReady(submission);
+        if (notReady is not null)
+        {
+            return notReady;
+        }
+
+        // Reference sequence is scoped to the financial year + quarter (the reference prefix), counted across every
+        // collection sharing that period, so two collections in the same quarter never both mint sequence 1. The
+        // global unique index on ReferenceNumber is the final backstop: a concurrent submit that grabbed the same
+        // sequence first throws SubmissionReferenceConflictException, and we recompute + retry rather than 500.
+        const int maxAttempts = 5;
+
+        var financialYear = collection.FinancialYear!;
+        var quarter = collection.Quarter!.Value;
+
+        for (var attempt = 1; ; attempt++)
+        {
+            string before;
+            try
+            {
+                var sequence = await submissionQueries.CountSubmittedForPeriodAsync(financialYear, quarter, cancellationToken) + 1;
+                before = SubmissionSnapshot.Serialize(submission);
+                submission.Submit(SubmissionReference.Format(financialYear, quarter, sequence), actorId, utcNow);
+                submission.AttachReportSnapshot(request.ReportSnapshotJson);
+            }
+            catch (Exception exception)
+            {
+                return new SubmissionUnknownException(submission.Id, exception);
+            }
+
+            // One transaction per attempt: a unique violation aborts the PostgreSQL transaction it happens in, so the
+            // retry cannot share it. The submit and its audit row commit together (BLUM-8748) — a failed audit now
+            // rolls the submit back too, so the LA's retry is not refused as "already submitted".
+            var result = await transactionRunner.RunAsync<SubmissionException, Submission>(
+                async token =>
+                {
+                    try
+                    {
+                        await submissionRepository.UpdateDetectingReferenceConflictAsync(submission, token);
+
+                        await auditLogRepository.AppendAsync(
+                            AuditLog.Create(
+                                actorId,
+                                AuditTargetType.Submission,
+                                submission.Id.Value,
+                                AuditAction.SubmissionSubmitted,
+                                before,
+                                after: SubmissionSnapshot.Serialize(submission),
+                                organisationId: organisationId),
+                            token);
+
+                        return submission;
+                    }
+                    catch (SubmissionReferenceConflictException conflict)
+                    {
+                        return conflict;
+                    }
+                    catch (Exception exception)
+                    {
+                        return new SubmissionUnknownException(submission.Id, exception);
+                    }
+                },
+                cancellationToken);
+
+            // Every retry collided — the conflict surfaces as a retryable 409 rather than an opaque 500.
+            var conflicted = result.Match(_ => false, left => left is SubmissionReferenceConflictException);
+            if (!conflicted || attempt >= maxAttempts)
+            {
+                if (result.IsRight)
+                {
+                    // This report has just become "previously submitted data", which is the input the carry-forward
+                    // reads (BLUM-7671). An organisation can have a second quarterly window open and already
+                    // confirmed — that report was seeded before this one existed, and nothing else would ever ask it
+                    // to reconfirm. After the commit, not inside it: it changes other reports, and it logs and swallows
+                    // its own failures, which inside the transaction would abort it and take the submit with it.
+                    await carryForward.CopyIntoOtherOpenSubmissionsAsync(organisation, collectionId, actorId, cancellationToken);
+
+                    // BLUM-6954: confirmation email to the submitting LA user, only once the submit has committed.
+                    // Best-effort — a send failure is logged and swallowed, never undoing the submit.
+                    await SendConfirmationEmailAsync(submission, collection, organisation, actorId, cancellationToken);
+
+                    // The maturity assessment pre-fills from submitted reports too, and only did so when it was
+                    // started (BLUM-8927): an assessment the LA had already opened would never see this report.
+                    // After the commit and best-effort, like the carry-forward — but no token: nothing else would
+                    // ever run this for the report, so a dropped connection must not cancel it.
+                    await maturityPrefillRefresher.RefreshOpenAssessmentsAsync(organisation, collectionId, actorId);
+                }
+
+                return result;
+            }
+
+            // The rollback cleared the change tracker, so the instance above is detached and would be re-attached with
+            // Update(), writing back every column as it was read at the start of the request — a concurrent change
+            // (ActivitiesReviewRequired raised by an activity edit, or another submit) would be overwritten. So the
+            // retry starts again from the current row and asks the readiness questions again.
+            try
+            {
+                var reloaded = await submissionQueries.GetByCollectionAndOrgAsync(collectionId, organisationId, cancellationToken);
+                if (reloaded.IsNone)
+                {
+                    return new SubmissionDoesNotExistException(collectionId);
+                }
+
+                submission = reloaded.ValueUnsafe();
+            }
+            catch (Exception exception)
+            {
+                return new SubmissionUnknownException(submission.Id, exception);
+            }
+
+            notReady = RefuseUnlessReady(submission);
+            if (notReady is not null)
+            {
+                return notReady;
+            }
+        }
+    }
+
+    private static SubmissionException? RefuseUnlessReady(Submission submission)
+    {
         if (submission.IsSubmitted)
         {
             return new SubmissionAlreadySubmittedException(submission.Id);
@@ -111,49 +241,7 @@ public class SubmitReportCommandHandler(
             return new SubmissionNotReadyToSubmitException(submission.Id);
         }
 
-        // Reference sequence is scoped to the financial year + quarter (the reference prefix), counted across every
-        // collection sharing that period, so two collections in the same quarter never both mint sequence 1. The
-        // global unique index on ReferenceNumber is the final backstop: a concurrent submit that grabbed the same
-        // sequence first throws SubmissionReferenceConflictException, and we recompute + retry rather than 500.
-        const int maxAttempts = 5;
-
-        try
-        {
-            var financialYear = collection.FinancialYear!;
-            var quarter = collection.Quarter!.Value;
-
-            var sequence = await submissionQueries.CountSubmittedForPeriodAsync(financialYear, quarter, cancellationToken) + 1;
-            submission.Submit(SubmissionReference.Format(financialYear, quarter, sequence), actorId);
-            submission.AttachReportSnapshot(request.ReportSnapshotJson);
-
-            for (var attempt = 1; ; attempt++)
-            {
-                try
-                {
-                    await submissionRepository.UpdateDetectingReferenceConflictAsync(submission, cancellationToken);
-
-                    // BLUM-6954: confirmation email to the submitting LA user. Best-effort — the submission is now
-                    // persisted and irreversible, so a send failure is logged and swallowed, never rolling back the submit.
-                    await SendConfirmationEmailAsync(submission, collection, organisation, actorId, cancellationToken);
-
-                    return submission;
-                }
-                catch (SubmissionReferenceConflictException) when (attempt < maxAttempts)
-                {
-                    sequence = await submissionQueries.CountSubmittedForPeriodAsync(financialYear, quarter, cancellationToken) + 1;
-                    submission.AssignReference(SubmissionReference.Format(financialYear, quarter, sequence), actorId);
-                }
-            }
-        }
-        catch (SubmissionReferenceConflictException conflict)
-        {
-            // Every retry collided — surface a retryable 409 rather than an opaque 500.
-            return conflict;
-        }
-        catch (Exception exception)
-        {
-            return new SubmissionUnknownException(submission.Id, exception);
-        }
+        return null;
     }
 
     // Sends the "your quarterly report has been submitted" confirmation (BLUM-6954). Best-effort: any failure
@@ -185,16 +273,18 @@ public class SubmitReportCommandHandler(
                 start,
                 end);
 
+            var recipient = userLookup.ValueUnsafe();
             var confirmation = new SubmissionConfirmation(
                 collection.Id.Value,
                 submission.ReferenceNumber!,
                 submission.SubmittedAt!.Value,
                 quarterLabel,
                 collection.Name,
-                organisation.Name);
+                organisation.Name,
+                recipient.Name.ToString());
 
             var result = await confirmationEmailService.SendConfirmationAsync(
-                userLookup.ValueUnsafe().Email,
+                recipient.Email,
                 confirmation,
                 cancellationToken);
 

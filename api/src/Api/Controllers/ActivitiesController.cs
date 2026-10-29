@@ -25,7 +25,8 @@ public class ActivitiesController(
     PermissionsService permissionsService,
     ISender sender,
     IActivitiesControllerService controllerService,
-    IFormDesignerControllerService formDesignerControllerService)
+    IFormDesignerControllerService formDesignerControllerService,
+    IActivityRecordExportService activityRecordExportService)
     : ControllerBase
 {
     // The active activity-record form schema (DHSC-authored dynamic questions) rendered in the create/edit flow.
@@ -100,7 +101,29 @@ public class ActivitiesController(
                 error => StatusCode(StatusCodes.Status403Forbidden, error.Message));
     }
 
+    // Downloads the whole activity record as a CSV — every field entered on the activity, plus what the organisation's
+    // submitted quarterly reports recorded for it (BLUM-7648). Both LA roles, like the page it is downloaded from;
+    // another organisation's or a deleted activity is a 404, as on GET. The "export" route segment is what puts it on
+    // the Export rate-limit budget (RateLimitPolicyResolver).
+    [HttpGet("{activityId:guid}/export")]
+    public async Task<ActionResult> Export(
+        [FromRoute] Guid activityId,
+        CancellationToken cancellationToken)
+    {
+        return await permissionsService.GetOrganisationPermissions()
+            .MatchAsync<ActionResult>(
+                async permission =>
+                {
+                    var result = await activityRecordExportService.GenerateAsync(permission, activityId, cancellationToken);
+                    return result.Match<ActionResult>(
+                        file => File(file.Content, "text/csv", file.FileName),
+                        () => NotFound());
+                },
+                error => StatusCode(StatusCodes.Status403Forbidden, error.Message));
+    }
+
     [HttpPost]
+    [AcceptsEncodedJsonBody]
     public async Task<ActionResult<ActivityDto>> Create(
         [FromBody] CreateActivityRequestDto request,
         CancellationToken cancellationToken)
@@ -114,6 +137,7 @@ public class ActivitiesController(
             Status = request.Status,
             StartMonth = request.StartMonth,
             StartYear = request.StartYear,
+            ClosureReason = request.ClosureReason,
             ExpectedResults = MapExpectedResults(request.ExpectedResults),
             Answers = MapAnswers(request.Answers),
             SaveAsDraft = request.SaveAsDraft,
@@ -124,6 +148,7 @@ public class ActivitiesController(
     }
 
     [HttpPut("{activityId:guid}")]
+    [AcceptsEncodedJsonBody]
     public async Task<ActionResult<ActivityDto>> Update(
         [FromRoute] Guid activityId,
         [FromBody] UpdateActivityRequestDto request,
@@ -139,6 +164,7 @@ public class ActivitiesController(
             Status = request.Status,
             StartMonth = request.StartMonth,
             StartYear = request.StartYear,
+            ClosureReason = request.ClosureReason,
             ExpectedResults = MapExpectedResults(request.ExpectedResults),
             Answers = MapAnswers(request.Answers),
             SaveAsDraft = request.SaveAsDraft,

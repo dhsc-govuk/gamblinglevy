@@ -1,0 +1,50 @@
+/* GovUKSearchInput. Floors rather than fixed heights, so a user-defined line height grows the control instead of
+   clipping its text (WCAG 1.4.12); at default spacing it renders at 40px. */
+
+.app-search-input__control {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  height: auto;
+}
+
+.app-search-input__input {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 40px;
+  height: auto;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+/* align-self: stretch keeps the button flush with the input when the input grows. */
+.app-search-input__button {
+  display: flex;
+  flex: 0 0 40px;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: 40px;
+  min-height: 40px;
+  height: auto;
+  padding: 8px;
+  border: 0;
+  box-sizing: border-box;
+  background-color: #1d70b8;
+  cursor: pointer;
+}
+
+.app-search-input__button:hover {
+  background-color: #003078;
+}
+
+.app-search-input__button:focus {
+  outline: 3px solid #ffdd00;
+  outline-offset: 0;
+  background-color: #ffdd00;
+}
+
+.app-search-input__button:focus svg circle,
+.app-search-input__button:focus svg line {
+  stroke: #0b0c0c;
+}

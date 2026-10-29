@@ -6,9 +6,16 @@ using Domain.KeyResults;
 
 namespace Infrastructure.Persistence.Seed;
 
-// Static transcription of the Question Protocol's "Results table" sheet ("Question Protocol Cross
-// Reference-Updated - 3 July.xlsx", BLUM-6933; originally "MASTER Question protocol - LA user.xlsx", BLUM-6611) —
-// the per-activity-type standard key results and the quarterly-report questions they unlock.
+// Static transcription of the Question Protocol's "Results table" sheet ("Post-Assessment Question Protocol
+// 13 August .xlsx", BLUM-7791 — a LATER REVISION of the "Post-Assessment Question Protocal 13 August.xlsx"
+// BLUM-7620 transcribed; previously "Question Protocol Cross Reference-Updated - 3 July.xlsx", BLUM-6933;
+// originally "MASTER Question protocol - LA user.xlsx", BLUM-6611) — the per-activity-type standard key results
+// and the quarterly-report questions they unlock.
+//
+// BLUM-7620 applied only the 13 August sheet's blue-highlighted changes (blue *font*, not fills, plus
+// strikethrough for deletions). Rows the sheet changed without highlighting are deliberately left alone. The
+// later revision marks its own round in RED font and fills in spec columns the 13 August sheet left blank;
+// BLUM-7791 applies its "Documenting a strategy and action plan" rows (sheet 1.C.1C, Results table 18-21).
 //
 // Conventions:
 // - One ProtocolTypeSeed per activity type, keyed by the SEEDED ActivityTask name (the taxonomy is aligned to the
@@ -47,11 +54,22 @@ public static class KeyResultProtocolSeedData
         IReadOnlyList<KeyResultSeed> KeyResults,
         IReadOnlyList<QuestionSeed> Questions);
 
-    // Mirrors the activity form's "Who will you work with?" options — the contributor questions prefill from the
-    // activity's saved {prefix}_WHO_WITH answer, so values must match those option values exactly.
+    // Mirrors the activity form's "Who have you worked with, or who will you work with?" options — the contributor
+    // questions prefill from the activity's saved {prefix}_WHO_WITH answer, so values must match those option
+    // values exactly. The last five before "Other" were added by the 13 August protocol (BLUM-7620).
+    //
+    // BLUM-7697: the list had drifted from the data map in two ways — "Affected others" was missing, and the
+    // map's three separate health options were seeded as one merged checkbox. Both are fixed here, in the map's
+    // order. "primary_care" deliberately KEEPS its value while its label narrows to "Primary care": the value is
+    // what activity_answers and submission_activity_answers store, and both answer validators hold a saved value
+    // to its question's own option list by exact match — so dropping it would make re-saving an untouched activity
+    // fail and block Complete on a report with a 422. Adding values is safe; removing one is not. Values must also
+    // stay unique: SeedFormDesigner rethrows a duplicate-key 23505 while the schema is still empty, which is a
+    // crash-looping boot rather than a soft error.
     public static readonly (string Value, string Label)[] WhoWithOptions =
     {
         ("lived_experience", "People with lived experience"),
+        ("affected_others", "Affected others"),
         ("licensing", "Licensing"),
         ("planning", "Planning"),
         ("housing", "Housing"),
@@ -63,8 +81,15 @@ public static class KeyResultProtocolSeedData
         ("vcse", "Voluntary, community and social enterprises (VCSEs)"),
         ("welfare", "Welfare services"),
         ("debt", "Debt advice"),
-        ("primary_care", "Primary care, integrated care board (ICB) and other health practitioners"),
+        ("primary_care", "Primary care"),
+        ("icb", "Integrated care board (ICB)"),
+        ("other_health_practitioners", "Other health practitioners"),
         ("criminal_justice", "Criminal justice system staff"),
+        ("dhsc_regional_lead", "DHSC regional lead for gambling"),
+        ("la_public_health", "Local authority public health representative"),
+        ("local_politicians", "Local politicians"),
+        ("coroners", "Coroners"),
+        ("teachers_schools", "Teachers or schools"),
         ("other", "Other"),
     };
 
@@ -83,12 +108,63 @@ public static class KeyResultProtocolSeedData
         new("other", "Other"),
     ];
 
+    // BLUM-8159: "Other" closes the list, as it does in the data map — the sheet's later revision (R23) added it
+    // and the seed had not caught up. Its free-text companion is SAP_OTHER_STRATEGIES_OTHER.
     private static readonly IReadOnlyList<KeyResultQuestionOption> OtherStrategies =
     [
         new("alcohol", "Alcohol"),
         new("drugs", "Drugs"),
         new("mental_health", "Mental health"),
         new("suicide", "Suicide"),
+        new("other", "Other"),
+    ];
+
+    // Sheet (13 August): the steering-group engagement levels, offered once per steering-group member. The five
+    // options are shared by every one of those questions — see SteeringGroupEngagement below.
+    private static readonly IReadOnlyList<KeyResultQuestionOption> EngagementLevels =
+    [
+        new("attends_engages", "Attends and engages"),
+        new("attends_limited", "Attends but with limited engagement"),
+        new("contacted_no_response", "Contacted but no response"),
+        new("no_engagement", "No engagement"),
+        new("do_not_know", "Do not know"),
+    ];
+
+    // BLUM-7788: the protocol draws the engagement question as a multi-row radio — one row per member picked on
+    // "Who is in the steering group?". BLUM-7620 seeded it as a single radio because that control does not exist,
+    // and flagged the substitution back to DHSC, who asked for the real thing. It is seeded here as one question
+    // per member option of LSG_MEMBERS, each revealed by that member being ticked: the same
+    // ConditionalQuestionCode/ConditionalValue pair LSG_MEMBERS_OTHER already uses, which the visibility rule (the
+    // server's AnswerVisibility and the client's isQuestionVisible) handles
+    // unchanged — so this needs no new field type, no domain change and no client change. A member left unticked
+    // is invisible, and therefore neither shown nor required nor exported.
+    //
+    // Generated from WhoWithOptions rather than written out, because that array is also LSG_MEMBERS' own option
+    // list and the activity form's {prefix}_WHO_WITH: hand-copying it here would be a third place to drift.
+    //
+    // The member is in the LABEL, not only in the reveal it sits under, because check-your-answers rows and both
+    // activity-results.csv exports key on the label — 23 rows reading "What is their level of engagement?" name no
+    // member, and SummaryList derives its row data-testid from the slugified label, so they would collide as well.
+    // The error message names the member for the same reason: DHSC's single "...of each steering group member" was
+    // written for one multi-row control and says nothing about which row an error summary link is pointing at.
+    private static readonly IReadOnlyList<QuestionSeed> SteeringGroupEngagement =
+        WhoWithOptions.Select(member => new QuestionSeed(
+            "lsg_members",
+            $"LSG_ENGAGEMENT_{member.Value.ToUpperInvariant()}",
+            QuestionStatusScopes.Active,
+            $"What is their level of engagement? ({member.Label})",
+            ProtocolFieldTypes.Radio,
+            Options: EngagementLevels,
+            ConditionalQuestionCode: "LSG_MEMBERS",
+            ConditionalValue: member.Value,
+            ErrorMessage: $"Select the level of engagement of {member.Label}")).ToList();
+
+    // Sheet (13 August): the advertising-restriction question stops being a yes/no and offers a partial answer.
+    private static readonly IReadOnlyList<KeyResultQuestionOption> AdvertisingRestrictions =
+    [
+        new("yes_all", "Yes, on all council-owned property"),
+        new("yes_some", "Yes, on some property"),
+        new("no", "No"),
     ];
 
     public static IReadOnlyList<ProtocolTypeSeed> Protocol { get; } = BuildProtocol();
@@ -100,7 +176,15 @@ public static class KeyResultProtocolSeedData
         const string finished = QuestionStatusScopes.Finished;
 
         // The two needs-assessment types share one protocol block (sheet 1.B.1A / 1.B.1B) with per-type codes.
-        ProtocolTypeSeed NeedsAssessment(string taskName, string krPrefix, string qPrefix) => new(
+        // Sheet (13 August): the local-assessment variant qualifies three of its error messages with "the
+        // assessment" where the regional one does not, so those strings are per-type rather than shared.
+        ProtocolTypeSeed NeedsAssessment(
+            string taskName,
+            string krPrefix,
+            string qPrefix,
+            string informationCapturedError,
+            string informationCoveredError,
+            string publishedUrlError) => new(
             taskName,
             [
                 new($"{krPrefix}_contributors", "List of people or organisations that contributed evidence"),
@@ -117,53 +201,113 @@ public static class KeyResultProtocolSeedData
                 new($"{krPrefix}_contributors", $"{qPrefix}_CONTRIBUTORS_OTHER", closedFinished, "Who else contributed?", ProtocolFieldTypes.Text,
                     PrefillSource: "who_with_other", ConditionalQuestionCode: $"{qPrefix}_CONTRIBUTORS", ConditionalValue: "other", ErrorMessage: "Enter who else contributed"),
                 new($"{krPrefix}_information", $"{qPrefix}_INFORMATION", active, "What information is being captured in the needs assessment?", ProtocolFieldTypes.List,
-                    Options: NeedsAssessmentInformation, ErrorMessage: "Select the information being captured"),
+                    Options: NeedsAssessmentInformation, ErrorMessage: informationCapturedError),
                 new($"{krPrefix}_information", $"{qPrefix}_INFORMATION", closedFinished, "What information does the assessment cover?", ProtocolFieldTypes.List,
-                    Options: NeedsAssessmentInformation, ErrorMessage: "Select the information covered"),
+                    Options: NeedsAssessmentInformation, ErrorMessage: informationCoveredError),
+
+                // Sheet: the information lists offer an "Other" option with no follow-up row, so what "Other" means
+                // could never be captured — the checkbox validator rejects free text posted into the parent code
+                // (BLUM-7472). Companion modelled on the sheet's own CONTRIBUTORS_OTHER rows above.
+                new($"{krPrefix}_information", $"{qPrefix}_INFORMATION_OTHER", active, "What other information is being captured?", ProtocolFieldTypes.Text,
+                    ConditionalQuestionCode: $"{qPrefix}_INFORMATION", ConditionalValue: "other", ErrorMessage: "Enter the other information being captured"),
+                new($"{krPrefix}_information", $"{qPrefix}_INFORMATION_OTHER", closedFinished, "What other information does the assessment cover?", ProtocolFieldTypes.Text,
+                    ConditionalQuestionCode: $"{qPrefix}_INFORMATION", ConditionalValue: "other", ErrorMessage: "Enter the other information covered"),
 
                 // Sheet: the "[D] Assessment approved and published" Active variant is n/a — Closed/Finished only.
                 new($"{krPrefix}_published", $"{qPrefix}_PUBLISHED", closedFinished, "Has the assessment been approved and published?", ProtocolFieldTypes.Boolean,
                     ErrorMessage: "Select yes if the assessment has been approved and published"),
                 new($"{krPrefix}_published", $"{qPrefix}_PUBLISHED_URL", finished, "What's the web address of the published assessment?", ProtocolFieldTypes.Text,
-                    ConditionalQuestionCode: $"{qPrefix}_PUBLISHED", ConditionalValue: "yes", ErrorMessage: "Enter the web address"),
+                    ConditionalQuestionCode: $"{qPrefix}_PUBLISHED", ConditionalValue: "yes", ErrorMessage: publishedUrlError),
             ]);
 
         return
         [
-            NeedsAssessment("Contributing to a regional needs assessment", "rna", "RNA"),
-            NeedsAssessment("Creating a local needs assessment", "lna", "LNA"),
+            NeedsAssessment(
+                "Contributing to a regional needs assessment", "rna", "RNA",
+                "Select the information being captured",
+                "Select the information covered",
+                "Enter the assessment web address"),
+            NeedsAssessment(
+                "Creating a local needs assessment", "lna", "LNA",
+                "Select the information being captured by the assessment",
+                "Select the information covered by the assessment",
+                "Enter the web address of the published assessment"),
 
             new(
                 "Documenting a strategy and action plan",
                 [
-                    new("sap_hwb_presented", "Strategy and plan presented to the Health and Wellbeing Board"),
+                    // Sheet (13 August): "[A] Strategy and action plan developed" and "[B] Work on gambling harms
+                    // presented to the Health and Wellbeing Board" are separate results. The 3 July transcription
+                    // folded both onto sap_hwb_presented, which left the drafting question hanging off a result
+                    // about the Board (BLUM-7620).
+                    new("sap_plan_developed", "Strategy and action plan developed"),
+                    new("sap_hwb_presented", "Work on gambling harms presented to the Health and Wellbeing Board"),
                     new("sap_other_strategies", "List of other strategies updated to include gambling harms"),
                 ],
                 [
-                    // Sheet: the Active error column repeats an unrelated message — corrected to match the question.
-                    new("sap_hwb_presented", "SAP_HWB_PRESENTED", active, "Is a draft strategy and plan being developed?", ProtocolFieldTypes.Boolean,
-                        ErrorMessage: "Select yes if a draft strategy and plan is being developed"),
-                    new("sap_hwb_presented", "SAP_HWB_PRESENTED", closedFinished, "Has the strategy and plan been presented to the Health and Wellbeing Board?", ProtocolFieldTypes.Boolean,
-                        ErrorMessage: "Select yes if the strategy has been approved"),
+                    // Sheet (BLUM-7791 revision): the Active label picks up the "and/or action plan" wording its
+                    // Closed/Finished twin already carried — the 13 August transcription shortened only this one.
+                    new("sap_plan_developed", "SAP_PLAN_DEVELOPED", active, "Is a draft strategy and/or action plan being developed?", ProtocolFieldTypes.Boolean,
+                        ErrorMessage: "Select yes if a draft is being developed"),
+
+                    // Sheet (BLUM-7791 revision): the Closed/Finished error now says "developed", matching the
+                    // question it belongs to. The 13 August sheet said "presented"; BLUM-7620 kept that verbatim
+                    // and raised the contradiction back to DHSC, so this is their answer to that flag rather than
+                    // us quietly changing our mind about it. Do not restore "presented" from the older sheet.
+                    new("sap_plan_developed", "SAP_PLAN_DEVELOPED", closedFinished, "Has a draft strategy and/or action plan been developed?", ProtocolFieldTypes.Boolean,
+                        ErrorMessage: "Select yes if a draft has been developed"),
+
+                    // BLUM-7791 — the two Board rows. Each is asked only while the sap_hwb_presented MEASURE is
+                    // selected on the activity AND the activity's status matches the row's StatusScope: Active gets
+                    // "Will you present…", Closed/Finished gets "Have you presented…", and an activity that did not
+                    // pick the measure is asked neither. That pairing, not ConditionalQuestionCode/ConditionalValue,
+                    // is what expresses the rule — the activity's status is not an answer, so the conditional-reveal
+                    // pair (which AnswerVisibility reads out of the answers dictionary) cannot see it. The two
+                    // rows deliberately share one Code so a yes/no saved while Active is the value the Closed or
+                    // Finished phrasing re-opens, which is the sheet's "pull 'Active' text for final edit".
+                    //
+                    // The 13 August sheet left both rows' field-type and error columns blank and BLUM-7620 judged
+                    // them Boolean with the error worded from the question; the later revision fills every one of
+                    // those columns in, confirming Boolean and superseding that invented error copy.
+                    new("sap_hwb_presented", "SAP_HWB_PRESENTED", active, "Will you present work on gambling harms prevention to the Health and Wellbeing Board?", ProtocolFieldTypes.Boolean,
+                        ErrorMessage: "Select yes if you are planning on presenting to the Health and Wellbeing Board"),
+                    new("sap_hwb_presented", "SAP_HWB_PRESENTED", closedFinished, "Have you presented work on gambling harms prevention to the Health and Wellbeing Board?", ProtocolFieldTypes.Boolean,
+                        ErrorMessage: "Select yes if you have presented to the Health and Wellbeing Board"),
                     new("sap_other_strategies", "SAP_OTHER_STRATEGIES", closedFinished, "Which other strategies have been updated to include gambling harms?", ProtocolFieldTypes.List,
-                        Options: OtherStrategies, ErrorMessage: "Select the other strategies that have been updated"),
+                        Options: OtherStrategies, ErrorMessage: "Select which other strategies have been updated"),
+
+                    // BLUM-8159: same "Other"-with-no-follow-up gap as the needs-assessment information lists
+                    // (BLUM-7472). The sheet gives no copy for the follow-up; the label must differ from its parent's
+                    // because check-your-answers rows, the CSV exports and SummaryList row testids key on the label.
+                    new("sap_other_strategies", "SAP_OTHER_STRATEGIES_OTHER", closedFinished, "List the other strategies that have been updated to include gambling harms", ProtocolFieldTypes.Text,
+                        ConditionalQuestionCode: "SAP_OTHER_STRATEGIES", ConditionalValue: "other", ErrorMessage: "Enter the other strategies that have been updated"),
                 ]),
 
             new(
                 "Setting up and running a local steering group",
                 [
+                    // BLUM-7790: the 13 August sheet's second steering-group result, "Meeting attendance"
+                    // ([B] on the measures screen), is withdrawn along with its "Who attended each meeting?"
+                    // question — DHSC dropped the meeting count measure the pair was built around. Do not
+                    // restore either from that sheet on the next re-transcription.
                     new("lsg_members", "List of members"),
-
-                    // Sheet (3 July): the attendance question rows are struck through but the key result itself
-                    // is kept — selectable, with no quarterly-report question. (Its replacement, the "level of
-                    // engagement" multi-row radio, is an unsupported field type — out of scope, see BLUM-6933.)
-                    new("lsg_attendance", "Meeting attendance"),
                 ],
                 [
                     // Sheet (3 July): now a prefilled list mirroring the contributors questions — options are the
-                    // "Who will you work with?" list, defaulted from the activity's saved answer.
+                    // "Who have you worked with ...?" list, defaulted from the activity's saved answer.
                     new("lsg_members", "LSG_MEMBERS", active, "Who is in the steering group?", ProtocolFieldTypes.List,
                         Options: WhoWith, PrefillSource: "who_with", ErrorMessage: "Select who is in the steering group"),
+
+                    // Sheet: same "Other"-with-no-follow-up gap as the needs-assessment information lists
+                    // (BLUM-7472). Prefilled from the activity's "Who else will you work with?" answer, matching its
+                    // parent's who_with prefill so the pair stays in step.
+                    new("lsg_members", "LSG_MEMBERS_OTHER", active, "Who else is in the steering group?", ProtocolFieldTypes.Text,
+                        PrefillSource: "who_with_other", ConditionalQuestionCode: "LSG_MEMBERS", ConditionalValue: "other", ErrorMessage: "Enter who else is in the steering group"),
+
+                    // Sheet (13 August): the engagement question the 3 July sheet had struck through is back, asked
+                    // once per member ticked above (BLUM-7788). Last in the list so the reveals order with their
+                    // members — DisplayOrder is this array's order.
+                    .. SteeringGroupEngagement,
                 ]),
 
             new(
@@ -174,9 +318,9 @@ public static class KeyResultProtocolSeedData
                 ],
                 [
                     new("rnw_membership", "RNW_MEMBERSHIP", active, "Is your authority a member of a regional network?", ProtocolFieldTypes.Boolean,
-                        ErrorMessage: "Select yes if your authority is a member of a regional network"),
+                        ErrorMessage: "Select yes if your local authority is a member of a network"),
                     new("rnw_representative", "RNW_REPRESENTATIVE", active, "Does a named representative attend network meetings?", ProtocolFieldTypes.Boolean,
-                        ErrorMessage: "Select yes if a representative attends meetings"),
+                        ErrorMessage: "Select yes if a representative attends network meetings"),
                 ]),
 
             new(
@@ -216,7 +360,7 @@ public static class KeyResultProtocolSeedData
                 "Managing planning applications for gambling venues",
                 [
                     new("pla_spd", "Supplementary planning document (SPD) agreed and published"),
-                    new("pla_refused", "Number of gambling planning applications refused or with restrictions added"),
+                    new("pla_refused", "Gambling planning applications refused or restrictions added"),
                     new("pla_invitations", "Invitations to submit planning representations by public health"),
                 ],
                 [
@@ -225,9 +369,9 @@ public static class KeyResultProtocolSeedData
                     new("pla_spd", "PLA_SPD", active, "Are gambling harms or premises included in your local planning guidance?", ProtocolFieldTypes.Boolean,
                         ErrorMessage: "Select yes if gambling harms or premises are included"),
                     new("pla_spd", "PLA_SPD", closedFinished, "Does your published local planning guidance include gambling harms or premises?", ProtocolFieldTypes.Boolean,
-                        ErrorMessage: "Select yes if it includes gambling harms or premises"),
+                        ErrorMessage: "Select yes if guidance includes gambling harms or premises"),
                     new("pla_refused", "PLA_REFUSED", active, "Have any gambling planning applications been refused or had restrictions added?", ProtocolFieldTypes.Boolean,
-                        ErrorMessage: "Select yes if any applications have been refused or had restrictions added"),
+                        ErrorMessage: "Select yes if any gambling planning applications have been refused or had restrictions added"),
                     new("pla_invitations", "PLA_INVITATIONS", active, "Are members of the public health team invited to submit representations on gambling planning applications?", ProtocolFieldTypes.Boolean,
                         ErrorMessage: "Select yes if members of the planning team are invited"),
                 ]),
@@ -235,12 +379,14 @@ public static class KeyResultProtocolSeedData
             new(
                 "Restricting gambling advertising on council-owned spaces",
                 [
-                    new("adv_restrictions", "Advertising restrictions introduced"),
-                    new("adv_other_restrictions", "Other advertising restrictions introduced"),
+                    new("adv_restrictions", "Restrictions introduced on gambling advertising"),
+                    new("adv_other_restrictions", "Restrictions introduced on different types of advertising"),
                 ],
                 [
-                    new("adv_restrictions", "ADV_RESTRICTIONS", active, "Have you introduced a restriction on gambling advertising on council-owned property?", ProtocolFieldTypes.Boolean,
-                        ErrorMessage: "Select yes if you have introduced a restriction"),
+                    // Sheet (13 August): no longer a yes/no — a partial restriction is now a distinct answer, so
+                    // this is the protocol's first Radio question (BLUM-7620).
+                    new("adv_restrictions", "ADV_RESTRICTIONS", active, "Has your local authority restricted gambling advertising on council-owned property?", ProtocolFieldTypes.Radio,
+                        Options: AdvertisingRestrictions, ErrorMessage: "Select whether you have restricted gambling advertising on council-owned property"),
                     new("adv_other_restrictions", "ADV_OTHER_RESTRICTIONS", active, "Have you introduced a restriction on other types of advertising in your area, for example of tobacco or alcohol?", ProtocolFieldTypes.Boolean,
                         ErrorMessage: "Select yes if you have introduced restrictions on other types of advertising"),
                 ]),
@@ -255,6 +401,14 @@ public static class KeyResultProtocolSeedData
                     // with?" list). The question cell also carries an embedded team note, stripped here.
                     new("trn_service_areas", "TRN_SERVICE_AREAS", closedFinished, "Which service areas have received training?", ProtocolFieldTypes.List,
                         Options: WhoWith, ErrorMessage: "Select which service areas have received training"),
+
+                    // Sheet: same "Other"-with-no-follow-up gap as the needs-assessment information lists
+                    // (BLUM-7472). No prefill on either row — unlike LSG_MEMBERS, and unlike SCR_SERVICES since
+                    // BLUM-7645, this pair does not mirror the activity's "Who will you work with?" answer: the
+                    // service areas that received training are an audience, not the collaborators. It is now the
+                    // only WhoWith-optioned question left without a prefill, so the omission is deliberate.
+                    new("trn_service_areas", "TRN_SERVICE_AREAS_OTHER", closedFinished, "Which other service areas have received training?", ProtocolFieldTypes.Text,
+                        ConditionalQuestionCode: "TRN_SERVICE_AREAS", ConditionalValue: "other", ErrorMessage: "Enter which other service areas have received training"),
                 ]),
 
             new(
@@ -276,27 +430,25 @@ public static class KeyResultProtocolSeedData
                     new("cam_live", "Campaign is live or event delivered"),
                 ],
                 [
-                    // Sheet: the Active question cell is blank (its type and error survive) — kept from the
-                    // previous protocol, matching the Category Guide.
-                    new("cam_materials", "CAM_MATERIALS", active, "Are campaign or event materials being developed?", ProtocolFieldTypes.Boolean,
+                    new("cam_materials", "CAM_MATERIALS", active, "Are you developing campaign or event materials?", ProtocolFieldTypes.Boolean,
                         ErrorMessage: "Select yes if you are developing materials"),
                     new("cam_materials", "CAM_MATERIALS", closedFinished, "Have you developed campaign or event materials?", ProtocolFieldTypes.Boolean,
                         ErrorMessage: "Select yes if you have developed materials"),
-                    new("cam_live", "CAM_LIVE", active, "Will you deliver any local awareness campaigns to address gambling-related harm?", ProtocolFieldTypes.Boolean,
+                    new("cam_live", "CAM_LIVE", active, "Will you deliver any local awareness campaigns to address gambling-related harms?", ProtocolFieldTypes.Boolean,
                         ErrorMessage: "Select yes if you intend to deliver awareness campaigns"),
-                    new("cam_live", "CAM_LIVE", closedFinished, "Have you delivered any local awareness campaigns to address gambling-related harm?", ProtocolFieldTypes.Boolean,
+                    new("cam_live", "CAM_LIVE", closedFinished, "Have you delivered any local awareness campaigns to address gambling-related harms?", ProtocolFieldTypes.Boolean,
                         ErrorMessage: "Select yes if you have delivered awareness campaigns"),
                 ]),
 
             new(
                 "Creating a workplace charter",
                 [
-                    new("wpc_policies", "Policies and support for staff affected by gambling harm"),
+                    new("wpc_policies", "Policies and support for staff affected by gambling harms"),
                     new("wpc_toolkits", "Workplace charter materials or toolkits distributed to employers"),
                 ],
                 [
-                    new("wpc_policies", "WPC_POLICIES", active, "Does your local authority have policies and support for staff affected by gambling harms?", ProtocolFieldTypes.Boolean,
-                        ErrorMessage: "Select yes if you have policies or support for staff"),
+                    new("wpc_policies", "WPC_POLICIES", active, "Is your local authority developing policies and support for staff affected by gambling harms, for example in a workplace charter?", ProtocolFieldTypes.Boolean,
+                        ErrorMessage: "Select yes if you are developing policies or support for staff"),
 
                     // Sheet: field type n/a but the question and error are present — judged Boolean (same as Active).
                     new("wpc_policies", "WPC_POLICIES", closedFinished, "Does your local authority have policies and support for staff affected by gambling harms?", ProtocolFieldTypes.Boolean,
@@ -315,9 +467,9 @@ public static class KeyResultProtocolSeedData
                     new("lex_engaged", "People with lived experience engaged in planning or peer support"),
                 ],
                 [
-                    new("lex_engaged", "LEX_ENGAGED", active, "Are you involving people with lived experience of gambling harm?", ProtocolFieldTypes.Boolean,
+                    new("lex_engaged", "LEX_ENGAGED", active, "Are you involving people with lived experience of gambling harms?", ProtocolFieldTypes.Boolean,
                         ErrorMessage: "Select yes if you are involving people with lived experience"),
-                    new("lex_engaged", "LEX_ENGAGED", closedFinished, "Have you involved people with lived experience of gambling harm?", ProtocolFieldTypes.Boolean,
+                    new("lex_engaged", "LEX_ENGAGED", closedFinished, "Have you involved people with lived experience of gambling harms?", ProtocolFieldTypes.Boolean,
                         ErrorMessage: "Select yes if you have involved people with lived experience"),
                 ]),
 
@@ -325,7 +477,7 @@ public static class KeyResultProtocolSeedData
                 "Improving referrals between services",
                 [
                     new("ref_agreements", "New referral agreements signed"),
-                    new("ref_pathways", "Departments using shared referral pathways"),
+                    new("ref_pathways", "Departments, services and organisations using shared referral pathways"),
                 ],
                 [
                     new("ref_agreements", "REF_AGREEMENTS", active, "Are you drafting joint referral protocols or agreements?", ProtocolFieldTypes.Boolean,
@@ -339,20 +491,45 @@ public static class KeyResultProtocolSeedData
                 ]),
 
             new(
-                "Using screening tools to better assess gambling harm",
+                "Using screening tools to better assess gambling harms",
                 [
                     new("scr_tool", "Screening tool identified and in use"),
                     new("scr_questions", "Gambling questions added to assessments"),
                     new("scr_brief_advice", "Brief advice sessions delivered"),
                 ],
                 [
-                    new("scr_tool", "SCR_TOOL", active, "Have you identified or designed a gambling harm screening tool for local use?", ProtocolFieldTypes.Boolean,
+                    new("scr_tool", "SCR_TOOL", active, "Have you identified or designed a gambling harms screening tool for local use?", ProtocolFieldTypes.Boolean,
                         ErrorMessage: "Select yes if you have identified or designed a screening tool"),
 
-                    // Sheet: "List/text" with no options and a mis-copied error — modelled as free text with a
-                    // corrected message.
-                    new("scr_tool", "SCR_TOOL", closedFinished, "Which services are currently screening for gambling harm?", ProtocolFieldTypes.Text,
-                        ErrorMessage: "Enter which services are currently screening for gambling harm"),
+                    // Sheet: "List/text" with no options and a mis-copied error. Options taken from the 1.BCDEF.1.2
+                    // "Who will you work with?" list, as the sheet itself does for TRN_SERVICE_AREAS (BLUM-7475).
+                    // Deliberately NOT the Active variant's SCR_TOOL code: that one is a yes/no ("Have you identified
+                    // or designed a screening tool?"), and answers key on Code across a status change — so sharing a
+                    // code across the two field types hands a saved "yes" to the checkbox validator, a 422 that blocks
+                    // completing the report.
+                    //
+                    // BLUM-7475 shipped these without a prefill, reading the services that screen as a different set
+                    // from the services you work with. DHSC overturned that in BLUM-7645: the LA already named its
+                    // partners at activity creation, so the list arrives with those ticked and is amended rather than
+                    // re-keyed. Safe because both option lists are the one shared WhoWithOptions array, so every
+                    // prefilled value is in this question's allow-list. TRN_SERVICE_AREAS keeps the original reading
+                    // and stays prefill-free — the ticket covers this question only.
+                    //
+                    // Like every prefill here this is a read-time overlay, never a stored row, so unticking every box
+                    // and saving a draft persists nothing and the next GET re-ticks them (true of *_CONTRIBUTORS and
+                    // LSG_MEMBERS since BLUM-6611). Bounded by the question being required on complete: "none are
+                    // screening yet" is not an answer this protocol offers, so there is nothing the LA can express
+                    // that the overlay overwrites. Adding a "none" option later would need a stored answer to be
+                    // clearable, not just a new option value.
+                    new("scr_tool", "SCR_SERVICES", closedFinished, "Which services are currently screening for gambling harms?", ProtocolFieldTypes.List,
+                        Options: WhoWith, PrefillSource: "who_with", ErrorMessage: "Select which services are screening for gambling harms"),
+
+                    // Same "Other"-with-no-follow-up gap the information lists had (BLUM-7472): the checkbox validator
+                    // rejects free text posted into the parent code, so "Other" needs somewhere to be written down.
+                    // Prefilled from the activity record's _WHO_WITH_OTHER for the same reason as its parent.
+                    new("scr_tool", "SCR_SERVICES_OTHER", closedFinished, "Which other services are currently screening for gambling harms?", ProtocolFieldTypes.Text,
+                        PrefillSource: "who_with_other", ConditionalQuestionCode: "SCR_SERVICES", ConditionalValue: "other", ErrorMessage: "Enter which other services are currently screening for gambling harms"),
+
                     new("scr_questions", "SCR_QUESTIONS", active, "Have gambling-related questions been added to your standard assessment forms?", ProtocolFieldTypes.Boolean,
                         ErrorMessage: "Select yes if gambling-related questions have been added"),
                     new("scr_brief_advice", "SCR_BRIEF_ADVICE", active, "Are brief advice toolkits and materials being developed?", ProtocolFieldTypes.Boolean,

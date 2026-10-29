@@ -1,0 +1,53 @@
+.maturity-tasks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 30px;
+  width: 100%;
+}
+
+.maturity-tasks > .govuk-heading-xl,
+.maturity-tasks__section .govuk-heading-m,
+.maturity-tasks__intro .govuk-body,
+.maturity-tasks__submit .govuk-heading-m,
+.maturity-tasks__submit .govuk-body,
+.maturity-tasks__submit .govuk-button {
+  margin: 0;
+}
+
+.maturity-tasks > .govuk-notification-banner {
+  width: 100%;
+  margin: 0 0 20px;
+}
+
+.maturity-tasks__intro,
+.maturity-tasks__summary,
+.maturity-tasks__section .govuk-heading-m,
+.maturity-tasks__submit {
+  width: 630px;
+  max-width: 100%;
+}
+
+.maturity-tasks__summary {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+.maturity-tasks__summary .govuk-summary-list {
+  margin-bottom: 0;
+}
+
+.maturity-tasks__intro,
+.maturity-tasks__submit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.maturity-tasks__section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}

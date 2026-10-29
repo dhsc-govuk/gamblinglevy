@@ -1,23 +1,15 @@
 import React, { useState } from 'react';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { httpMessageOf } from '../../../../helpers/httpErrors';
 import { GeneralLayout } from '../../../../layouts';
-import {
-  GovUKButton,
-  ErrorSummary,
-  H1,
-  H2,
-  Paragraph,
-  GovUKTag,
-} from '../../../../components/GovUKComponents';
+import { GovUKButton, ErrorSummary, GovUKFieldset, H1, H2, Paragraph, GovUKTag, GovUKTableScroll } from '../../../../components/GovUKComponents';
 import usePageTitle from '../../../../hooks/usePageTitle';
 import { localAuthoritiesListKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
-import {
-  bulkAmendAllocations,
-  downloadBulkAmendAllocationsTemplate,
-  BulkImportResultDto,
-  BulkImportRowOutcomeDto,
-} from '../mutations';
+import { composeTestId } from '../../../../helpers/testIds';
+import { bulkAmendAllocations, downloadBulkAmendAllocationsTemplate, BulkImportResultDto, BulkImportRowOutcomeDto } from '../mutations';
+
+const RESULT_TABLE_TEST_ID = 'admin-local-authorities-bulk-amend-allocations-result-table';
 
 const outcomeColour = (outcome: BulkImportRowOutcomeDto['outcome']) => {
   if (outcome === 'Created') return 'green';
@@ -32,14 +24,16 @@ const LocalAuthoritiesBulkAmendAllocations = (): React.ReactElement => {
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<BulkImportResultDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [submitAttempts, setSubmitAttempts] = useState(0);
 
-  const { mutate, isLoading } = useMutation((f: File) => bulkAmendAllocations(f), {
+  const { mutate, isPending } = useMutation({
+    mutationFn: (f: File) => bulkAmendAllocations(f),
     onSuccess: (response) => {
       setResult(response.data);
-      queryClient.invalidateQueries(localAuthoritiesListKey());
+      queryClient.invalidateQueries({ queryKey: localAuthoritiesListKey() });
     },
-    onError: (e: any) => {
-      const message = e?.response?.data?.toString() ?? 'CSV upload failed. Check the file and try again.';
+    onError: (e) => {
+      const message = httpMessageOf(e) ?? 'CSV upload failed. Check the file and try again.';
       setError(message);
     },
   });
@@ -56,6 +50,7 @@ const LocalAuthoritiesBulkAmendAllocations = (): React.ReactElement => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitAttempts((n) => n + 1);
     setError(null);
     setResult(null);
     if (!file) {
@@ -71,45 +66,37 @@ const LocalAuthoritiesBulkAmendAllocations = (): React.ReactElement => {
         { label: 'Home', link: ROUTES.admin.home },
         { label: 'Local Authorities', link: ROUTES.admin.organisations.list },
       ]}
-      backLink={{ href: ROUTES.admin.organisations.list }}
-    >
+      backLink={{ href: ROUTES.admin.organisations.list }}>
       <div style={{ paddingTop: '20px' }}>
-        {error && <ErrorSummary heading="There is a problem" errors={[{ targetName: 'file', text: error }]} />}
+        <ErrorSummary heading="There is a problem" errors={error ? [{ targetName: 'csv-file', text: error }] : []} focusTrigger={submitAttempts} />
 
         <H1>Bulk amend allocations</H1>
 
         <Paragraph>
-          Upload a CSV with one row per Local Authority. Columns required:
-          {' '}<code>ons_code, allocated_amount</code>. Existing allocations are amended in place; rows with an unrecognised ONS code are skipped.
+          Upload a CSV with one row per Local Authority. Columns required: <code>ons_code, allocated_amount</code>. Existing allocations are amended in place; rows with an
+          unrecognised ONS code are skipped.
         </Paragraph>
 
         <GovUKButton
           type="button"
           className="govuk-button govuk-button--secondary"
           onClick={handleDownloadTemplate}
-          data-testid="admin-local-authorities-bulk-amend-allocations-download-template"
-        >
+          data-testid="admin-local-authorities-bulk-amend-allocations-download-template">
           Download CSV template
         </GovUKButton>
 
         <form onSubmit={handleSubmit} style={{ marginTop: '20px' }} noValidate>
-          <div className="govuk-form-group">
-            <label className="govuk-label" htmlFor="csv-file">CSV file</label>
-            <input
-              id="csv-file"
-              className="govuk-file-upload"
-              type="file"
-              accept=".csv,text/csv"
-              data-testid="admin-local-authorities-bulk-amend-allocations-file"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-          </div>
-          <GovUKButton
-            type="submit"
-            isLoading={isLoading}
-            disabled={isLoading}
-            data-testid="admin-local-authorities-bulk-amend-allocations-submit"
-          >
+          <GovUKFieldset.FileUpload
+            id="csv-file"
+            name="csv-file"
+            label="CSV file"
+            labelSize="none"
+            accept=".csv,text/csv"
+            error={error ?? undefined}
+            onChange={setFile}
+            testId="admin-local-authorities-bulk-amend-allocations-file"
+          />
+          <GovUKButton type="submit" isLoading={isPending} disabled={isPending} data-testid="admin-local-authorities-bulk-amend-allocations-submit">
             Upload and amend
           </GovUKButton>
         </form>
@@ -118,34 +105,59 @@ const LocalAuthoritiesBulkAmendAllocations = (): React.ReactElement => {
           <div style={{ marginTop: '30px' }} data-testid="admin-local-authorities-bulk-amend-allocations-result">
             <H2>Amendment summary</H2>
             <Paragraph>
-              Updated: <strong>{result.updatedCount}</strong>{' · '}
-              Skipped: <strong>{result.skippedCount}</strong>{' · '}
+              Updated: <strong>{result.updatedCount}</strong>
+              {' · '}
+              Skipped: <strong>{result.skippedCount}</strong>
+              {' · '}
               Failed: <strong>{result.failedCount}</strong>
             </Paragraph>
-            <table className="govuk-table">
-              <thead className="govuk-table__head">
-                <tr className="govuk-table__row">
-                  <th className="govuk-table__header" scope="col">Row</th>
-                  <th className="govuk-table__header" scope="col">Name</th>
-                  <th className="govuk-table__header" scope="col">ONS code</th>
-                  <th className="govuk-table__header" scope="col">Outcome</th>
-                  <th className="govuk-table__header" scope="col">Reason</th>
-                </tr>
-              </thead>
-              <tbody className="govuk-table__body">
-                {result.rows.map((row) => (
-                  <tr key={`${row.rowNumber}-${row.onsCode ?? ''}`} className="govuk-table__row">
-                    <td className="govuk-table__cell">{row.rowNumber}</td>
-                    <td className="govuk-table__cell">{row.name ?? '—'}</td>
-                    <td className="govuk-table__cell">{row.onsCode ?? '—'}</td>
-                    <td className="govuk-table__cell">
-                      <GovUKTag colour={outcomeColour(row.outcome)}>{row.outcome}</GovUKTag>
-                    </td>
-                    <td className="govuk-table__cell">{row.reason ?? '—'}</td>
+            <GovUKTableScroll label="Amendment summary" testId={composeTestId(RESULT_TABLE_TEST_ID, 'scroll')}>
+              <table className="govuk-table" data-testid={RESULT_TABLE_TEST_ID}>
+                <thead className="govuk-table__head">
+                  <tr className="govuk-table__row">
+                    <th className="govuk-table__header" scope="col">
+                      Row
+                    </th>
+                    <th className="govuk-table__header" scope="col">
+                      Name
+                    </th>
+                    <th className="govuk-table__header" scope="col">
+                      ONS code
+                    </th>
+                    <th className="govuk-table__header" scope="col">
+                      Outcome
+                    </th>
+                    <th className="govuk-table__header" scope="col">
+                      Reason
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="govuk-table__body">
+                  {result.rows.map((row) => {
+                    const rowTestId = composeTestId(RESULT_TABLE_TEST_ID, 'row', row.rowNumber);
+                    return (
+                      <tr key={`${row.rowNumber}-${row.onsCode ?? ''}`} className="govuk-table__row" data-testid={rowTestId}>
+                        <td className="govuk-table__cell" data-testid={composeTestId(rowTestId, 'cell', 'row-number')}>
+                          {row.rowNumber}
+                        </td>
+                        <td className="govuk-table__cell" data-testid={composeTestId(rowTestId, 'cell', 'name')}>
+                          {row.name ?? '—'}
+                        </td>
+                        <td className="govuk-table__cell" data-testid={composeTestId(rowTestId, 'cell', 'ons-code')}>
+                          {row.onsCode ?? '—'}
+                        </td>
+                        <td className="govuk-table__cell" data-testid={composeTestId(rowTestId, 'cell', 'outcome')}>
+                          <GovUKTag colour={outcomeColour(row.outcome)}>{row.outcome}</GovUKTag>
+                        </td>
+                        <td className="govuk-table__cell" data-testid={composeTestId(rowTestId, 'cell', 'reason')}>
+                          {row.reason ?? '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </GovUKTableScroll>
           </div>
         )}
       </div>

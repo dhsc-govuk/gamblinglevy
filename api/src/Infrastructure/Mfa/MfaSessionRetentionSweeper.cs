@@ -7,6 +7,7 @@ namespace Infrastructure.Mfa;
 
 public class MfaSessionRetentionSweeper(
     IMfaSessionRepository sessionRepository,
+    IDateTimeProvider dateTimeProvider,
     ApplicationSettings settings,
     ILogger<MfaSessionRetentionSweeper> logger)
     : IMfaSessionRetentionSweeper
@@ -25,7 +26,7 @@ public class MfaSessionRetentionSweeper(
         }
 
         var batchSize = Math.Max(1, settings.Mfa.SessionRetentionSweepBatchSize);
-        var endedBefore = DateTime.UtcNow.AddDays(-retentionDays);
+        var endedBefore = dateTimeProvider.GetUtcNow().AddDays(-retentionDays);
 
         var deleted = 0;
         for (var batch = 0; batch < MaxBatchesPerSweep; batch++)

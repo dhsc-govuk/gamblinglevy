@@ -1,0 +1,125 @@
+/* The service footer (LayoutFooter). Pixel-tuned to the Figma footer: the fixed heights hold the two link rows,
+   the licence and the crest in place on desktop, and give way to the natural height at 640px and below. */
+
+.app-footer {
+  box-sizing: border-box;
+  height: 314px;
+  overflow: hidden;
+  background-color: #f4f8fb;
+  border-top: 10px solid #1d70b8;
+  margin-top: auto;
+}
+
+.app-footer__container {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  max-width: 990px;
+  margin: 0 auto;
+  padding: 50px 15px 40px;
+}
+
+.app-footer__crown {
+  margin-bottom: 30px;
+}
+
+.app-footer__meta {
+  box-sizing: border-box;
+  height: 153px;
+  padding: 3px 0 25px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.app-footer__meta-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-footer__meta-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.app-footer__meta-links--secondary {
+  margin-top: 8px;
+}
+
+/* The colour is !important because the app-wide a:not(…) rule in styles/govuk-refreshed-branding.css outranks
+   any class selector and would paint these links blue. */
+.app-footer__link,
+.app-footer__link:link,
+.app-footer__link:visited {
+  font-family: "GDS Transport", arial, sans-serif;
+  font-size: 16px;
+  line-height: 20px;
+  color: #0b0c0c !important;
+  text-decoration: underline;
+}
+
+.app-footer__link:hover {
+  color: #0b0c0c !important;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 0.1em;
+}
+
+.app-footer__licence {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.app-footer__ogl-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: "GDS Transport", arial, sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.app-footer__licence-text {
+  font-family: "GDS Transport", arial, sans-serif;
+  font-size: 16px;
+  line-height: 20px;
+  color: #0b0c0c;
+}
+
+.app-footer__licence-text a,
+.app-footer__licence-text a:link,
+.app-footer__licence-text a:visited,
+.app-footer__licence-text a:hover {
+  color: #0b0c0c !important;
+  text-decoration: underline;
+}
+
+.app-footer__copyright {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+@media (max-width: 640px) {
+  .app-footer {
+    height: auto;
+    overflow: visible;
+  }
+
+  .app-footer__container {
+    height: auto;
+    padding: 40px 15px;
+  }
+
+  .app-footer__meta {
+    height: auto;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

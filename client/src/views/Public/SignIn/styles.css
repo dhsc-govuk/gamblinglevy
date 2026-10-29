@@ -1,29 +1,4 @@
-/* SignIn page styles using GOV.UK Design System classes */
-
-.signin-page {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  background-color: #ffffff;
-}
-
-.signin-page__main {
-  flex: 1;
-  background-color: #ffffff;
-}
-
-.signin-page__service-banner {
-  background-color: #f4f8fb;
-  padding: 15px 0;
-  border-bottom: 2px solid #8eb8dc;
-}
-
-.signin-page__service-name {
-  font-family: "GDS Transport", arial, sans-serif;
-  font-weight: 700;
-  font-size: 19px;
-  color: #0b0c0c;
-}
+/* SignIn page content. The page shell (header, service banner, main, footer) is layouts/SignInJourney. */
 
 .signin-page__content {
   max-width: 640px;

@@ -1,5 +1,6 @@
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Settings;
+using Application.Tests.Unit.Security;
 using Domain.Users;
 using FluentAssertions;
 using Infrastructure.Mfa;
@@ -78,7 +79,7 @@ public class MfaSessionRetentionSweeperTests
             },
         };
 
-        return new MfaSessionRetentionSweeper(repository, settings, NullLogger<MfaSessionRetentionSweeper>.Instance);
+        return new MfaSessionRetentionSweeper(repository, new TestClock(), settings, NullLogger<MfaSessionRetentionSweeper>.Instance);
     }
 
     private sealed class StubRepository : IMfaSessionRepository
@@ -126,5 +127,7 @@ public class MfaSessionRetentionSweeperTests
         public Task<int> TryRevokeSessionAsync(MfaSessionId sessionId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<int> TryUpdateLastActivityAsync(MfaSessionId sessionId, DateTime lastActivityAt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<int> TryUpdateLastSeenIpAsync(MfaSessionId sessionId, string? expectedHash, string newHash, string newIpAddress, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

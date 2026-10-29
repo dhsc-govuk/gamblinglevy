@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ManagementLayout } from '../../../../layouts';
 import { GovUKSummaryCard, SummaryList, GovUKInsetText, H1, PageLoading } from '../../../../components/GovUKComponents';
 import { HISTORICAL_ROLE_LABELS, homeLinkForRole, EnumUserRole } from '../../../../components/AuthProvider';
@@ -37,7 +37,11 @@ const DeletedUserView = (): React.ReactElement => {
   usePageTitle('Deleted user');
   const { userId = '' } = useParams<{ userId: string }>();
 
-  const { data: logsData, isLoading: logsLoading } = useQuery(deletedUserLogsKey(userId), () => getAuditLogs({ targetUserId: userId, pageSize: 100 }), { enabled: !!userId });
+  const { data: logsData, isLoading: logsLoading } = useQuery({
+    queryKey: deletedUserLogsKey(userId),
+    queryFn: () => getAuditLogs({ targetUserId: userId, pageSize: 100 }),
+    enabled: !!userId,
+  });
 
   const logs = logsData?.data?.items ?? [];
   const createdEntry = logs.find((l) => l.action === 'user.created');
@@ -45,7 +49,9 @@ const DeletedUserView = (): React.ReactElement => {
   const lastUpdatedEntry = updatedEntries.length > 0 ? updatedEntries.reduce((a, b) => (new Date(a.occurredAt) > new Date(b.occurredAt) ? a : b)) : createdEntry;
   const deletedEntry = logs.find((l) => l.action === 'user.deleted');
 
-  const { data: detailData, isLoading: detailLoading } = useQuery(deletedUserDetailKey(deletedEntry?.id ?? ''), () => getAuditLog(deletedEntry!.id), {
+  const { data: detailData, isLoading: detailLoading } = useQuery({
+    queryKey: deletedUserDetailKey(deletedEntry?.id ?? ''),
+    queryFn: () => getAuditLog(deletedEntry!.id),
     enabled: !!deletedEntry?.id,
   });
 

@@ -1,5 +1,7 @@
 using Application.Collections.Audit;
 using Application.Collections.Exceptions;
+using Application.Common.Features;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
@@ -38,8 +40,13 @@ public record UpdateCollectionCommand : IRequest<Either<CollectionException, Col
 public class UpdateCollectionCommandHandler(
     ICollectionRepository collectionRepository,
     ICollectionQueries collectionQueries,
+    IFormModuleVersionQueries formModuleVersionQueries,
+    IFeatureFlags featureFlags,
+    ISubmissionQueries submissionQueries,
     IAuditLogRepository auditLogRepository,
-    PermissionsService permissionsService)
+    ITransactionRunner transactionRunner,
+    PermissionsService permissionsService,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<UpdateCollectionCommand, Either<CollectionException, Collection>>
 {
     public async Task<Either<CollectionException, Collection>> Handle(
@@ -56,6 +63,8 @@ public class UpdateCollectionCommandHandler(
         UserId actorId,
         CancellationToken cancellationToken)
     {
+        var utcNow = dateTimeProvider.GetUtcNow();
+
         var collectionId = new CollectionId(request.Id);
 
         var lookup = await collectionQueries.GetByIdAsync(collectionId, includeDeleted: false, cancellationToken);
@@ -74,7 +83,12 @@ public class UpdateCollectionCommandHandler(
             return new CollectionNameTakenException(collectionId, name);
         }
 
-        var before = CollectionSnapshot.Serialize(collection);
+        // BLUM-9106: with versioning on, both snapshots record the version each form uses, so the row shows a change.
+        var recordVersions = featureFlags.IsEnabled(Feature.BLUM_9087);
+        var before = CollectionSnapshot.Serialize(
+            collection,
+            utcNow,
+            recordVersions ? await CollectionSnapshot.VersionNumbersAsync(collection, formModuleVersionQueries, cancellationToken) : null);
 
         var type = string.IsNullOrWhiteSpace(request.Type) ? null : CollectionType.From(request.Type);
 
@@ -116,11 +130,12 @@ public class UpdateCollectionCommandHandler(
                 deadline,
                 request.IsSubmittedByAllLas,
                 actorId,
-                request.SaveAsDraft);
+                request.SaveAsDraft,
+                utcNow);
         }
         catch (DomainCollectionExceptions.CollectionNotEditableException)
         {
-            return new Application.Collections.Exceptions.CollectionNotEditableException(collectionId, collection.GetStatus().ToString());
+            return new Application.Collections.Exceptions.CollectionNotEditableException(collectionId, collection.GetStatus(utcNow).ToString());
         }
         catch (DomainCollectionExceptions.CollectionInvalidWindowException exception)
         {
@@ -131,34 +146,82 @@ public class UpdateCollectionCommandHandler(
             return new Application.Collections.Exceptions.CollectionQuarterRequiredException(collectionId);
         }
 
-        collection.SetForms(formModuleIds);
-        collection.SetLocalAuthorities(localAuthorityIds);
-        collection.SetReminders(reminders);
+        // The change and its audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<CollectionException, Collection>(
+            async token =>
+            {
+                // Once a local authority has started a report, its questions must not change under it (BLUM-9104 reads
+                // them from the recorded versions), so neither the forms (BLUM-9084) nor a recorded version may change
+                // then. With versioning on, the check runs under the collection's row lock, which a report start also
+                // takes: a start that got there first is seen below, and one that comes later waits for this save and
+                // reads what it leaves (BLUM-9084).
+                if (recordVersions)
+                {
+                    await collectionRepository.LockForFormChangesAsync([collectionId], token);
+                }
 
-        if (!request.SaveAsDraft && collection.IsDraft)
-        {
-            collection.Publish(actorId);
-        }
+                bool? reportsStarted = null;
+                async Task<bool> ReportsStartedAsync() =>
+                    reportsStarted ??= await submissionQueries.AnyForCollectionAsync(collectionId, token);
 
-        try
-        {
-            await collectionRepository.UpdateAsync(collection, cancellationToken);
+                if (recordVersions
+                    && !collection.Forms.Select(f => f.FormModuleId).ToHashSet().SetEquals(formModuleIds)
+                    && await ReportsStartedAsync())
+                {
+                    return new CollectionFormsLockedException(collectionId);
+                }
 
-            await auditLogRepository.AppendAsync(
-                AuditLog.Create(
-                    actorId,
-                    AuditTargetType.Collection,
-                    collection.Id.Value,
-                    AuditAction.CollectionUpdated,
-                    before: before,
-                    after: CollectionSnapshot.Serialize(collection)),
-                cancellationToken);
+                collection.SetForms(formModuleIds);
+                collection.SetLocalAuthorities(localAuthorityIds, utcNow);
+                collection.SetReminders(reminders, utcNow);
 
-            return collection;
-        }
-        catch (Exception exception)
-        {
-            return new CollectionUnknownException(collectionId, exception);
-        }
+                if (!request.SaveAsDraft && collection.IsDraft)
+                {
+                    collection.Publish(actorId, utcNow);
+                }
+
+                // BLUM-9103: a published collection records the latest version of any form that has none yet: every form
+                // when it is first published, a newly added form when it is edited later. With versioning on, one whose
+                // window has not opened also moves the forms it already records onto their latest version: a collection
+                // reverted while open keeps its versions, and republished with a later open date it would otherwise wait
+                // for the next form publish. (With it off, every report reads the live form and FormModuleVersionSync
+                // moves every collection.)
+                if (!collection.IsDraft)
+                {
+                    var latest = await formModuleVersionQueries.GetLatestVersionIdsAsync(formModuleIds, token);
+                    collection.PinFormVersions(latest);
+
+                    if (recordVersions && collection.FollowsLatestFormVersions(utcNow) && !await ReportsStartedAsync())
+                    {
+                        collection.FollowLatestFormVersions(latest);
+                    }
+                }
+
+                try
+                {
+                    await collectionRepository.UpdateAsync(collection, token);
+
+                    var versionNumbers = recordVersions
+                        ? await CollectionSnapshot.VersionNumbersAsync(collection, formModuleVersionQueries, token)
+                        : null;
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            actorId,
+                            AuditTargetType.Collection,
+                            collection.Id.Value,
+                            AuditAction.CollectionUpdated,
+                            before: before,
+                            after: CollectionSnapshot.Serialize(collection, utcNow, versionNumbers),
+                            payloadVersion: recordVersions ? CollectionSnapshot.FormVersionsPayloadVersion : AuditLog.InitialPayloadVersion),
+                        token);
+
+                    return collection;
+                }
+                catch (Exception exception)
+                {
+                    return new CollectionUnknownException(collectionId, exception);
+                }
+            },
+            cancellationToken);
     }
 }

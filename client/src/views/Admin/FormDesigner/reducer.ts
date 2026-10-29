@@ -41,15 +41,7 @@ export const createInitialQuestionFormState = (sectionId = ''): QuestionFormStat
   submitAttempts: 0,
 });
 
-type TextField =
-  | 'code'
-  | 'label'
-  | 'sectionId'
-  | 'hint'
-  | 'helpText'
-  | 'helpTextSummary'
-  | 'conditionalQuestionCode'
-  | 'conditionalValue';
+type TextField = 'code' | 'label' | 'sectionId' | 'hint' | 'helpText' | 'helpTextSummary' | 'conditionalQuestionCode' | 'conditionalValue';
 
 export type QuestionFormAction =
   | { type: 'SET_FIELD'; field: TextField; value: string }
@@ -92,9 +84,7 @@ export function questionFormReducer(state: QuestionFormState, action: QuestionFo
     case 'SET_FLAG':
       return { ...state, [action.field]: action.value };
     case 'TOGGLE_CONDITIONAL':
-      return action.enabled
-        ? { ...state, conditionalEnabled: true }
-        : { ...state, conditionalEnabled: false, conditionalQuestionCode: '', conditionalValue: '' };
+      return action.enabled ? { ...state, conditionalEnabled: true } : { ...state, conditionalEnabled: false, conditionalQuestionCode: '', conditionalValue: '' };
     case 'ADD_OPTION':
       return { ...state, options: [...state.options, { value: '', label: '' }] };
     case 'REMOVE_OPTION':
@@ -102,9 +92,7 @@ export function questionFormReducer(state: QuestionFormState, action: QuestionFo
     case 'UPDATE_OPTION':
       return {
         ...state,
-        options: state.options.map((option, index) =>
-          index === action.index ? { ...option, [action.field]: action.value } : option,
-        ),
+        options: state.options.map((option, index) => (index === action.index ? { ...option, [action.field]: action.value } : option)),
       };
     case 'MOVE_OPTION':
       return { ...state, options: move(state.options, action.index, action.direction) };

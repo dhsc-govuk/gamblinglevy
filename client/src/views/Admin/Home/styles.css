@@ -28,7 +28,7 @@
 .admin-home-card {
   min-height: 195px;
   padding: 25px;
-  border: 1px solid #d9dadb;
+  border: 1px solid #cecece; /* govuk-frontend 6 border colour */
   border-bottom-width: 5px;
   box-sizing: border-box;
   background: #ffffff;

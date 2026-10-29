@@ -17,6 +17,15 @@ public class CollectionFormConfiguration : IEntityTypeConfiguration<CollectionFo
         builder.Property(x => x.CollectionId).HasConversion(x => x.Value, x => new CollectionId(x));
         builder.Property(x => x.FormModuleId).HasConversion(x => x.Value, x => new FormModuleId(x));
 
+        // BLUM-9103: the version the collection uses. Restrict, like the versions' own FK: a version is never deleted.
+        builder.Property(x => x.FormModuleVersionId)
+            .HasConversion(x => x == null ? (Guid?)null : x.Value, x => x == null ? null : new FormModuleVersionId(x.Value));
+        builder.HasOne<FormModuleVersion>()
+            .WithMany()
+            .HasForeignKey(x => x.FormModuleVersionId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.Property(x => x.IsVersionChosen).HasDefaultValue(false).IsRequired();
+
         // The FK to Collection (and its cascade) is configured on CollectionConfiguration.
     }
 }

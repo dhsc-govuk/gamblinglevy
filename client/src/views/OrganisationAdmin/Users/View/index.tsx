@@ -2,10 +2,11 @@ import React from 'react';
 import { PageLoading } from '../../../../components/GovUKComponents';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { OrganisationManagementLayout } from '../../../../layouts';
-import { GovUKActionMenu, GovUKNotificationBanner, GovUKSummaryCard, NotAuthorised, SummaryList, H1 } from '../../../../components/GovUKComponents';
+import { GovUKActionMenu, GovUKNotificationBanner, GovUKSummaryCard, GovUKTag, NotAuthorised, SummaryList, H1 } from '../../../../components/GovUKComponents';
 import { ROLE_LABELS, useAuthProvider } from '../../../../components/AuthProvider';
 import { canManageUsers } from '../../navigation';
 import usePageTitle from '../../../../hooks/usePageTitle';
+import { ROUTES } from '../../../../helpers/routes';
 import { UserLoadFailed, useOrganisationUser, organisationUserPageTitle } from '../../../../components/Global/OrganisationUsers';
 
 interface BannerState {
@@ -49,6 +50,21 @@ const UsersView = (): React.ReactElement => {
           onClick: () => navigate(`/organisation-admin/users/${userId}/reset-mfa`),
           testId: 'organisation-admin-users-view-action-reset-mfa',
         },
+        ...(user?.passwordLoginEnabled
+          ? [
+              {
+                label: 'Reset password',
+                onClick: () => navigate(ROUTES.organisationAdmin.users.resetPassword(userId)),
+                testId: 'organisation-admin-users-view-action-reset-password',
+              },
+            ]
+          : [
+              {
+                label: 'Enable password login',
+                onClick: () => navigate(ROUTES.organisationAdmin.users.enablePasswordLogin(userId)),
+                testId: 'organisation-admin-users-view-action-enable-password-login',
+              },
+            ]),
         ...(isActive && !isSelf
           ? [
               {
@@ -153,6 +169,10 @@ const UsersView = (): React.ReactElement => {
                 {
                   label: 'Multi-factor authentication (MFA)',
                   value: user.mfaStatus === 'enabled' ? 'Enabled' : 'Not set up yet',
+                },
+                {
+                  label: 'Password login',
+                  value: <GovUKTag colour={user.passwordLoginEnabled ? 'green' : 'grey'}>{user.passwordLoginEnabled ? 'Enabled' : 'Not enabled'}</GovUKTag>,
                 },
               ]}
             />

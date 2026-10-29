@@ -22,6 +22,9 @@ export interface CreateCollectionInput {
   localAuthorityIds?: string[];
   formModuleIds?: string[];
   reminders?: CollectionReminderInput[];
+  // BLUM-9103: DHSC's choice of version per form. A null versionNumber means "the latest when published". Omitted, the
+  // API leaves every form as it was.
+  formVersions?: { moduleId: string; versionNumber: number | null }[];
 }
 
 // Mirrors UpdateCollectionRequestDto. Note the update-specific date field names:
@@ -41,6 +44,9 @@ export interface UpdateCollectionInput {
   formModuleIds?: string[];
   localAuthorityIds?: string[];
   reminders?: CollectionReminderInput[];
+  // BLUM-9103: DHSC's choice of version per form. A null versionNumber means "the latest when published". Omitted, the
+  // API leaves every form as it was.
+  formVersions?: { moduleId: string; versionNumber: number | null }[];
 }
 
 export const createCollection = (input: CreateCollectionInput) => axios.post<CollectionDto>('data-collections', input);

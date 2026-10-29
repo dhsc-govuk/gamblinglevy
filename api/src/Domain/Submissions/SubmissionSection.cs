@@ -56,23 +56,23 @@ public class SubmissionSection : IEntity<SubmissionSectionId>
             updatedAt: null);
     }
 
-    internal void SetStatus(SubmissionSectionStatus status)
+    internal void SetStatus(SubmissionSectionStatus status, DateTime utcNow)
     {
         Guard.NotNull(status, nameof(status));
 
         Status = status;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    internal void FlagForReview()
+    internal void FlagForReview(DateTime utcNow)
     {
         ReviewRequired = true;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    internal void ClearReviewFlag()
+    internal void ClearReviewFlag(DateTime utcNow)
     {
         ReviewRequired = false;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 }

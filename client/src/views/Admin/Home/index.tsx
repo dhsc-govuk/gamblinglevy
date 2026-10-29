@@ -4,6 +4,7 @@ import { GeneralLayout } from '../../../layouts';
 import { H1, H2, Paragraph } from '../../../components/GovUKComponents';
 import usePageTitle from '../../../hooks/usePageTitle';
 import { ROUTES } from '../../../helpers/routes';
+import useFeature from '../../../hooks/useFeature';
 import './styles.css';
 
 const adminTasks = [
@@ -31,16 +32,19 @@ const adminTasks = [
     href: ROUTES.admin.organisations.list,
     testId: 'admin-home-link-local-authorities',
   },
-  {
-    title: 'Update form questions',
-    description: 'Change the questions asked in the reporting form and update the list of key results that local authorities select from.',
-    href: ROUTES.admin.forms.list,
-    testId: 'admin-home-link-forms',
-  },
 ];
+
+// Listed only while BLUM_9087 is on, when the forms builder is routed.
+const formsTask = {
+  title: 'Update form questions',
+  description: 'Change the questions in data collection forms. Each time you publish a form, a new version is saved.',
+  href: ROUTES.admin.forms.list,
+  testId: 'admin-home-link-forms',
+};
 
 const Home = (): React.ReactElement => {
   usePageTitle('Home');
+  const tasks = useFeature('BLUM_9087') ? [...adminTasks, formsTask] : adminTasks;
   return (
     <GeneralLayout>
       <div className="admin-home" data-testid="admin-home">
@@ -52,7 +56,7 @@ const Home = (): React.ReactElement => {
           </H2>
 
           <div className="admin-home__cards" data-testid="admin-home-actions">
-            {adminTasks.map((task) => (
+            {tasks.map((task) => (
               <article className="admin-home-card" key={task.href}>
                 <h3 className="admin-home-card__heading">
                   <RouterLink to={task.href} className="govuk-link" data-testid={task.testId}>

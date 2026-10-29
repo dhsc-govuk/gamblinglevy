@@ -23,8 +23,7 @@
 }
 
 .reports-strategic-feedback-questions__header .govuk-caption-l,
-.reports-strategic-feedback-questions__header .govuk-heading-xl,
-.reports-strategic-feedback-questions__header .govuk-body {
+.reports-strategic-feedback-questions__header .govuk-heading-xl {
   margin-top: 0;
 }
 
@@ -36,7 +35,7 @@
   margin-bottom: 30px;
 }
 
-.reports-strategic-feedback-questions__header .govuk-body {
+.reports-strategic-feedback-questions__header > .govuk-inset-text {
   margin-bottom: 0;
 }
 
@@ -90,7 +89,6 @@
     line-height: 40px;
   }
 
-  .reports-strategic-feedback-questions__header .govuk-body,
   .reports-strategic-feedback-questions__form .govuk-hint,
   .reports-strategic-feedback-questions__form .govuk-textarea,
   .reports-strategic-feedback-questions__actions .govuk-button {

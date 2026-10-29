@@ -6,6 +6,8 @@ export { default as UsersView } from './Users/View';
 export { default as UsersDeactivate } from './Users/View/Deactivate';
 export { default as UsersReactivate } from './Users/View/Reactivate';
 export { default as UsersResetMfa } from './Users/View/ResetMfa';
+export { default as UsersEnablePasswordLogin } from './Users/View/EnablePasswordLogin';
+export { default as UsersResetPassword } from './Users/View/ResetPassword';
 export { default as UsersEdit } from './Users/Edit';
 export { default as UsersEditReview } from './Users/Edit/review';
 export { default as UsersEditDiscard } from './Users/Edit/Discard';
@@ -37,3 +39,6 @@ export { default as AuditLogView } from './AuditLog/View';
 export { default as FormQuestionsList } from './FormDesigner/List';
 export { default as FormQuestionsCreate } from './FormDesigner/Create';
 export { default as FormQuestionsEdit } from './FormDesigner/Edit';
+// The data-collection forms builder, routed behind BLUM_9087.
+export { FormsModules, FormsSections, FormsQuestionCreate, FormsQuestionEdit, FormsVersions, FormsVersion } from './Forms';
+export { default as Guidance } from './Guidance';

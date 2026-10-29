@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { httpMessageOf, httpStatusOf } from '../../../../helpers/httpErrors';
 import { OrganisationManagementLayout } from '../../../../layouts';
 import { GovUKButton, GovUKSummaryCard, SummaryList, ErrorSummary, H1 } from '../../../../components/GovUKComponents';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import { organisationUserKey, organisationUsersListKey } from '../../../../helpers/queriesParams';
 import { updateOrganisationUser } from '../../../../components/Global/OrganisationUsers/api';
 import type { OrgEditFormState } from './index';
@@ -32,14 +32,12 @@ const UsersEditReview = (): React.ReactElement => {
   const [errors, setErrors] = useState<ReviewErrors>({});
   const [submitAttempts, setSubmitAttempts] = useState(0);
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
-
   useEffect(() => {
     if (!state?.firstName) navigate(`/organisation-admin/users/${userId}/edit`, { replace: true });
   }, [state, navigate, userId]);
 
-  const { mutate, isLoading } = useMutation(
-    () =>
+  const { mutate, isPending } = useMutation({
+    mutationFn: () =>
       updateOrganisationUser(organisationId, {
         id: userId,
         firstName,
@@ -48,28 +46,26 @@ const UsersEditReview = (): React.ReactElement => {
         role,
         status,
       }),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(organisationUsersListKey(organisationId));
-        queryClient.invalidateQueries(organisationUserKey(organisationId, userId));
-        navigate(`/organisation-admin/users/${userId}`, {
-          state: {
-            banner: {
-              title: 'Edits saved',
-              body: `The user details for ${firstName} ${lastName} are now up to date.`,
-            },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: organisationUsersListKey(organisationId) });
+      queryClient.invalidateQueries({ queryKey: organisationUserKey(organisationId, userId) });
+      navigate(`/organisation-admin/users/${userId}`, {
+        state: {
+          banner: {
+            title: 'Edits saved',
+            body: `The user details for ${firstName} ${lastName} are now up to date.`,
           },
-        });
-      },
-      onError: (error: any) => {
-        const httpStatus = error?.response?.status;
-        setErrors({
-          submit: httpStatus === 409 ? 'A user with this email address already exists.' : error?.response?.data?.toString() ?? 'Could not save the changes. Try again.',
-        });
-        setSubmitAttempts((n) => n + 1);
-      },
-    }
-  );
+        },
+      });
+    },
+    onError: (error) => {
+      const httpStatus = httpStatusOf(error);
+      setErrors({
+        submit: httpStatus === 409 ? 'A user with this email address already exists.' : httpMessageOf(error) ?? 'Could not save the changes. Try again.',
+      });
+      setSubmitAttempts((n) => n + 1);
+    },
+  });
 
   if (!state?.firstName) return <></>;
 
@@ -83,7 +79,7 @@ const UsersEditReview = (): React.ReactElement => {
         href: `/organisation-admin/users/${userId}/edit`,
         onClick: () => navigate(`/organisation-admin/users/${userId}/edit`, { state }),
       }}>
-      {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+      <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
       <span className="govuk-caption-l">Edit user</span>
       <H1>Check your answers</H1>
@@ -91,7 +87,8 @@ const UsersEditReview = (): React.ReactElement => {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          setSubmitAttempts((n) => n + 1);
+          // No bump here: onError bumps along with the refusal it sets. A bump at this point would be spent on the
+          // refusal still showing from the last attempt, pulling focus to it while this request is in flight.
           mutate();
         }}
         noValidate>
@@ -125,7 +122,7 @@ const UsersEditReview = (): React.ReactElement => {
         </GovUKSummaryCard>
 
         <div className="govuk-button-group">
-          <GovUKButton type="submit" isLoading={isLoading} disabled={isLoading} data-testid="organisation-admin-users-edit-review-save">
+          <GovUKButton type="submit" isLoading={isPending} disabled={isPending} data-testid="organisation-admin-users-edit-review-save">
             Save
           </GovUKButton>
           <GovUKButton

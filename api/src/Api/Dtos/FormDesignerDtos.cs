@@ -18,7 +18,20 @@ public record FormQuestionDto(
     int DisplayOrder,
     string? ConditionalQuestionCode,
     string? ConditionalValue,
-    IReadOnlyList<FormQuestionOptionDto> Options);
+    IReadOnlyList<FormQuestionOptionDto> Options,
+
+    // Question Protocol copy (BLUM-7620): the "empty on submit" message, the free-text character limit (which
+    // makes the client render a GDS character count) and the message shown when it is exceeded. All three are
+    // mirrored client-side so the message a user sees before submitting matches the one the API would return.
+    string? ErrorMessage = null,
+    int? MaxLength = null,
+    string? MaxLengthErrorMessage = null,
+
+    // A Currency question's minimum and the protocol's two names for the field (BLUM-8955), mirrored client-side for
+    // the same reason: validateCurrencyAnswer words its messages from them exactly as MoneyAnswer does.
+    int? MinValue = null,
+    string? ErrorSubject = null,
+    string? ErrorSubjectInline = null);
 
 public record FormSectionDto(
     Guid Id,

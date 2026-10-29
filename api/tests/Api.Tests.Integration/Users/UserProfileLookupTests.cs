@@ -1,3 +1,5 @@
+using Api.Dtos;
+using Application.Common.Features;
 using Application.Common.Interfaces;
 using Domain.Organisations;
 using Domain.OrganisationUsers;
@@ -45,6 +47,7 @@ public class UserProfileLookupTests(IntegrationTestWebFactory factory)
         resolved.Id.Should().Be(lead.Id);
         resolved.OrganisationId.IsSome.Should().BeTrue();
         resolved.OrganisationId.ValueUnsafe().Should().Be(_organisation.Id);
+        resolved.OrganisationName.ValueUnsafe().Should().Be(_organisation.Name);
     }
 
     [Fact]
@@ -74,6 +77,7 @@ public class UserProfileLookupTests(IntegrationTestWebFactory factory)
         var resolved = profile.ValueUnsafe();
         resolved.Role.Should().Be(UserRole.Admin);
         resolved.OrganisationId.IsNone.Should().BeTrue("DHSC admins are not scoped to an organisation");
+        resolved.OrganisationName.IsNone.Should().BeTrue();
     }
 
     [Fact]
@@ -99,6 +103,66 @@ public class UserProfileLookupTests(IntegrationTestWebFactory factory)
         profile.IsNone.Should().BeTrue();
     }
 
+    // How the client learns which feature flags are on: /profile/me carries the enabled flag names
+    // (client/src/helpers/featureFlags.ts mirrors them). Over HTTP, unlike the lookups above, because the profile
+    // body is served from the claims cache that ApplicationUserClaimsTransformation fills — a synthesised test
+    // identity never populates it, so profile/me answers 404 for one.
+    [Fact]
+    public async Task ShouldListNoFeaturesOnTheProfile_WhenEveryFlagIsOff()
+    {
+        var admin = await AddProfileSubjectAsync();
+        await factory.SetFeatureAsync(Feature.BLUM_7637, enabled: false);
+
+        var profile = await GetMeAsync(admin);
+
+        profile.Features.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ShouldListAFeatureOnTheProfile_WhenItsFlagIsOn()
+    {
+        var admin = await AddProfileSubjectAsync();
+        await factory.SetFeatureAsync(Feature.BLUM_7637, enabled: true);
+
+        var profile = await GetMeAsync(admin);
+
+        profile.Features.Should().Equal("BLUM_7637");
+    }
+
+    [Fact]
+    public async Task ShouldReflectAFlagChangeOnTheProfile_EvenWhileTheProfileItselfIsCached()
+    {
+        // The rest of the body is cached per user for five minutes; the flags must not be, or a restart that
+        // released a feature would be invisible to anyone signed in across it.
+        var admin = await AddProfileSubjectAsync();
+
+        await factory.SetFeatureAsync(Feature.BLUM_7637, enabled: false);
+        (await GetMeAsync(admin)).Features.Should().BeEmpty();
+
+        await factory.SetFeatureAsync(Feature.BLUM_7637, enabled: true);
+
+        (await GetMeAsync(admin)).Features.Should().Equal("BLUM_7637");
+    }
+
+    // A DHSC admin needs no organisation membership to resolve a profile, so it is the simplest real subject.
+    private async Task<User> AddProfileSubjectAsync()
+    {
+        var admin = SeedableUser("feature.flags@dhsc.gov.uk", UserRole.Admin);
+        await Context.Users.AddAsync(admin);
+        await SaveChangesAsync();
+        return admin;
+    }
+
+    private async Task<Profile> GetMeAsync(User user)
+    {
+        // Set here, inside the test: the identity is AsyncLocal, and xUnit runs InitializeAsync in a flow the test
+        // method does not inherit.
+        AuthenticateThroughClaimsTransformation(user.SubId.Value);
+        var response = await Client.GetAsync("profile/me");
+        response.IsSuccessStatusCode.Should().BeTrue("profile/me failed: {0}", await response.Content.ReadAsStringAsync());
+        return await response.ToResponseModel<Profile>();
+    }
+
     private async Task<LanguageExt.Option<Domain.UserProfile>> GetUserProfileAsync(SubId subId)
     {
         // A fresh scope per call: UserProfileRepository owns its ApplicationDbContext and disposes it.
@@ -114,7 +178,8 @@ public class UserProfileLookupTests(IntegrationTestWebFactory factory)
         email: email,
         new SubId(Guid.NewGuid()),
         status: UserStatus.Active,
-        role: role);
+        role: role,
+        utcNow: DateTime.UtcNow);
 
     private async Task AddUserWithMembershipAsync(User user)
     {

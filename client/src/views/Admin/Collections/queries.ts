@@ -10,6 +10,15 @@ export interface CollectionFormDto {
   moduleId: string;
   code: string | null;
   name: string | null;
+  // BLUM-9103: the version of the form this collection records — null for a draft with no choice and for a maturity
+  // section. versionChosen is true when DHSC picked it rather than it being the latest at publish.
+  versionNumber: number | null;
+  versionChosen: boolean;
+}
+
+export interface CollectionFormVersionOptionDto {
+  versionNumber: number;
+  publishedAt: string;
 }
 
 export interface CollectionLocalAuthorityDto {
@@ -59,7 +68,12 @@ export interface CollectionDto {
 export interface CollectionFormOptionDto {
   moduleId: string;
   name: string;
+  // Null for a maturity-assessment section — the static catalogue has no change date.
   lastChangedAt: string | null;
+  // The collection type this form belongs to (BLUM-7943). One list serves both types; filter with formOptionsForType.
+  type: CollectionType;
+  // The form's saved versions, newest first (BLUM-9103). Empty or absent for a maturity section.
+  versions?: CollectionFormVersionOptionDto[] | null;
 }
 
 export interface ReportingLaDto {

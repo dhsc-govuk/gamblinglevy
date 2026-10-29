@@ -26,7 +26,7 @@ public static class StrategicFeedbackAnswerValidator
             {
                 if (enforceRequired && question.IsRequired)
                 {
-                    errors.Add(new AnswerValidationError(question.Code, $"Enter an answer for “{question.Label}”."));
+                    errors.Add(new AnswerValidationError(question.Code, question.ErrorMessage ?? $"Enter an answer for “{question.Label}”."));
                 }
 
                 continue;
@@ -35,6 +35,15 @@ public static class StrategicFeedbackAnswerValidator
             if (question.QuestionType.IsChoice && question.Options.All(option => !option.IsActive || option.Value != value.Trim()))
             {
                 errors.Add(new AnswerValidationError(question.Code, $"Select an answer for “{question.Label}”."));
+                continue;
+            }
+
+            // The protocol's own character limit; MaxTextLength stays as the backstop where it gives none.
+            if (question.MaxLength is { } maxLength && value!.Trim().Length > maxLength)
+            {
+                errors.Add(new AnswerValidationError(
+                    question.Code,
+                    question.MaxLengthErrorMessage ?? $"“{question.Label}” must be {maxLength} characters or less"));
                 continue;
             }
 

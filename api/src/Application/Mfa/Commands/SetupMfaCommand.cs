@@ -2,6 +2,7 @@ using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Mfa.Dtos;
 using Application.Mfa.Exceptions;
+using Domain.AuditLogs;
 using Domain.Users;
 using LanguageExt;
 using MediatR;
@@ -13,7 +14,10 @@ public record SetupMfaCommand(UserId UserId, string Email) : IRequest<Either<Mfa
 public class SetupMfaCommandHandler(
     ITotpService totpService,
     IMfaEncryptionService encryptionService,
-    IUserMfaRepository userMfaRepository)
+    IUserMfaRepository userMfaRepository,
+    IAuditLogRepository auditLogRepository,
+    IDateTimeProvider dateTimeProvider,
+    ITransactionRunner transactionRunner)
     : IRequestHandler<SetupMfaCommand, Either<MfaException, MfaSetupResponseDto>>
 {
     public async Task<Either<MfaException, MfaSetupResponseDto>> Handle(
@@ -41,8 +45,15 @@ public class SetupMfaCommandHandler(
         var qrCodeUri = totpService.GenerateQrCodeUri(request.Email, secret);
         var encryptedSecret = encryptionService.Encrypt(secret);
 
-        mfa.UpdateSecret(encryptedSecret);
-        await userMfaRepository.UpdateAsync(mfa, cancellationToken);
+        // The new secret and its audit row commit together (BLUM-8748).
+        await transactionRunner.RunAsync(
+            async token =>
+            {
+                mfa.UpdateSecret(encryptedSecret, dateTimeProvider.GetUtcNow());
+                await userMfaRepository.UpdateAsync(mfa, token);
+                await AppendAuditAsync(request.UserId, token);
+            },
+            cancellationToken);
 
         return new MfaSetupResponseDto(qrCodeUri, secret);
     }
@@ -55,9 +66,22 @@ public class SetupMfaCommandHandler(
         var qrCodeUri = totpService.GenerateQrCodeUri(request.Email, secret);
         var encryptedSecret = encryptionService.Encrypt(secret);
 
-        var userMfa = UserMfa.New(UserMfaId.New(), request.UserId, encryptedSecret);
-        await userMfaRepository.AddAsync(userMfa, cancellationToken);
+        // The pending enrolment and its audit row commit together (BLUM-8748).
+        await transactionRunner.RunAsync(
+            async token =>
+            {
+                var userMfa = UserMfa.New(UserMfaId.New(), request.UserId, encryptedSecret, dateTimeProvider.GetUtcNow());
+                await userMfaRepository.AddAsync(userMfa, token);
+                await AppendAuditAsync(request.UserId, token);
+            },
+            cancellationToken);
 
         return new MfaSetupResponseDto(qrCodeUri, secret);
     }
+
+    // Before and after stay null: the only state this step creates is the TOTP secret and its QR URI.
+    private Task AppendAuditAsync(UserId userId, CancellationToken cancellationToken) =>
+        auditLogRepository.AppendAsync(
+            AuditLog.Create(userId, AuditTargetType.User, userId.Value, AuditAction.MfaSetupStarted, before: null, after: null),
+            cancellationToken);
 }

@@ -12,6 +12,11 @@ public static class QuestionTypes
     public const string Radio = "Radio";
     public const string Checkbox = "Checkbox";
     public const string Select = "Select";
+
+    // A whole-pound money amount, rendered with a "£" prefix (BLUM-7860). Distinct from Number because the
+    // prefix, the no-pence rule and the amount cap all follow from the type rather than from per-question
+    // metadata, and because Number's answers are counts and percentages that must not gain a currency symbol.
+    public const string Currency = "Currency";
 }
 
 public class QuestionType : ValueObject
@@ -41,6 +46,8 @@ public class QuestionType : ValueObject
     public static QuestionType Radio => new(QuestionTypes.Radio);
     public static QuestionType Checkbox => new(QuestionTypes.Checkbox);
     public static QuestionType Select => new(QuestionTypes.Select);
+
+    public static QuestionType Currency => new(QuestionTypes.Currency);
 
     // The values From() accepts. Exposed so validators can reject an unsupported value with a 400 rather
     // than letting From() throw out of a handler as an unhandled 500 (BLUM-7240).
@@ -84,6 +91,7 @@ public class QuestionType : ValueObject
             yield return Radio;
             yield return Checkbox;
             yield return Select;
+            yield return Currency;
         }
     }
 }

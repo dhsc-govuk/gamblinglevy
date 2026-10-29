@@ -1,0 +1,16 @@
+/* The caption and heading are one block; govuk-caption-l already sets its own gap to the heading, and the
+   heading's size comes from <H1 size="l">. Only the design's 50px gap down to the summary list is stated
+   here — govuk-heading-l ships 30px. */
+.audit-log-view-page__heading {
+  margin-bottom: 50px;
+}
+
+.audit-log-view-page__heading .govuk-heading-l {
+  margin-bottom: 0;
+}
+
+@media (max-width: 40.0525em) {
+  .audit-log-view-page__heading {
+    margin-bottom: 30px;
+  }
+}

@@ -5,6 +5,8 @@ namespace Api.Modules.Errors;
 
 public static class SubmissionErrorFactory
 {
+    private const int MaxOfflineErrorsListed = 100;
+
     public static ObjectResult ToObjectResult(this SubmissionException error)
     {
         if (error is SubmissionAnswersInvalidException answersInvalid)
@@ -50,6 +52,62 @@ public static class SubmissionErrorFactory
             };
         }
 
+        // Offline report upload (BLUM-8310): the file as a whole was refused. The message is fixed GDS copy the page
+        // shows under the file input; the OFFLINE_* code tells the client which kind of problem it was.
+        if (error is OfflineUploadRejectedException rejected)
+        {
+            return new ObjectResult(new
+            {
+                error = rejected.Code,
+                message = rejected.Message,
+            })
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+            };
+        }
+
+        // The file was read but its answers have problems. Every error carries its spreadsheet row, column letter and
+        // question number; the list is capped (a file with thousands of errors would otherwise make a page nobody
+        // can use) while the annotated file — the person's own file with each row's problems written into it —
+        // carries all of them. It travels as base64 so the bytes (BOM, line endings) are exactly what we wrote.
+        if (error is OfflineUploadInvalidException invalid)
+        {
+            return new ObjectResult(new
+            {
+                error = "OFFLINE_UPLOAD_INVALID",
+                message = invalid.Message,
+                moduleCode = invalid.ModuleCode,
+                errorCount = invalid.Errors.Count,
+                errors = invalid.Errors.Take(MaxOfflineErrorsListed).Select(e => new
+                {
+                    row = e.Row,
+                    column = e.ColumnLetter,
+                    question = e.QuestionNumber is { } number ? $"Q{number}" : null,
+                    message = e.Message,
+                }),
+                annotatedFile = new
+                {
+                    fileName = invalid.AnnotatedFileName,
+                    contentBase64 = Convert.ToBase64String(invalid.AnnotatedFile),
+                },
+            })
+            {
+                StatusCode = StatusCodes.Status422UnprocessableEntity,
+            };
+        }
+
+        if (error is OfflineSectionNotInReportException sectionNotInReport)
+        {
+            return new ObjectResult(new
+            {
+                error = "OFFLINE_SECTION_NOT_IN_REPORT",
+                message = sectionNotInReport.Message,
+            })
+            {
+                StatusCode = StatusCodes.Status404NotFound,
+            };
+        }
+
         if (error is SubmissionCollectionNotOpenException notOpen)
         {
             return new ObjectResult(new
@@ -80,6 +138,18 @@ public static class SubmissionErrorFactory
             {
                 error = "REPORT_INCOMPLETE",
                 message = notReady.Message,
+            })
+            {
+                StatusCode = StatusCodes.Status422UnprocessableEntity,
+            };
+        }
+
+        if (error is SubmissionNotSubmittedException notSubmitted)
+        {
+            return new ObjectResult(new
+            {
+                error = "REPORT_NOT_SUBMITTED",
+                message = notSubmitted.Message,
             })
             {
                 StatusCode = StatusCodes.Status422UnprocessableEntity,

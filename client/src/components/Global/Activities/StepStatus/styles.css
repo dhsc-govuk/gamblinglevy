@@ -23,23 +23,32 @@
   border-left-color: #b1b4b6;
 }
 
-.activity-status-step .govuk-form-group.activity-status-step__start-date {
+.activity-status-step .activity-status-step__start-date > .govuk-form-group {
   width: 100%;
   margin-bottom: 0;
 }
 
-.activity-status-step .activity-status-step__date-heading {
+.activity-status-step .activity-status-step__start-date .govuk-fieldset__legend {
   margin: 0 0 10px;
 }
 
-.activity-status-step .activity-status-step__start-date > .govuk-hint {
+/* Not a direct child since the date question became a fieldset/legend group (BLUM-7860) — the hint now sits
+   inside the fieldset. Kept as a descendant selector rather than deleted: it restates govuk-frontend's own
+   default, so dropping it would be invisible today and wrong the moment the default moves. */
+.activity-status-step .activity-status-step__start-date .govuk-hint {
   margin-bottom: 15px;
 }
 
-/* Month and Year are body-weight labels in the design, not bold small labels. */
-.activity-status-step .govuk-date-input .govuk-label--s {
+/* govuk-frontend pulls a hint 5px up when it follows a legend, which the old <h2> never triggered. The 10px
+   below the question is Figma-measured (420:25253, same as the legend rule above), so cancel the offset rather
+   than let the swap silently tighten the gap on this step and on the Active reveal. */
+.activity-status-step .activity-status-step__start-date .govuk-fieldset__legend + .govuk-hint {
+  margin-top: 0;
+}
+
+/* Month and Year are body-weight labels (GovUKDateField's plain govuk-label) with 10px below them in the design. */
+.activity-status-step .govuk-date-input__label {
   margin-bottom: 10px;
-  font-weight: 400;
 }
 
 .activity-status-step .govuk-date-input .govuk-form-group {
@@ -47,10 +56,28 @@
   margin-bottom: 0;
 }
 
+/* Must stay within the inputs' govuk-input--width-2/-4 caps (52.25px/85.5px): a wider value is silently capped since
+   the wizard stopped overriding them (BLUM-8113, ActivityWizard/styles.css). */
 .activity-status-step #activity-start-month {
   width: 51px;
 }
 
 .activity-status-step #activity-start-year {
   width: 85px;
+}
+
+/* The Closed reveal (Figma 3201:339943, BLUM-7673) keeps the start date's rhythm: its 120px frame is the 30px
+   question, 10px, the 25px hint, 15px, then the 40px input. The width-20 input is 389.5px, the Figma's box. */
+.activity-status-step .activity-status-step__closure-reason > .govuk-form-group {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.activity-status-step .activity-status-step__closure-reason .govuk-label--m {
+  margin-bottom: 10px;
+}
+
+/* Not a restatement of govuk-frontend's default: the wizard sets every hint to 10px (.activity-wizard .govuk-hint). */
+.activity-status-step .activity-status-step__closure-reason .govuk-hint {
+  margin-bottom: 15px;
 }

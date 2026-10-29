@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
+import { composeTestId } from '../../../../helpers/testIds';
 import { ManagementLayout } from '../../../../layouts';
 import { GovUKTable, H1, NameLink, type Column, type FilterOption } from '../../../../components/GovUKComponents';
 import usePageTitle from '../../../../hooks/usePageTitle';
@@ -24,7 +25,9 @@ const columns: Column<DeletedOrganisationRow>[] = [
   {
     key: 'name',
     header: 'Name',
-    render: (entry) => <NameLink name={entry.name} href={ROUTES.admin.auditLogs.detail(entry.id)} />,
+    render: (entry) => (
+      <NameLink name={entry.name} href={ROUTES.admin.auditLogs.detail(entry.id)} testId={composeTestId('admin-deleted-organisations-table', 'row', entry.id, 'name-link')} />
+    ),
     headerStyle: { width: '320px' },
     cellStyle: { width: '320px' },
   },
@@ -51,7 +54,7 @@ const readOnsCode = (entry: AuditLogListItem): string => {
 
 const DeletedOrganisationsList = (): React.ReactElement => {
   usePageTitle('Deleted organisations');
-  const { data } = useQuery(deletedOrganisationsListKey, () => getAuditLogs({ action: 'organisation.deleted', pageSize: 200 }));
+  const { data } = useQuery({ queryKey: deletedOrganisationsListKey, queryFn: () => getAuditLogs({ action: 'organisation.deleted', pageSize: 200 }) });
 
   const rows: DeletedOrganisationRow[] = (data?.data?.items ?? []).map((entry) => ({
     ...entry,
@@ -71,6 +74,7 @@ const DeletedOrganisationsList = (): React.ReactElement => {
         <H1>Deleted organisations</H1>
 
         <GovUKTable<DeletedOrganisationRow>
+          label="Deleted organisations"
           testId="admin-deleted-organisations-table"
           data={rows}
           columns={columns}

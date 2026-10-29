@@ -1,3 +1,4 @@
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Domain.Organisations;
@@ -16,10 +17,13 @@ public class SubmissionReviewService(
     ISubmissionQueries submissionQueries,
     ISubmissionRepository submissionRepository,
     IOrganisationQueries organisationQueries,
+    IDateTimeProvider dateTimeProvider,
     ILogger<SubmissionReviewService> logger)
 {
     public async Task FlagOpenSubmissionsAsync(OrganisationId organisationId, CancellationToken cancellationToken)
     {
+        var utcNow = dateTimeProvider.GetUtcNow();
+
         try
         {
             // Resolve the org so IsAssignedTo can apply the type-aware gate (GetAssignedToOrganisationAsync is a
@@ -35,7 +39,7 @@ public class SubmissionReviewService(
 
             foreach (var collection in collections.Where(c =>
                 SubmissionEligibility.IsQuarterly(c)
-                && SubmissionEligibility.IsOpen(c)
+                && SubmissionEligibility.IsOpen(c, utcNow)
                 && SubmissionEligibility.IsAssignedTo(c, organisation)))
             {
                 var submissionLookup = await submissionQueries.GetByCollectionAndOrgAsync(collection.Id, organisationId, cancellationToken);
@@ -50,7 +54,7 @@ public class SubmissionReviewService(
                     continue;
                 }
 
-                submission.FlagActivityListChanged();
+                submission.FlagActivityListChanged(utcNow);
                 await submissionRepository.UpdateAsync(submission, cancellationToken);
             }
         }

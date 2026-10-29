@@ -190,6 +190,10 @@ dotnet_diagnostic.SA1118.severity = silent
 dotnet_diagnostic.SA1128.severity = silent
 dotnet_diagnostic.SA1127.severity = silent
 dotnet_diagnostic.SA1312.severity = silent
+dotnet_diagnostic.SA1515.severity = silent
+dotnet_diagnostic.SA1203.severity = silent
+dotnet_diagnostic.SA1204.severity = silent
+dotnet_diagnostic.SA1512.severity = silent
 
 dotnet_diagnostic.SA1025.severity = error
 dotnet_diagnostic.SA1015.severity = error
@@ -213,6 +217,9 @@ dotnet_diagnostic.CS8602.severity = error
 dotnet_diagnostic.SA1513.severity = error
 dotnet_diagnostic.SA1117.severity = error
 dotnet_diagnostic.SA1024.severity = error
+
+# The clock is read only through IDateTimeProvider (BLUM-8753); src/BannedSymbols.txt lists what that bans.
+dotnet_diagnostic.RS0030.severity = error
 dotnet_diagnostic.IDE0005.severity = error
 dotnet_diagnostic.SA1210.severity = error
 dotnet_diagnostic.SA1208.severity = error

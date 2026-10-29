@@ -165,7 +165,8 @@ public class MfaSessionRevocationTests : BaseIntegrationTest, IAsyncLifetime
             Region.London,
             OrgType.LocalAuthority,
             "E1000001",
-            OnboardingStatus.Suspended);
+            OnboardingStatus.Suspended,
+            DateTime.UtcNow);
 
         await Context.Organisations.AddAsync(organisation);
         await SaveChangesAsync();
@@ -243,7 +244,8 @@ public class MfaSessionRevocationTests : BaseIntegrationTest, IAsyncLifetime
             ipAddressHash: "seeded-ip-hash",
             userAgentHash: "seeded-user-agent-hash",
             ipAddress: "203.0.113.10",
-            deviceLabel: "Chrome on Windows");
+            deviceLabel: "Chrome on Windows",
+            utcNow: DateTime.UtcNow);
 
         await Context.MfaSessions.AddAsync(session);
         await SaveChangesAsync();

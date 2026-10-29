@@ -3,7 +3,7 @@ using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
 using Domain.Locations;
 using Domain.Organisations;
-using Domain.ValueObjects;
+using Infrastructure.Persistence.Extensions;
 using LanguageExt;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,7 +16,7 @@ public class LocationRepository(ApplicationDbContext dbContext)
         Permission permission,
         CancellationToken cancellationToken)
     {
-        return await GetQuery(permission.UserRole, permission.OrganisationId)
+        return await GetQuery(permission)
             .Where(x => x.OrganisationId == id)
             .ToListAsync(cancellationToken);
     }
@@ -49,34 +49,18 @@ public class LocationRepository(ApplicationDbContext dbContext)
         CancellationToken cancellationToken)
     {
         return await organisationId.MatchAsync(
-            orgId => GetQuery(permission.UserRole, permission.OrganisationId)
+            orgId => GetQuery(permission)
                 .CountAsync(x => x.OrganisationId == orgId, cancellationToken),
-            () => GetQuery(permission.UserRole, permission.OrganisationId)
+            () => GetQuery(permission)
                 .CountAsync(cancellationToken));
     }
 
     private IQueryable<Location> GetLocationByIdQuery(LocationId id, Permission permission)
     {
-        return GetQuery(permission.UserRole, permission.OrganisationId).Where(x => x.Id == id);
+        return GetQuery(permission).Where(x => x.Id == id);
     }
 
-    private IQueryable<Location> GetQuery(UserRole userRole, Option<OrganisationId> organisationId)
-    {
-        if (userRole.Equals(UserRole.Admin))
-        {
-            return Context.Locations.AsNoTracking();
-        }
-
-        // Every LA role sees its own organisation's locations. A role missing from every branch here
-        // falls through to an empty queryable rather than an error, so it reads as "no locations" —
-        // which is how Lead's broken access stayed invisible (BLUM-7038).
-        if (userRole.IsOrganisationMember())
-        {
-            return organisationId.Match(
-                orgId => Context.Locations.AsNoTracking().Where(x => x.OrganisationId == orgId),
-                Array.Empty<Location>().AsQueryable());
-        }
-
-        return Array.Empty<Location>().AsQueryable();
-    }
+    // Every LA role sees its own organisation's locations; ScopedTo throws for a role it cannot scope.
+    private IQueryable<Location> GetQuery(Permission permission) =>
+        Context.Locations.AsNoTracking().ScopedTo(permission, orgId => x => x.OrganisationId == orgId);
 }

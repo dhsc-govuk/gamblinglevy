@@ -3,65 +3,35 @@
  * Custom styles only for layout that isn't covered by the design system
  */
 
-/* Filter container - uses GOV.UK grid row
- * Override govuk-grid-row float layout with flex to align inputs at the bottom
- */
+/* The search, sort and filter row lays itself out rather than borrowing govuk-grid-row / govuk-grid-column-*, whose
+   -15px gutters, column padding, floats and clearfix ::after every page that customised the row had to undo — and the
+   clearfix became an empty grid row under the controls on those pages, an extra 20px above the table (BLUM-9350).
+   Stacked below 641px; from there one track per control, as index.tsx computes them, which is exactly the geometry the
+   GOV.UK grid gave. A page with its own layout sets grid-template-columns (or display) and keeps its controls aligned
+   with the content column, because nothing here bleeds past it. */
 .govuk-table-filter {
+  align-items: end;
+  column-gap: 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   margin-bottom: 20px;
-  display: flex;
-  align-items: flex-end;
-  flex-wrap: wrap;
+}
+
+@media (min-width: 40.0625em) {
+  .govuk-table-filter {
+    grid-template-columns: var(--app-table-filter-columns, minmax(0, 1fr));
+  }
+}
+
+/* min-width: 0 so the search input's intrinsic width cannot widen its track, and a select's 218.5px minimum (below)
+   cannot either. */
+.govuk-table-filter > * {
+  min-width: 0;
 }
 
 /* Ensure consistent label styling across search and sort */
 .govuk-table-filter .govuk-label {
   margin-bottom: 5px;
-}
-
-/* Search input wrapper for input + button layout */
-.govuk-table-filter__search {
-  display: flex;
-}
-
-/* Extend govuk-input for flex layout.
- * A floor rather than a fixed height: at line-height 1.5 the text needs a 28.5px line box, which a pinned
- * 40px control clips to a 26px content box (WCAG 1.4.12). Same treatment as .govuk-select below. */
-.govuk-table-filter__input {
-  flex: 1;
-  margin-bottom: 0;
-  min-height: 40px;
-  height: auto;
-  box-sizing: border-box;
-}
-
-/* Search button styling - matches GOV.UK button colours.
- * align-self: stretch keeps the button flush with the input when the input grows. */
-.govuk-table-filter__search-button {
-  background-color: #1d70b8;
-  border: none;
-  width: 40px;
-  min-height: 40px;
-  height: auto;
-  align-self: stretch;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.govuk-table-filter__search-button:hover {
-  background-color: #003078;
-}
-
-.govuk-table-filter__search-button:focus {
-  outline: 3px solid #ffdd00;
-  outline-offset: 0;
-  background-color: #ffdd00;
-}
-
-.govuk-table-filter__search-button:focus svg circle,
-.govuk-table-filter__search-button:focus svg line {
-  stroke: #0b0c0c;
 }
 
 /* Style native select to match GOV.UK Design System */
@@ -76,11 +46,6 @@
   padding: 5px;
   border: 2px solid #0b0c0c;
   box-sizing: border-box;
-}
-
-.govuk-table-filter__filter,
-.govuk-table-filter__sort {
-  min-width: 0;
 }
 
 /* govuk-frontend gives .govuk-select a min-width of 11.5em, which at this row's 19px font size is 218.5px —
@@ -107,4 +72,33 @@
 
 .govuk-table__actions a {
   white-space: nowrap;
+}
+
+/* The table's page header: title on the left, the add button on the right. */
+.app-table-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.app-table-page-header h1,
+.app-table-page-header h2,
+.app-table-page-header h3,
+.app-table-page-header .govuk-heading-xl,
+.app-table-page-header .govuk-heading-l,
+.app-table-page-header .govuk-heading-m {
+  margin: 0;
+}
+
+.app-table-page-header__actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.app-table-page-header__actions button {
+  margin-bottom: 0;
 }

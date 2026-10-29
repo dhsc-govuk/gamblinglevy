@@ -20,6 +20,7 @@ public record ActivityDto(
     bool IsDraft,
     int? StartMonth,
     int? StartYear,
+    string? ClosureReason,
     IReadOnlyList<ExpectedResultDto> ExpectedResults,
     IReadOnlyList<ActivityAnswerDto> Answers,
     DateTime CreatedAt,
@@ -63,7 +64,8 @@ public record CreateActivityRequestDto(
     int? StartYear,
     bool SaveAsDraft,
     IReadOnlyList<ExpectedResultInputDto>? ExpectedResults = null,
-    IReadOnlyList<ActivityAnswerInputDto>? Answers = null);
+    IReadOnlyList<ActivityAnswerInputDto>? Answers = null,
+    string? ClosureReason = null);
 
 public record UpdateActivityRequestDto(
     string? Title,
@@ -75,4 +77,5 @@ public record UpdateActivityRequestDto(
     int? StartYear,
     bool SaveAsDraft,
     IReadOnlyList<ExpectedResultInputDto>? ExpectedResults = null,
-    IReadOnlyList<ActivityAnswerInputDto>? Answers = null);
+    IReadOnlyList<ActivityAnswerInputDto>? Answers = null,
+    string? ClosureReason = null);

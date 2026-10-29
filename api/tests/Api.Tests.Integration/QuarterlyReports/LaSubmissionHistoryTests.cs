@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Api.Dtos;
+using Application.Common.ReportSnapshots;
 using Domain.Collections;
 using Domain.DataCollectionForms;
 using Domain.Organisations;
@@ -27,7 +28,7 @@ public class LaSubmissionHistoryTests(IntegrationTestWebFactory factory) : Quart
     // Seeds a finalised (SubmittedAt set) submission directly for (collection, org — MainOrg by default), submitted by
     // a real user row — enough to exercise the "Completed" status and submitter name/email resolution without driving
     // the whole multi-section submit flow (the DhscSubmissionStatusTests precedent).
-    private async Task<User> SeedSubmittedSubmissionAsync(Guid collectionId, Organisation? org = null)
+    private async Task<User> SeedSubmittedSubmissionAsync(Guid collectionId, Organisation? org = null, string? reportSnapshotJson = null)
     {
         var submitter = User.New(
             UserId.New(),
@@ -35,7 +36,8 @@ public class LaSubmissionHistoryTests(IntegrationTestWebFactory factory) : Quart
             "julie.smith@example.gov.uk",
             new SubId(Guid.NewGuid()),
             UserStatus.Active,
-            UserRole.Lead);
+            UserRole.Lead,
+            DateTime.UtcNow);
         await Context.Users.AddAsync(submitter);
 
         var submission = Submission.Start(
@@ -43,8 +45,14 @@ public class LaSubmissionHistoryTests(IntegrationTestWebFactory factory) : Quart
             new CollectionId(collectionId),
             (org ?? MainOrg).Id,
             Array.Empty<(FormModuleId ModuleId, string ModuleCode)>(),
-            submitter.Id);
-        submission.Submit("202701-0001", submitter.Id);
+            submitter.Id,
+            DateTime.UtcNow);
+        submission.Submit(TestFinancialYears.Reference(TestFinancialYears.Current, 1, 1), submitter.Id, DateTime.UtcNow);
+        if (reportSnapshotJson is not null)
+        {
+            submission.AttachReportSnapshot(reportSnapshotJson);
+        }
+
         await Context.Submissions.AddAsync(submission);
 
         await SaveChangesAsync();
@@ -128,16 +136,19 @@ public class LaSubmissionHistoryTests(IntegrationTestWebFactory factory) : Quart
     }
 
     [Fact]
-    public async Task GetMyCollections_ExcludesMaturityAssessment()
+    public async Task GetMyCollections_IncludesMaturityAssessment_Typed()
     {
+        // Since BLUM-7859 the history lists both submission flows; the maturity row is typed so the client can name
+        // it by financial year and route to the maturity read-only view (MaturityAssessmentHistoryTests covers it).
         var quarterlyId = await CreateOpenCollectionAsync(localAuthorityIds: [MainOrg.Id.Value]);
-        await CreateMaturityAssessmentCollectionAsync(localAuthorityIds: [MainOrg.Id.Value]);
+        var maturityId = await CreateMaturityAssessmentCollectionAsync(localAuthorityIds: [MainOrg.Id.Value]);
 
         AuthenticateAsMainOrgLead();
         var collections = await (await GetMyCollectionsAsync()).ToResponseModel<List<MyCollectionSummaryDto>>();
 
-        collections.Should().ContainSingle();
-        collections.Single().CollectionId.Should().Be(quarterlyId);
+        collections.Select(c => c.CollectionId).Should().BeEquivalentTo([quarterlyId, maturityId]);
+        collections.Single(c => c.CollectionId == maturityId).Type.Should().Be("maturity_assessment");
+        collections.Single(c => c.CollectionId == quarterlyId).Type.Should().Be("quarterly_report");
     }
 
     [Fact]
@@ -187,6 +198,40 @@ public class LaSubmissionHistoryTests(IntegrationTestWebFactory factory) : Quart
         detail.Quarter.Should().Be(1);
     }
 
+    // BLUM-9018: the Files card captions the download with its size ("ZIP, 389 KB"). The detail measures the ZIP through
+    // the call the download endpoint makes, so the caption is the downloaded file's byte length exactly.
+    [Fact]
+    public async Task GetMyDetail_Submitted_CarriesTheDownloadsByteLength()
+    {
+        var collectionId = await CreateOpenCollectionAsync(localAuthorityIds: [MainOrg.Id.Value]);
+        await SeedSubmittedSubmissionAsync(collectionId, reportSnapshotJson: ReportSnapshotJson.Serialize(new ReportSnapshotDocument([], null, [])));
+
+        AuthenticateAsMainOrgLead();
+        var detail = await (await GetMyDetailAsync(collectionId)).ToResponseModel<MySubmissionDetailDto>();
+        var download = await Client.GetAsync($"quarterly-report/{collectionId}/export");
+
+        download.StatusCode.Should().Be(HttpStatusCode.OK);
+        var file = await download.Content.ReadAsByteArrayAsync();
+        file.Should().NotBeEmpty();
+        detail.ExportSizeBytes.Should().Be(file.LongLength);
+    }
+
+    // A legacy submission finalised before snapshots existed downloads through a live render of the whole report. The
+    // detail does not run that render just to caption the download, so it shows the format alone (BLUM-9018 review).
+    [Fact]
+    public async Task GetMyDetail_SubmittedWithoutAFrozenSnapshot_HasNoSize_ButStillDownloads()
+    {
+        var collectionId = await CreateOpenCollectionAsync(localAuthorityIds: [MainOrg.Id.Value]);
+        await SeedSubmittedSubmissionAsync(collectionId);
+
+        AuthenticateAsMainOrgLead();
+        var detail = await (await GetMyDetailAsync(collectionId)).ToResponseModel<MySubmissionDetailDto>();
+
+        detail.Status.Should().Be("completed");
+        detail.ExportSizeBytes.Should().BeNull();
+        (await Client.GetAsync($"quarterly-report/{collectionId}/export")).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
     [Fact]
     public async Task GetMyDetail_NotStarted_ReturnsEmptyState()
     {
@@ -200,6 +245,7 @@ public class LaSubmissionHistoryTests(IntegrationTestWebFactory factory) : Quart
         detail.SubmittedByName.Should().BeNull();
         detail.SubmittedByEmail.Should().BeNull();
         detail.SubmittedAt.Should().BeNull();
+        detail.ExportSizeBytes.Should().BeNull("there is no file until the report is submitted");
     }
 
     [Fact]
@@ -215,6 +261,11 @@ public class LaSubmissionHistoryTests(IntegrationTestWebFactory factory) : Quart
 
         detail.HasSubmission.Should().BeTrue();
         detail.Status.Should().Be("completed");
+
+        // The export only serves an assigned organisation, so there is no file to caption — the size follows the
+        // download rather than promising one that 404s.
+        (await Client.GetAsync($"quarterly-report/{collectionId}/export")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        detail.ExportSizeBytes.Should().BeNull();
     }
 
     [Fact]
@@ -239,14 +290,18 @@ public class LaSubmissionHistoryTests(IntegrationTestWebFactory factory) : Quart
     }
 
     [Fact]
-    public async Task GetMyDetail_MaturityAssessment_Returns404()
+    public async Task GetMyDetail_MaturityAssessment_ReturnsTheTypedHeader()
     {
         var collectionId = await CreateMaturityAssessmentCollectionAsync(localAuthorityIds: [MainOrg.Id.Value]);
 
         AuthenticateAsMainOrgLead();
         var response = await GetMyDetailAsync(collectionId);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var detail = await response.ToResponseModel<MySubmissionDetailDto>();
+        detail.Type.Should().Be("maturity_assessment");
+        detail.Quarter.Should().BeNull();
+        detail.HasSubmission.Should().BeFalse();
     }
 
     [Fact]
@@ -268,10 +323,10 @@ public class LaSubmissionHistoryTests(IntegrationTestWebFactory factory) : Quart
     {
         AuthenticateAsAdmin();
         var request = new CreateCollectionRequestDto(
-            Name: "2026 Q1 draft report",
+            Name: "Q1 draft report",
             Purpose: "Draft tests",
             Type: "quarterly_report",
-            FinancialYear: "2026/27",
+            FinancialYear: TestFinancialYears.Current,
             Quarter: 1,
             WindowSameAsReportingPeriod: false,
             OpenDate: Today.AddDays(-1),

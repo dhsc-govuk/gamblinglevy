@@ -3,9 +3,8 @@ using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
 using Domain.Locations;
 using Domain.LocationUsers;
-using Domain.Organisations;
 using Domain.Users;
-using Domain.ValueObjects;
+using Infrastructure.Persistence.Extensions;
 using LanguageExt;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,7 +18,7 @@ public class LocationUserRepository(ApplicationDbContext dbContext)
         Permission permission,
         CancellationToken cancellationToken)
     {
-        return await GetQuery(permission.UserRole, permission.OrganisationId)
+        return await GetQuery(permission)
             .Where(x => x.LocationId == id)
             .ToListAsync(cancellationToken);
     }
@@ -29,7 +28,7 @@ public class LocationUserRepository(ApplicationDbContext dbContext)
         Permission permission,
         CancellationToken cancellationToken)
     {
-        var entity = await GetQuery(permission.UserRole, permission.OrganisationId)
+        var entity = await GetQuery(permission)
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         return entity ?? Option<LocationUser>.None;
     }
@@ -52,33 +51,17 @@ public class LocationUserRepository(ApplicationDbContext dbContext)
         Permission permission,
         CancellationToken cancellationToken)
     {
-        var query = GetQuery(permission.UserRole, permission.OrganisationId);
+        var query = GetQuery(permission);
 
         return await locationId.MatchAsync(
             l => query.CountAsync(x => x.LocationId == l, cancellationToken),
             () => query.CountAsync(cancellationToken));
     }
 
-    private IQueryable<LocationUser> GetQuery(UserRole userRole, Option<OrganisationId> organisationId)
-    {
-        var query = Context.LocationUsers
+    private IQueryable<LocationUser> GetQuery(Permission permission) =>
+        Context.LocationUsers
             .Include(x => x.User)
             .Include(x => x.Location)
             .AsNoTracking()
-            .AsQueryable();
-
-        if (userRole.Equals(UserRole.Admin))
-        {
-            return query;
-        }
-
-        if (userRole.IsOrganisationMember())
-        {
-            return organisationId.Match(
-                orgId => query.Where(x => x.Location!.OrganisationId == orgId),
-                Array.Empty<LocationUser>().AsQueryable());
-        }
-
-        return Array.Empty<LocationUser>().AsQueryable();
-    }
+            .ScopedTo(permission, orgId => x => x.Location!.OrganisationId == orgId);
 }

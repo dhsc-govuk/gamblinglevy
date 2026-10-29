@@ -1,3 +1,4 @@
+using Application.Common.Validation;
 using Application.Forms.Answers;
 using Domain.Forms;
 
@@ -11,36 +12,39 @@ namespace Application.Submissions.Protocol;
 // persists. Mirrors the frontend renderer/validators so the two never disagree.
 public static class SubmissionAnswerValidator
 {
-    private const int MaxTextLength = 10000;
+    private const int MaxTextLength = FieldLimits.AnswerText;
 
-    public static bool IsVisible(ResolvedQuestion question, IReadOnlyDictionary<string, string?> answers)
-    {
-        if (string.IsNullOrWhiteSpace(question.ConditionalQuestionCode) || string.IsNullOrWhiteSpace(question.ConditionalValue))
-        {
-            return true;
-        }
-
-        var parentAnswer = answers.TryGetValue(question.ConditionalQuestionCode, out var value) ? value : null;
-        if (string.IsNullOrWhiteSpace(parentAnswer))
-        {
-            return false;
-        }
-
-        var allowed = Split(question.ConditionalValue);
-        var parentValues = Split(parentAnswer);
-        return parentValues.Any(allowed.Contains);
-    }
+    // Which of these questions are visible, judged among themselves (AnswerVisibility). transitive is BLUM_9087: on, a
+    // question whose parent is hidden is hidden too.
+    public static AnswerVisibility Visibility(
+        IEnumerable<ResolvedQuestion> questions,
+        IReadOnlyDictionary<string, string?> answers,
+        bool transitive) =>
+        AnswerVisibility.Of(
+            questions.Select(question => VisibilityNode.For(question.Code, question.ConditionalQuestionCode, question.ConditionalValue)),
+            answers,
+            transitive);
 
     public static IReadOnlyList<AnswerValidationError> Validate(
         IReadOnlyList<ResolvedQuestion> questions,
         IReadOnlyDictionary<string, string?> answers,
-        bool enforceRequired)
+        bool enforceRequired,
+        bool transitive) =>
+        Validate(questions, answers, enforceRequired, Visibility(questions, answers, transitive));
+
+    // For a caller whose visibility spans more than the questions it validates (a maturity page's rule hangs off an
+    // earlier page). The visibility must have been built from the same answers.
+    internal static IReadOnlyList<AnswerValidationError> Validate(
+        IReadOnlyList<ResolvedQuestion> questions,
+        IReadOnlyDictionary<string, string?> answers,
+        bool enforceRequired,
+        AnswerVisibility visibility)
     {
         var errors = new List<AnswerValidationError>();
 
         foreach (var question in questions)
         {
-            if (!IsVisible(question, answers))
+            if (!visibility.IsVisible(question.Code))
             {
                 continue;
             }
@@ -61,10 +65,35 @@ public static class SubmissionAnswerValidator
             }
 
             var trimmed = value!.Trim();
+
+            // The protocol's own character limit, checked ahead of the type rules so an over-long answer is
+            // reported as such whatever the field type. MaxTextLength below stays as the backstop for questions
+            // the protocol gives no limit.
+            if (question.MaxLength is { } maxLength && trimmed.Length > maxLength)
+            {
+                errors.Add(new AnswerValidationError(
+                    question.Code,
+                    question.MaxLengthErrorMessage ?? $"“{question.Label}” must be {maxLength} characters or less"));
+                continue;
+            }
+
             switch (question.QuestionType)
             {
                 case QuestionTypes.Number:
                     ValidateNumber(question, trimmed, errors);
+                    break;
+
+                // Currency is a Domain.Forms.QuestionType and DcFormQuestion reuses that type, so a DHSC admin can
+                // put one on a data-collection form module through the Form Designer API — the client's
+                // DC_QUESTION_TYPES omits it, but the API is the enforcement point. Without this arm such an answer
+                // would fall to the free-text default below and persist "abc" as a money value (BLUM-7860).
+                case QuestionTypes.Currency:
+                    var currencyError = MoneyAnswer.Validate(trimmed, MoneySubject.Quoting(question.Label), question.MinValue);
+                    if (currencyError is not null)
+                    {
+                        errors.Add(new AnswerValidationError(question.Code, currencyError));
+                    }
+
                     break;
 
                 case QuestionTypes.Radio:
@@ -77,7 +106,7 @@ public static class SubmissionAnswerValidator
                     break;
 
                 case QuestionTypes.Checkbox:
-                    var selected = Split(trimmed);
+                    var selected = AnswerVisibility.Split(trimmed);
                     if (selected.Any(s => question.Options.All(o => o.Value != s)))
                     {
                         errors.Add(new AnswerValidationError(question.Code, $"Select valid options for “{question.Label}”."));
@@ -101,13 +130,15 @@ public static class SubmissionAnswerValidator
     // The answers that should actually be persisted: visible questions that have a non-empty value.
     public static IReadOnlyList<(ResolvedQuestion Question, string Value)> CollectPersistable(
         IReadOnlyList<ResolvedQuestion> questions,
-        IReadOnlyDictionary<string, string?> answers)
+        IReadOnlyDictionary<string, string?> answers,
+        bool transitive)
     {
+        var visibility = Visibility(questions, answers, transitive);
         var result = new List<(ResolvedQuestion Question, string Value)>();
 
         foreach (var question in questions)
         {
-            if (!IsVisible(question, answers))
+            if (!visibility.IsVisible(question.Code))
             {
                 continue;
             }
@@ -144,7 +175,4 @@ public static class SubmissionAnswerValidator
                     : $"Enter a number of {question.MinValue} or more"));
         }
     }
-
-    private static string[] Split(string value) =>
-        value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }

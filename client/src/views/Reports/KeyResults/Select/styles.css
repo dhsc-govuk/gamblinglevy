@@ -21,6 +21,10 @@
   margin: 0;
 }
 
+.reports-key-results-select__return {
+  align-self: flex-start;
+}
+
 .reports-key-results-select__activities-heading {
   box-sizing: border-box;
   width: 630px;

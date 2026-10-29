@@ -1,19 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import { PageLoading } from '../../../../components/GovUKComponents';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
 import { ErrorSummary, GovUKButton, GovUKSummaryCard, SummaryList } from '../../../../components/GovUKComponents';
 import ReportStrategicFeedbackPageHeader from '../../../../components/Global/Reports/ReportStrategicFeedbackPageHeader';
 import { useAuthProvider } from '../../../../components/AuthProvider';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import { reportContextKey, reportStrategicFeedbackKey, reportTaskListKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
 import { getStrategicFeedback } from '../../queries';
 import { completeStrategicFeedback } from '../../mutations';
 import { mapReportError } from '../../messages';
-import { answersToRecord, reportingPeriodLabel, toFormQuestion, visibleQuestionRows } from '../../display';
+import { answersToRecord, reportingPeriodValue, toFormQuestion, visibleQuestionRows } from '../../display';
 import { useReportContext } from '../../context';
 import { canEditReport } from '../../navigation';
 import './styles.css';
@@ -36,7 +35,9 @@ const Check = (): React.ReactElement => {
   const tasksPath = ROUTES.reports.tasks(collectionId);
   const pathForPage = (key: string): string => (key === 'working-together' ? page2Path : page1Path);
 
-  const feedbackQuery = useQuery(reportStrategicFeedbackKey(collectionId), () => getStrategicFeedback(collectionId), {
+  const feedbackQuery = useQuery({
+    queryKey: reportStrategicFeedbackKey(collectionId),
+    queryFn: () => getStrategicFeedback(collectionId),
     enabled: !!collectionId && !!context?.submissionId,
   });
   const feedback = feedbackQuery.data?.data;
@@ -45,13 +46,12 @@ const Check = (): React.ReactElement => {
   const allQuestions = useMemo(() => (feedback?.pages ?? []).flatMap((p) => p.questions).map(toFormQuestion), [feedback]);
   const answers = useMemo(() => answersToRecord(feedback?.answers ?? []), [feedback]);
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
-
-  const completeMutation = useMutation(completeStrategicFeedback, {
+  const completeMutation = useMutation({
+    mutationFn: completeStrategicFeedback,
     onSuccess: () => {
-      queryClient.invalidateQueries(reportContextKey(collectionId));
-      queryClient.invalidateQueries(reportTaskListKey(collectionId));
-      queryClient.invalidateQueries(reportStrategicFeedbackKey(collectionId));
+      queryClient.invalidateQueries({ queryKey: reportContextKey(collectionId) });
+      queryClient.invalidateQueries({ queryKey: reportTaskListKey(collectionId) });
+      queryClient.invalidateQueries({ queryKey: reportStrategicFeedbackKey(collectionId) });
     },
   });
 
@@ -95,21 +95,23 @@ const Check = (): React.ReactElement => {
           <PageLoading />
         ) : (
           <>
-            {errorList.length > 0 && (
-              <ErrorSummary
-                heading="There is a problem"
-                errors={errorList}
-                onHandleErrorClick={(targetName) => {
-                  const target = pageForError(targetName);
-                  if (target) {
-                    navigate(target);
-                  }
-                }}
-              />
-            )}
+            <ErrorSummary
+              heading="There is a problem"
+              errors={errorList}
+              focusTrigger={submitAttempts}
+              onHandleErrorClick={(targetName) => {
+                const target = pageForError(targetName);
+                if (target) {
+                  navigate(target);
+                }
+              }}
+            />
 
             <div className="reports-strategic-feedback-check__header">
-              <ReportStrategicFeedbackPageHeader heading="Check your answers" reportingPeriod={reportingPeriodLabel(context)} />
+              <ReportStrategicFeedbackPageHeader
+                heading="Check your answers"
+                reportingPeriod={reportingPeriodValue(context.quarter, context.reportingPeriodStart, context.reportingPeriodEnd)}
+              />
             </div>
 
             {feedback.pages.map((feedbackPage) => (
@@ -131,7 +133,7 @@ const Check = (): React.ReactElement => {
 
             <div className="govuk-button-group reports-strategic-feedback-check__actions">
               {canEdit && (
-                <GovUKButton onClick={handleComplete} isLoading={completeMutation.isLoading} data-testid="reports-strategic-feedback-check-continue">
+                <GovUKButton onClick={handleComplete} isLoading={completeMutation.isPending} data-testid="reports-strategic-feedback-check-continue">
                   Continue
                 </GovUKButton>
               )}

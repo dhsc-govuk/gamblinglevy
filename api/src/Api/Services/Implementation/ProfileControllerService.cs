@@ -1,5 +1,6 @@
 using Api.Dtos;
 using Api.Services.Abstract;
+using Application.Common.Features;
 using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Mfa.Dtos;
@@ -13,7 +14,8 @@ namespace Api.Services.Implementation;
 public class ProfileControllerService(
     IIdentityService identityService,
     IInMemoryCache inMemoryCache,
-    IMfaSessionQueries mfaSessionQueries) : IProfileControllerService
+    IMfaSessionQueries mfaSessionQueries,
+    IFeatureFlags featureFlags) : IProfileControllerService
 {
     public Option<Profile> GetMe()
     {
@@ -29,7 +31,9 @@ public class ProfileControllerService(
                     Role: cachedUser.Role!.ToString(),
                     UpdatedAt: cachedUser.UpdatedAt,
                     OrganisationId: cachedUser.OrganisationId.ValueUnsafe()?.Value,
-                    LocationId: cachedUser.LocationId.ValueUnsafe()?.Value),
+                    OrganisationName: cachedUser.OrganisationName.ValueUnsafe(),
+                    LocationId: cachedUser.LocationId.ValueUnsafe()?.Value,
+                    Features: featureFlags.Enabled.Select(feature => feature.ToString()).ToList()),
                 () => Option<Profile>.None),
             () => Option<Profile>.None);
     }

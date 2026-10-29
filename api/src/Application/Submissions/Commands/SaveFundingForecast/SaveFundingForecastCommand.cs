@@ -1,17 +1,20 @@
+using System.Text.Json;
 using Application.Collections;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Submissions.Exceptions;
+using Domain.AuditLogs;
 using Domain.Submissions;
 using LanguageExt;
 using MediatR;
 
 namespace Application.Submissions.Commands.SaveFundingForecast;
 
-// Saves the "Forecast spend" screen: the expected levy spend per reportable activity for each remaining quarter of
-// the financial year (the reporting quarter through Q4), plus a non-activity "Other planned spend" per quarter
-// (ActivityId = null). The full set is sent on every save and the Forecast rows are replaced wholesale. SaveAsDraft
-// skips required-amount enforcement; present amounts are still validated (>= 0). Quarters outside the remaining set
-// are ignored.
+// Saves the "Forecast spend" screen: the expected levy spend per forecast-reportable activity (Planned included —
+// BLUM-7672) for each remaining quarter of the financial year (the quarters after the reporting quarter; none in
+// Q4), plus a non-activity "Other planned spend" per quarter (ActivityId = null). The full set is sent on every save
+// and the Forecast rows are replaced wholesale. SaveAsDraft skips required-amount enforcement; present amounts are
+// still validated (>= 0). Quarters outside the remaining set are ignored.
 public record QuarterSpendInput(int Quarter, decimal? Amount);
 
 public record ActivityForecastInput(Guid? ActivityId, IReadOnlyList<QuarterSpendInput> Quarters);
@@ -26,7 +29,10 @@ public record SaveFundingForecastCommand : IRequest<Either<SubmissionException, 
 
 public class SaveFundingForecastCommandHandler(
     FundingSpendContextResolver resolver,
-    ISubmissionSpendEntryRepository spendRepository)
+    ISubmissionSpendEntryRepository spendRepository,
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<SaveFundingForecastCommand, Either<SubmissionException, SubmissionSectionStatus>>
 {
     public async Task<Either<SubmissionException, SubmissionSectionStatus>> Handle(
@@ -46,10 +52,9 @@ public class SaveFundingForecastCommandHandler(
     {
         var remaining = ReportingPeriod.RemainingQuarters(context.Collection.Quarter!.Value);
         var remainingSet = remaining.ToHashSet();
-        var reportableIds = context.ReportableActivities.Select(a => a.Id).ToList();
-        var reportableSet = reportableIds.Select(id => id.Value).ToHashSet();
+        var reportableSet = context.ForecastSpendActivities.Select(a => a.Id.Value).ToHashSet();
 
-        var activityAmounts = new Dictionary<(Guid, int), decimal?>();
+        var activityAmounts = new Dictionary<(Guid ActivityId, int Quarter), decimal?>();
         foreach (var input in request.Activities)
         {
             if (input.ActivityId is not Guid id || !reportableSet.Contains(id))
@@ -70,41 +75,49 @@ public class SaveFundingForecastCommandHandler(
         }
 
         var errors = FundingSpendValidator.ValidateForecast(
-            reportableIds, remaining, activityAmounts, otherAmounts, enforceRequired: !request.SaveAsDraft);
+            context.ForecastSpendSubjects, remaining, activityAmounts, otherAmounts, enforceRequired: !request.SaveAsDraft);
         if (errors.Count > 0)
         {
             return new FundingSpendInvalidException(context.Submission.Id, errors);
         }
 
-        try
-        {
-            var entries = new List<SubmissionSpendEntry>();
-            foreach (var id in reportableIds)
+        // The write, the section status and the audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<SubmissionException, SubmissionSectionStatus>(
+            async token =>
             {
-                foreach (var quarter in remaining)
+                try
                 {
-                    if (activityAmounts.TryGetValue((id.Value, quarter), out var amount) && amount is decimal value)
+                    var entries = FundingSpendEntries.Forecast(context, remaining, activityAmounts, otherAmounts, dateTimeProvider.GetUtcNow());
+                    await spendRepository.ReplaceForSubmissionAsync(context.Submission.Id, SpendEntryKind.Forecast, entries, token);
+
+                    var status = await resolver.RecomputeDraftStatusAsync(context, token);
+
+                    // Counts only — never the amounts entered.
+                    var after = JsonSerializer.Serialize(new
                     {
-                        entries.Add(SubmissionSpendEntry.Forecast(SubmissionSpendEntryId.New(), context.Submission.Id, id, quarter, value, context.ActorId));
-                    }
-                }
-            }
+                        module = SubmissionModules.FundingSpent,
+                        lineCount = entries.Count,
+                        quarters = remaining,
+                        saveAsDraft = request.SaveAsDraft,
+                    });
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            context.ActorId,
+                            AuditTargetType.Submission,
+                            context.Submission.Id.Value,
+                            AuditAction.SubmissionFundingForecastSaved,
+                            before: null,
+                            after,
+                            organisationId: context.OrganisationId),
+                        token);
 
-            foreach (var quarter in remaining)
-            {
-                if (otherAmounts.TryGetValue(quarter, out var amount) && amount is decimal value)
+                    return status;
+                }
+                catch (Exception exception)
                 {
-                    entries.Add(SubmissionSpendEntry.Forecast(SubmissionSpendEntryId.New(), context.Submission.Id, null, quarter, value, context.ActorId));
+                    return new SubmissionUnknownException(context.Submission.Id, exception);
                 }
-            }
-
-            await spendRepository.ReplaceForSubmissionAsync(context.Submission.Id, SpendEntryKind.Forecast, entries, cancellationToken);
-
-            return await resolver.RecomputeDraftStatusAsync(context, cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            return new SubmissionUnknownException(context.Submission.Id, exception);
-        }
+            },
+            cancellationToken);
     }
 }

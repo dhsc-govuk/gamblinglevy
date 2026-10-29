@@ -1,6 +1,8 @@
 using Api.Dtos;
 using Api.Services.Abstract;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
+using Application.MaturityAssessments.Protocol;
 using Domain.Collections;
 using Domain.Users;
 using LanguageExt;
@@ -11,19 +13,25 @@ namespace Api.Services.Implementation;
 public class DataCollectionsControllerService(
     ICollectionQueries collectionQueries,
     IFormModuleQueries formModuleQueries,
+    IFormModuleVersionQueries formModuleVersionQueries,
     IOrganisationQueries organisationQueries,
-    IUserQueries userQueries) : IDataCollectionsControllerService
+    IUserQueries userQueries,
+    IDateTimeProvider dateTimeProvider) : IDataCollectionsControllerService
 {
     public async Task<CollectionDto> ToDtoAsync(Collection collection, CancellationToken cancellationToken)
     {
         var laNames = await GetLocalAuthorityNamesAsync(cancellationToken);
         var modules = await GetModuleLookupAsync(cancellationToken);
+        var versionNumbers = await formModuleVersionQueries.GetVersionNumbersAsync(
+            collection.Forms.Where(f => f.FormModuleVersionId is not null).Select(f => f.FormModuleVersionId!).ToList(),
+            cancellationToken);
 
         var forms = collection.Forms
             .Select(f =>
             {
-                var module = ResolveModule(modules, f.FormModuleId.Value);
-                return new CollectionFormDto(f.FormModuleId.Value, module?.Code, module?.Name);
+                var module = ResolveForm(modules, f.FormModuleId.Value);
+                int? versionNumber = f.FormModuleVersionId is { } versionId && versionNumbers.TryGetValue(versionId, out var number) ? number : null;
+                return new CollectionFormDto(f.FormModuleId.Value, module?.Code, module?.Name, versionNumber);
             })
             .ToList();
 
@@ -56,7 +64,7 @@ public class DataCollectionsControllerService(
             forms,
             localAuthorities,
             reminders,
-            collection.GetStatus().ToString(),
+            collection.GetStatus(dateTimeProvider.GetUtcNow()).ToString(),
             collection.IsDraft,
             collection.CreatedAt,
             collection.CreatedBy?.Value,
@@ -69,13 +77,13 @@ public class DataCollectionsControllerService(
     public async Task<IReadOnlyList<CollectionSummaryDto>> ListAsync(CancellationToken cancellationToken)
     {
         var collections = await collectionQueries.GetAllAsync(cancellationToken);
-        return ToSummaries(collections);
+        return ToSummaries(collections, dateTimeProvider.GetUtcNow());
     }
 
     public async Task<IReadOnlyList<CollectionSummaryDto>> DeletedAsync(CancellationToken cancellationToken)
     {
         var collections = await collectionQueries.GetDeletedAsync(cancellationToken);
-        return ToSummaries(collections);
+        return ToSummaries(collections, dateTimeProvider.GetUtcNow());
     }
 
     public async Task<Option<CollectionDto>> GetAsync(Guid collectionId, CancellationToken cancellationToken)
@@ -92,9 +100,23 @@ public class DataCollectionsControllerService(
     public async Task<IReadOnlyList<CollectionFormOptionDto>> GetFormOptionsAsync(CancellationToken cancellationToken)
     {
         var modules = await formModuleQueries.GetAllActiveAsync(cancellationToken);
-        return modules
-            .Select(m => new CollectionFormOptionDto(m.Id.Value, m.Name, m.UpdatedAt ?? m.CreatedAt))
-            .ToList();
+        // BLUM-9103: each form module's saved versions, newest first, for choosing one per collection. A few modules
+        // with a handful of versions each, so one read per module is cheap.
+        var quarterly = new List<CollectionFormOptionDto>();
+        foreach (var module in modules)
+        {
+            var versions = await formModuleVersionQueries.ListAsync(module.Id, cancellationToken);
+            quarterly.Add(new CollectionFormOptionDto(
+                module.Id.Value,
+                module.Name,
+                module.UpdatedAt ?? module.CreatedAt,
+                CollectionTypes.QuarterlyReport,
+                versions.Select(v => new CollectionFormVersionOptionDto(v.VersionNumber, v.PublishedAt)).ToList()));
+        }
+
+        var maturity = MaturityCollectionForms.All
+            .Select(f => new CollectionFormOptionDto(f.Id, f.Title, null, CollectionTypes.MaturityAssessment));
+        return quarterly.Concat(maturity).ToList();
     }
 
     public async Task<IReadOnlyList<ReportingLaDto>> GetReportingLasAsync(CancellationToken cancellationToken)
@@ -105,15 +127,10 @@ public class DataCollectionsControllerService(
             .ToList();
     }
 
-    private static IReadOnlyList<CollectionSummaryDto> ToSummaries(IReadOnlyList<Collection> collections)
+    private static IReadOnlyList<CollectionSummaryDto> ToSummaries(IReadOnlyList<Collection> collections, DateTime utcNow)
     {
         return collections
-            .Select(c => new CollectionSummaryDto(
-                c.Id.Value,
-                c.Name,
-                c.Type?.ToString(),
-                c.SubmissionDeadline,
-                c.GetStatus().ToString()))
+            .Select(c => CollectionSummaryDto.FromDomainModel(c, utcNow))
             .ToList();
     }
 
@@ -145,10 +162,17 @@ public class DataCollectionsControllerService(
         return lookup.TryGetValue(id, out var name) ? name : null;
     }
 
-    private static (string Code, string Name)? ResolveModule(
+    // A collection's form id is either a maturity catalogue section (BLUM-7943) or a form module.
+    private static (string Code, string Name)? ResolveForm(
         IReadOnlyDictionary<Guid, (string Code, string Name)> lookup,
         Guid id)
     {
+        var section = MaturityCollectionForms.Find(id);
+        if (section is not null)
+        {
+            return (section.SectionCode, section.Title);
+        }
+
         return lookup.TryGetValue(id, out var module) ? module : null;
     }
 }

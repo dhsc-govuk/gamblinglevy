@@ -23,12 +23,12 @@ public class ActivityAnswerTests(IntegrationTestWebFactory factory) : ActivityTe
         await ClearFormSchemaAsync();
 
         var actor = new UserId(Guid.NewGuid());
-        var section = FormSection.Create(FormSectionId.New(), "Details", 0, actor);
+        var section = FormSection.Create(FormSectionId.New(), "Details", 0, actor, DateTime.UtcNow);
 
         var method = FormQuestion.Create(
-            FormQuestionId.New(), section.Id, "Q_METHOD", "Method?", QuestionType.Radio, 0, actor, isRequired: true);
-        method.AddOption(FormQuestionOptionId.New(), "online", "Online", 0);
-        method.AddOption(FormQuestionOptionId.New(), "in_person", "In person", 1);
+            FormQuestionId.New(), section.Id, "Q_METHOD", "Method?", QuestionType.Radio, 0, actor, isRequired: true, utcNow: DateTime.UtcNow);
+        method.AddOption(FormQuestionOptionId.New(), "online", "Online", 0, DateTime.UtcNow);
+        method.AddOption(FormQuestionOptionId.New(), "in_person", "In person", 1, DateTime.UtcNow);
 
         var platform = FormQuestion.Create(
             FormQuestionId.New(),
@@ -40,13 +40,14 @@ public class ActivityAnswerTests(IntegrationTestWebFactory factory) : ActivityTe
             actor,
             isRequired: true,
             conditionalQuestionCode: "Q_METHOD",
-            conditionalValue: "online");
+            conditionalValue: "online",
+            utcNow: DateTime.UtcNow);
 
         var topics = FormQuestion.Create(
-            FormQuestionId.New(), section.Id, "Q_TOPICS", "Topics", QuestionType.Checkbox, 2, actor, isRequired: false);
-        topics.AddOption(FormQuestionOptionId.New(), "a", "A", 0);
-        topics.AddOption(FormQuestionOptionId.New(), "b", "B", 1);
-        topics.AddOption(FormQuestionOptionId.New(), "c", "C", 2);
+            FormQuestionId.New(), section.Id, "Q_TOPICS", "Topics", QuestionType.Checkbox, 2, actor, isRequired: false, utcNow: DateTime.UtcNow);
+        topics.AddOption(FormQuestionOptionId.New(), "a", "A", 0, DateTime.UtcNow);
+        topics.AddOption(FormQuestionOptionId.New(), "b", "B", 1, DateTime.UtcNow);
+        topics.AddOption(FormQuestionOptionId.New(), "c", "C", 2, DateTime.UtcNow);
 
         Context.FormSections.Add(section);
         Context.FormQuestions.AddRange(method, platform, topics);

@@ -11,7 +11,8 @@ public static class AdminsData
         email: "main.admin@email.com",
         subId: new SubId(Guid.NewGuid()),
         status: UserStatus.Active,
-        role: UserRole.Admin);
+        role: UserRole.Admin,
+        utcNow: DateTime.UtcNow);
 
     public static readonly User SecondAdmin = User.New(
         id: UserId.New(),
@@ -19,7 +20,8 @@ public static class AdminsData
         email: "second.admin@email.com",
         subId: new SubId(Guid.NewGuid()),
         status: UserStatus.Active,
-        role: UserRole.Admin);
+        role: UserRole.Admin,
+        utcNow: DateTime.UtcNow);
 
     public static readonly User DeactivatedAdmin = User.New(
         id: UserId.New(),
@@ -27,5 +29,6 @@ public static class AdminsData
         email: "deactivated.admin@email.com",
         subId: new SubId(Guid.NewGuid()),
         status: UserStatus.Deactivated,
-        role: UserRole.Admin);
+        role: UserRole.Admin,
+        utcNow: DateTime.UtcNow);
 }

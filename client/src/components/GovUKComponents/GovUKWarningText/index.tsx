@@ -5,15 +5,12 @@ interface GovUKWarningTextProps extends React.HTMLAttributes<HTMLDivElement> {
   iconFallbackText?: string;
 }
 
-function GovUKWarningText({
-  children,
-  iconFallbackText = 'Warning',
-  className = '',
-  ...rest
-}: GovUKWarningTextProps): React.ReactElement {
+function GovUKWarningText({ children, iconFallbackText = 'Warning', className = '', ...rest }: GovUKWarningTextProps): React.ReactElement {
   return (
     <div className={`govuk-warning-text ${className}`.trim()} {...rest}>
-      <span className="govuk-warning-text__icon" aria-hidden="true">!</span>
+      <span className="govuk-warning-text__icon" aria-hidden="true">
+        !
+      </span>
       <strong className="govuk-warning-text__text">
         <span className="govuk-visually-hidden">{iconFallbackText}</span>
         {children}

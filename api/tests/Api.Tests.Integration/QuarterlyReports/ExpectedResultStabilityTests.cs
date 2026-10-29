@@ -102,7 +102,7 @@ public class ExpectedResultStabilityTests(IntegrationTestWebFactory factory) : Q
         var (collectionId, activity) = await StartConfirmedReportAsync();
 
         var before = await GetActivityQuestionsAsync(collectionId, activity.Id);
-        var target = before.Questions.Single(q => q.Label == "Provide progress details for: Key result one");
+        var target = before.Questions.Single(q => q.Label == "What progress have you made towards 'Key result one'?");
         (await SaveAnswersAsync(collectionId, activity.Id, saveAsDraft: true, (target.Code, "Progress on result one")))
             .EnsureSuccessStatusCode();
 
@@ -110,7 +110,7 @@ public class ExpectedResultStabilityTests(IntegrationTestWebFactory factory) : Q
 
         var after = await GetActivityQuestionsAsync(collectionId, activity.Id);
         var reworded = after.Questions.Single(q => q.Code == target.Code);
-        reworded.Label.Should().Be("Provide progress details for: Key result one (reworded)");
+        reworded.Label.Should().Be("What progress have you made towards 'Key result one (reworded)'?");
         after.Answers.Should().Contain(a => a.QuestionCode == target.Code && a.Value == "Progress on result one");
     }
 
@@ -121,8 +121,8 @@ public class ExpectedResultStabilityTests(IntegrationTestWebFactory factory) : Q
         var (collectionId, activity) = await StartConfirmedReportAsync();
 
         var before = await GetActivityQuestionsAsync(collectionId, activity.Id);
-        var keep = before.Questions.Single(q => q.Label == "Provide progress details for: Key result one");
-        var drop = before.Questions.Single(q => q.Label == "Provide progress details for: Key result two");
+        var keep = before.Questions.Single(q => q.Label == "What progress have you made towards 'Key result one'?");
+        var drop = before.Questions.Single(q => q.Label == "What progress have you made towards 'Key result two'?");
         (await SaveAnswersAsync(
             collectionId, activity.Id, saveAsDraft: true, (keep.Code, "First answer"), (drop.Code, "Second answer")))
             .EnsureSuccessStatusCode();

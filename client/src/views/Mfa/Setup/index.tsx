@@ -1,22 +1,30 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CircularProgress } from '@mui/material';
 import { QRCodeSVG } from 'qrcode.react';
 import { useIsAuthenticated, useMsal } from '@azure/msal-react';
 import { InteractionStatus } from '@azure/msal-browser';
-import { Button, InputField, WarningText, LoadingBox } from 'govuk-react';
-import { ErrorSummary, GovUKButton, GovUKSkipLink, GovUKDetails, GovUKBackLink, OrderedList, UnorderedList, ListItem } from '../../../components/GovUKComponents';
-import usePageTitle from '../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../hooks/useErrorSummaryFocus';
+import { httpMessageOf, httpStatusOf } from '../../../helpers/httpErrors';
+import {
+  ErrorSummary,
+  GovUKButton,
+  GovUKDetails,
+  GovUKBackLink,
+  GovUKFieldset,
+  GovUKWarningText,
+  OrderedList,
+  PageLoading,
+  UnorderedList,
+  ListItem,
+} from '../../../components/GovUKComponents';
+import usePageTitle, { SERVICE_NAME } from '../../../hooks/usePageTitle';
 import scrollToTop from '../../../helpers/scrollToTop';
 import { useMfa } from '../../../components/MfaProvider';
 import { useAuthProvider, roleToAreaMap } from '../../../components/AuthProvider';
-import { GovUKHeaderLogo } from '../../../components/Logos';
-import LayoutFooter from '../../../layouts/General/LayoutFooter';
-import { mfaTooManyRequestsMessage } from '../messages';
+import SignInJourneyLayout from '../../../layouts/SignInJourney';
+import { mfaCodeError, mfaCodeRefusalMessage, sanitiseMfaCode } from '../messages';
+import RecoveryCodesList from '../../../components/Global/Mfa/RecoveryCodesList';
+import SigningInHelp from '../../../components/Global/Mfa/SigningInHelp';
 import '../styles.css';
-
-const SERVICE_NAME = 'Share progress preventing gambling harms';
 
 const STEP_TITLES = ['Set up an authenticator app', 'Check your authenticator app for a security code', 'Save your recovery codes'];
 
@@ -39,8 +47,23 @@ const MfaSetup = (): React.ReactElement => {
   const [isInitializing, setIsInitializing] = useState(true);
   const userRoleRef = useRef(userRole);
 
-  usePageTitle(STEP_TITLES[activeStep]);
-  useErrorSummaryFocus(submitAttempts, !!error || !!confirmError);
+  // Setup could not be started: the only error there can be before there is a QR code to show. A code refusal
+  // that arrives after the user has gone Back to step 0 is not this — by then setupData exists — and is not shown
+  // on this step; Continue clears it.
+  const initFailed = !isInitializing && activeStep === 0 && !setupData && !!error;
+
+  // Which error the one page-level summary shows. On step 0 that can only be a failure to start setup, which has
+  // no field to correct, so its link goes to the step's heading.
+  const stepErrors =
+    initFailed && error
+      ? [{ targetName: 'mfa-setup-heading', text: error }]
+      : activeStep === 1 && error
+      ? [{ targetName: 'code-input', text: error }]
+      : activeStep === 2 && confirmError
+      ? [{ targetName: 'confirm-saved', text: confirmError }]
+      : [];
+
+  usePageTitle(stepErrors.length > 0 ? `Error: ${STEP_TITLES[activeStep]}` : STEP_TITLES[activeStep]);
 
   // Setup steps swap in place (no route change) — reset the visual position and move focus to the new
   // step's heading so keyboard/screen-reader users start from the top of the replacement content rather
@@ -55,6 +78,15 @@ const MfaSetup = (): React.ReactElement => {
       userRoleRef.current = userRole;
     }
   }, [userRole]);
+
+  // The setup effect below calls initiateSetup through a ref, never as a dependency. MfaProvider rebuilds that
+  // function on every render (it closes over the mutation object), and starting setup is itself what re-renders
+  // the provider — so as a dependency it would re-run the effect and send POST mfa/setup again on every pass.
+  // Declared above that effect so the ref is current before it runs.
+  const initiateSetupRef = useRef(initiateSetup);
+  useEffect(() => {
+    initiateSetupRef.current = initiateSetup;
+  });
 
   useEffect(() => {
     if (activeStep === 2 || recoveryCodes.length > 0) {
@@ -85,21 +117,21 @@ const MfaSetup = (): React.ReactElement => {
 
     const initSetup = async (retryCount = 0): Promise<void> => {
       try {
-        await initiateSetup();
-      } catch (err: any) {
+        await initiateSetupRef.current();
+      } catch (err) {
         if (!isMounted) return;
 
-        if (err?.response?.status === 401 && retryCount < 3) {
+        const status = httpStatusOf(err);
+        if (status === 401 && retryCount < 3) {
           setTimeout(() => initSetup(retryCount + 1), 1000);
           return;
         }
 
-        if (err?.response?.status === 409) {
+        if (status === 409) {
           const homeRoute = userRole ? `/${roleToAreaMap(userRole)}/home` : '/';
           navigate(homeRoute);
         } else {
-          const errorMessage = err?.response?.data?.message || err?.message || 'There was a problem setting up the authenticator app. Try again.';
-          setError(errorMessage);
+          setError(httpMessageOf(err) ?? 'There was a problem setting up the authenticator app. Try again.');
         }
       } finally {
         if (isMounted) {
@@ -113,29 +145,21 @@ const MfaSetup = (): React.ReactElement => {
     return () => {
       isMounted = false;
     };
-    // initiateSetup intentionally omitted — its identity changes on every MfaProvider render
-    // (depends on setupMutation), and including it would loop the effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMsalLoading, isAuthenticated, isEnabled, navigate, userRole, setupData, accounts.length, activeStep, recoveryCodes.length]);
 
   const handleCodeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>): void => {
-    const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-    setCode(value);
+    setCode(sanitiseMfaCode(e.target.value));
     setError(null);
   }, []);
 
-  const handleVerify = async (e?: React.FormEvent): Promise<void> => {
-    if (e) e.preventDefault();
+  const handleVerify = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
 
     setSubmitAttempts((n) => n + 1);
 
-    if (code.length === 0) {
-      setError('Enter the 6-digit code shown in your authenticator app');
-      return;
-    }
-
-    if (code.length !== 6) {
-      setError('The code must be 6 digits. Check the code and try again');
+    const codeError = mfaCodeError(code);
+    if (codeError) {
+      setError(codeError);
       return;
     }
 
@@ -145,18 +169,8 @@ const MfaSetup = (): React.ReactElement => {
     try {
       await completeSetup(code);
       setActiveStep(2);
-    } catch (err: any) {
-      if (err?.response?.status === 401) {
-        setError('That code no longer works. You need to enter the 6-digit code currently shown in your app');
-      } else if (err?.response?.status === 429) {
-        // This endpoint counted nothing at all before BLUM-7239, so a 429 was not previously reachable here
-        // and fell through to the generic message.
-        setError(mfaTooManyRequestsMessage(err));
-      } else if (err?.response?.status === 400) {
-        setError('Your setup session has expired. Refresh the page to start again.');
-      } else {
-        setError('Verification failed. Try again.');
-      }
+    } catch (err) {
+      setError(mfaCodeRefusalMessage(err, 'Verification failed. Try again.', 'Your setup session has expired. Refresh the page to start again.'));
     } finally {
       setIsVerifying(false);
     }
@@ -176,266 +190,176 @@ const MfaSetup = (): React.ReactElement => {
     navigate(homeRoute);
   };
 
-  const handleCopyRecoveryCodes = (): void => {
-    navigator.clipboard.writeText(recoveryCodes.join('\n'));
-  };
-
-  const handleDownloadRecoveryCodes = (): void => {
-    const blob = new Blob([recoveryCodes.join('\n')], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'recovery-codes.txt';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent): void => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleVerify();
+  // The summary takes focus when its trigger changes after it has mounted, and it mounts in the very update that
+  // reports this failure (the loading screen above it gives way at the same moment). So the bump for a failed
+  // start is made here, one render later, where the summary can see it.
+  useEffect(() => {
+    if (initFailed) {
+      setSubmitAttempts((n) => n + 1);
     }
-  };
+  }, [initFailed]);
 
-  if (isInitializing) {
-    return (
-      <div className="mfa-page">
-        <GovUKSkipLink />
-        <header className="govuk-header" data-module="govuk-header">
-          <div className="govuk-header__container govuk-width-container">
-            <div className="govuk-header__logo">
-              <a href="https://www.gov.uk" className="govuk-header__link govuk-header__link--homepage">
-                <GovUKHeaderLogo />
-              </a>
-            </div>
-          </div>
-        </header>
-        <main className="mfa-page__main" id="main-content" role="main">
-          <div className="govuk-width-container">
-            <div className="mfa-page__loading">
-              <LoadingBox loading={true}>
-                <div style={{ minHeight: '200px' }} />
-              </LoadingBox>
-            </div>
-          </div>
-        </main>
-        <LayoutFooter />
-      </div>
-    );
-  }
-
+  // One layout for both states, so the header and footer stay mounted when loading finishes. The header keeps one
+  // testId across them — "the crown link is there whatever the init state" is what a test wants — while the root's
+  // says which state the page is in.
   return (
-    <div className="mfa-page" data-testid="mfa-setup">
-      <GovUKSkipLink />
-      <header className="govuk-header" data-module="govuk-header">
-        <div className="govuk-header__container govuk-width-container">
-          <div className="govuk-header__logo">
-            <a href="https://www.gov.uk" className="govuk-header__link govuk-header__link--homepage">
-              <GovUKHeaderLogo />
-            </a>
-          </div>
-        </div>
-      </header>
+    <SignInJourneyLayout testId={isInitializing ? 'mfa-setup-loading' : 'mfa-setup'} headerTestId="mfa-setup-header">
+      {isInitializing ? (
+        <PageLoading label="Setting up your authenticator app" testId="mfa-setup-loading-status" />
+      ) : (
+        <div className="govuk-main-wrapper">
+          {activeStep === 0 && (
+            <GovUKBackLink onClick={signOut} data-testid="mfa-setup-step-0-back">
+              Back
+            </GovUKBackLink>
+          )}
+          {activeStep === 1 && (
+            <GovUKBackLink
+              onClick={() => {
+                setCode('');
+                setError(null);
+                setActiveStep(0);
+              }}
+              data-testid="mfa-setup-verify-back">
+              Back
+            </GovUKBackLink>
+          )}
 
-      <section className="mfa-page__service-banner" aria-label="Service information">
-        <div className="govuk-width-container">
-          <span className="mfa-page__service-name">{SERVICE_NAME}</span>
-        </div>
-      </section>
+          {/* One summary for all three steps. It is always mounted because it has to exist before an error
+              arrives to be focused for it (see GovUKErrorSummary). */}
+          <ErrorSummary testId="mfa-setup-error-summary" heading="There is a problem" errors={stepErrors} focusTrigger={submitAttempts} />
 
-      <main className="mfa-page__main" id="main-content" role="main">
-        <div className="govuk-width-container">
-          <div className="govuk-main-wrapper">
-            {activeStep === 0 && <GovUKBackLink onClick={signOut}>Back</GovUKBackLink>}
-            {activeStep === 1 && (
-              <GovUKBackLink
-                onClick={() => {
-                  setCode('');
-                  setError(null);
-                  setActiveStep(0);
-                }}>
-                Back
-              </GovUKBackLink>
-            )}
+          {/* Step 1: Set up an authenticator app */}
+          {activeStep === 0 && (
+            <div className="mfa-page__content-wrapper">
+              <h1 className="govuk-heading-xl mfa-page__focus-target" id="mfa-setup-heading" tabIndex={-1}>
+                Set up an authenticator app
+              </h1>
 
-            {activeStep === 1 && error && <ErrorSummary testId="mfa-setup-error-summary" heading="There is a problem" errors={[{ targetName: 'code-input', text: error }]} />}
-            {activeStep === 2 && confirmError && <ErrorSummary testId="mfa-setup-error-summary" heading="There is a problem" errors={[{ targetName: 'confirm-saved', text: confirmError }]} />}
+              <p className="govuk-body">
+                To keep your account secure, you need to use an authenticator app on your smartphone. You&rsquo;ll be asked to enter a 6-digit code from your authenticator app each
+                time you sign in.
+              </p>
 
-            {/* Step 1: Set up an authenticator app */}
-            {activeStep === 0 && (
-              <div className="mfa-page__content-wrapper">
-                <h1 className="govuk-heading-xl" id="mfa-setup-heading" tabIndex={-1}>
-                  Set up an authenticator app
-                </h1>
+              <p className="govuk-body">Download the Microsoft Authenticator or Google Authenticator app on your phone.</p>
 
-                <p className="govuk-body">
-                  To keep your account secure, you need to use an authenticator app on your smartphone. You&rsquo;ll be asked to enter a 6-digit code from your authenticator app
-                  each time you sign in.
-                </p>
+              <p className="govuk-body">Open the app and scan the QR code.</p>
 
-                <p className="govuk-body">Download the Microsoft Authenticator or Google Authenticator app on your phone.</p>
-
-                <p className="govuk-body">Open the app and scan the QR code.</p>
-
-                {error && <ErrorSummary testId="mfa-setup-error-summary" heading="There is a problem" errors={[{ targetName: 'code-input', text: error }]} />}
-
-                {setupData && (
-                  <>
-                    <div className="mfa-page__qr-wrapper">
-                      <QRCodeSVG value={setupData.qrCodeUri} size={200} level="M" role="img" aria-label="QR code for setting up your authenticator app" />
-                    </div>
-
-                    <GovUKDetails summary="I cannot scan the QR code">
-                      <p className="govuk-body">You can enter a code or &lsquo;setup key&rsquo; into your authenticator app instead.</p>
-                      <OrderedList>
-                        <ListItem>Open your authenticator app and select the option to add a new account.</ListItem>
-                        <ListItem>Choose to enter a code or setup key, instead of scanning a QR code.</ListItem>
-                        <ListItem>
-                          Enter these details.
-                          <UnorderedList>
-                            <ListItem>Account name: {SERVICE_NAME}</ListItem>
-                            <ListItem>
-                              Code:
-                              <div className="mfa-page__manual-key">{setupData.manualEntryKey}</div>
-                            </ListItem>
-                          </UnorderedList>
-                        </ListItem>
-                      </OrderedList>
-                    </GovUKDetails>
-
-                    <Button onClick={() => setActiveStep(1)} data-testid="mfa-setup-step-0-continue">
-                      Continue
-                    </Button>
-                  </>
-                )}
-
-                {!setupData && !error && (
-                  <div className="mfa-page__loading">
-                    <CircularProgress />
+              {setupData && (
+                <>
+                  <div className="mfa-page__qr-wrapper">
+                    <QRCodeSVG value={setupData.qrCodeUri} size={200} level="M" role="img" aria-label="QR code for setting up your authenticator app" />
                   </div>
-                )}
-              </div>
-            )}
 
-            {/* Step 2: Check your authenticator app for a security code */}
-            {activeStep === 1 && (
-              <div className="mfa-page__content-wrapper">
-                <h1 className="govuk-heading-xl" id="mfa-setup-heading" tabIndex={-1}>
-                  Check your authenticator app for a security code
-                </h1>
+                  <GovUKDetails summary="I cannot scan the QR code" data-testid="mfa-setup-manual-key-details">
+                    <p className="govuk-body">You can enter a code or &lsquo;setup key&rsquo; into your authenticator app instead.</p>
+                    <OrderedList>
+                      <ListItem>Open your authenticator app and select the option to add a new account.</ListItem>
+                      <ListItem>Choose to enter a code or setup key, instead of scanning a QR code.</ListItem>
+                      <ListItem>
+                        Enter these details.
+                        <UnorderedList>
+                          <ListItem>Account name: {SERVICE_NAME}</ListItem>
+                          <ListItem>
+                            Code:
+                            <div className="mfa-page__manual-key">{setupData.manualEntryKey}</div>
+                          </ListItem>
+                        </UnorderedList>
+                      </ListItem>
+                    </OrderedList>
+                  </GovUKDetails>
 
-                <div className="mfa-page__input-wrapper">
-                  <InputField
-                    input={
-                      {
-                        id: 'code-input',
-                        name: 'code',
-                        'data-testid': 'mfa-setup-code-input',
-                        value: code,
-                        onChange: handleCodeChange,
-                        onKeyPress: handleKeyPress,
-                        disabled: isVerifying,
-                        autoComplete: 'one-time-code',
-                        inputMode: 'numeric',
-                        pattern: '[0-9]*',
-                        spellCheck: false,
-                      } as React.InputHTMLAttributes<HTMLInputElement>
-                    }
-                    meta={{ error: error || undefined, touched: !!error }}
-                    hint="This is a 6-digit code. For example 654321">
-                    <strong>Authentication code</strong>
-                  </InputField>
-                </div>
+                  <GovUKButton
+                    onClick={() => {
+                      // A code refusal can land here after Back was pressed with the request still in flight. It
+                      // belongs to a code that has been abandoned, so it is dropped rather than carried into step 1.
+                      setError(null);
+                      setActiveStep(1);
+                    }}
+                    data-testid="mfa-setup-step-0-continue">
+                    Continue
+                  </GovUKButton>
+                </>
+              )}
 
-                <GovUKButton onClick={() => handleVerify()} isLoading={isVerifying} data-testid="mfa-setup-verify-continue">
+              {/* Between a 401 retry and its next attempt: initialising is over but there is no QR code yet. */}
+              {!setupData && !error && <PageLoading label="Setting up your authenticator app" testId="mfa-setup-step-0-loading" />}
+            </div>
+          )}
+
+          {/* Step 2: Check your authenticator app for a security code */}
+          {activeStep === 1 && (
+            <div className="mfa-page__content-wrapper">
+              <h1 className="govuk-heading-xl mfa-page__focus-target" id="mfa-setup-heading" tabIndex={-1}>
+                Check your authenticator app for a security code
+              </h1>
+
+              {/* A form, so Enter in the code field submits it like the button does. */}
+              <form noValidate onSubmit={handleVerify}>
+                <GovUKFieldset.Input
+                  id="code-input"
+                  name="code"
+                  label="Security code"
+                  hint="This is a 6-digit code, for example 654321"
+                  value={code}
+                  onChange={handleCodeChange}
+                  error={error ?? undefined}
+                  width="5"
+                  disabled={isVerifying}
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  spellCheck={false}
+                  testId="mfa-setup-code-input"
+                />
+
+                <GovUKButton type="submit" isLoading={isVerifying} data-testid="mfa-setup-verify-continue">
                   Continue
                 </GovUKButton>
+              </form>
 
-                <GovUKDetails summary="Help with signing in">
-                  <p className="govuk-body">If you have problems signing in or getting a code, contact the DHSC support team.</p>
-                  <p className="govuk-body">
-                    Email:{' '}
-                    <a className="govuk-link" href="mailto:gambling.levy@dhsc.gov.uk">
-                      gambling.levy@dhsc.gov.uk
-                    </a>
-                  </p>
-                </GovUKDetails>
-              </div>
-            )}
+              <SigningInHelp testId="mfa-setup-help" />
+            </div>
+          )}
 
-            {/* Step 3: Save your recovery codes */}
-            {activeStep === 2 && recoveryCodes.length > 0 && (
-              <div className="mfa-page__content-wrapper">
-                <h1 className="govuk-heading-xl" id="mfa-setup-heading" tabIndex={-1}>
-                  Save your recovery codes
-                </h1>
+          {/* Step 3: Save your recovery codes */}
+          {activeStep === 2 && recoveryCodes.length > 0 && (
+            <div className="mfa-page__content-wrapper">
+              <h1 className="govuk-heading-xl mfa-page__focus-target" id="mfa-setup-heading" tabIndex={-1}>
+                Save your recovery codes
+              </h1>
 
-                <p className="govuk-body">If you lose your smartphone or cannot use your authenticator app, you&rsquo;ll need a recovery code to sign in to your account.</p>
+              <p className="govuk-body">If you lose your smartphone or cannot use your authenticator app, you&rsquo;ll need a recovery code to sign in to your account.</p>
 
-                <p className="govuk-body">Each code can only be used once. You should keep these codes safe.</p>
+              <p className="govuk-body">Each code can only be used once. You should keep these codes safe.</p>
 
-                <WarningText>You will not be able to see these codes again once you leave this screen.</WarningText>
+              <GovUKWarningText data-testid="mfa-setup-recovery-warning">You will not be able to see these codes again once you leave this screen.</GovUKWarningText>
 
-                <h2 className="govuk-heading-l">Your recovery codes</h2>
+              <h2 className="govuk-heading-l">Your recovery codes</h2>
 
-                <div className="mfa-page__recovery-codes">
-                  <ul className="mfa-page__recovery-codes-list">
-                    {recoveryCodes.map((recoveryCode, index) => (
-                      <li key={index} className="mfa-page__recovery-code">
-                        {recoveryCode}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+              <RecoveryCodesList codes={recoveryCodes} testId="mfa-setup-recovery" />
 
-                <div className="mfa-page__button-group">
-                  <Button buttonColour="#f3f2f1" buttonTextColour="#0b0c0c" onClick={handleCopyRecoveryCodes} data-testid="mfa-setup-recovery-copy">
-                    Copy codes
-                  </Button>
-                  <Button buttonColour="#f3f2f1" buttonTextColour="#0b0c0c" onClick={handleDownloadRecoveryCodes} data-testid="mfa-setup-recovery-download">
-                    Download codes
-                  </Button>
-                </div>
+              <GovUKFieldset.Checkbox
+                id="confirm-saved"
+                name="confirm-saved"
+                label="I have saved my recovery codes in a secure place."
+                size="small"
+                checked={confirmSaved}
+                error={confirmError ?? undefined}
+                onChange={(ev) => {
+                  setConfirmSaved(ev.target.checked);
+                  if (ev.target.checked) setConfirmError(null);
+                }}
+                testId="mfa-setup-confirm-saved"
+              />
 
-                <div className={`govuk-form-group ${confirmError ? 'govuk-form-group--error' : ''}`}>
-                  {confirmError && (
-                    <p id="confirm-saved-error" className="govuk-error-message">
-                      <span className="govuk-visually-hidden">Error:</span> {confirmError}
-                    </p>
-                  )}
-                  <div className="govuk-checkboxes govuk-checkboxes--small" data-module="govuk-checkboxes">
-                    <div className="govuk-checkboxes__item">
-                      <input
-                        className="govuk-checkboxes__input"
-                        id="confirm-saved"
-                        name="confirm-saved"
-                        data-testid="mfa-setup-confirm-saved"
-                        type="checkbox"
-                        checked={confirmSaved}
-                        aria-describedby={confirmError ? 'confirm-saved-error' : undefined}
-                        onChange={(ev) => {
-                          setConfirmSaved(ev.target.checked);
-                          if (ev.target.checked) setConfirmError(null);
-                        }}
-                      />
-                      <label className="govuk-label govuk-checkboxes__label" htmlFor="confirm-saved">
-                        I have saved my recovery codes in a secure place.
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                <GovUKButton onClick={handleFinish} data-testid="mfa-setup-finish">
-                  Continue
-                </GovUKButton>
-              </div>
-            )}
-          </div>
+              <GovUKButton onClick={handleFinish} data-testid="mfa-setup-finish">
+                Continue
+              </GovUKButton>
+            </div>
+          )}
         </div>
-      </main>
-
-      <LayoutFooter />
-    </div>
+      )}
+    </SignInJourneyLayout>
   );
 };
 

@@ -32,7 +32,12 @@ public class UpdateOrganisationUserCommandHandler(
     IUserRepository usersRepository,
     IUsersService usersService,
     IAuditLogRepository auditLogRepository,
-    IUserClaimsCache userClaimsCache)
+    IUserClaimsCache userClaimsCache,
+    UserInvitations userInvitations,
+    LastActiveAdminGuard lastActiveAdminGuard,
+    UserDeactivator userDeactivator,
+    IDateTimeProvider dateTimeProvider,
+    ITransactionRunner transactionRunner)
     : IRequestHandler<UpdateOrganisationUserCommand, Either<UserException, User>>
 {
     public async Task<Either<UserException, User>> Handle(
@@ -42,7 +47,7 @@ public class UpdateOrganisationUserCommandHandler(
         var permissions = permissionsService.GetOrganisationPermissions();
         var actorIdResult = permissionsService.GetUserId();
 
-        var email = request.Email!.Trim();
+        var email = request.Email!.Trim().ToLowerInvariant();
         var name = new Name(request.FirstName!, request.LastName!);
 
         var organisationUserId = new OrganisationUserId(request.Id);
@@ -91,35 +96,48 @@ public class UpdateOrganisationUserCommandHandler(
     {
         var user = orgUser.User!;
 
-        if (user.Role.Equals(UserRole.OrganisationAdmin) && !role.Equals(UserRole.OrganisationAdmin))
+        var deactivating = !isActive && user.Status.Equals(UserStatus.Active);
+        var demoting = user.Role.Equals(UserRole.OrganisationAdmin) && !role.Equals(UserRole.OrganisationAdmin);
+
+        // The same refusal DeactivateUserCommand gives: deactivating yourself would revoke the caller's own
+        // sessions in the middle of their request.
+        if (deactivating && user.Id == actorId)
         {
-            var activeAdmins = await organisationUserRepository.GetActiveOrgAdminsAsync(orgUser.OrganisationId, cancellationToken);
-            if (activeAdmins.Count <= 1 && activeAdmins.Any(a => a.Id == user.Id))
+            return new CannotDeactivateSelfException(user.Id);
+        }
+
+        if (deactivating || demoting)
+        {
+            var refusal = await lastActiveAdminGuard.RefuseRemovalAsync(user, orgUser.OrganisationId, cancellationToken);
+            if (refusal is not null)
             {
-                return new CannotDeactivateOnlyOrgAdminException(user.Id, orgUser.OrganisationId);
+                return refusal;
             }
         }
 
         var before = UserSnapshot.Serialize(user);
 
-        user.UpdateDetails(name, email, role);
+        user.UpdateDetails(name, email, dateTimeProvider.GetUtcNow(), role);
         if (isActive && user.Status.Equals(UserStatus.Deactivated))
         {
-            user.Reactivate();
+            user.Reactivate(dateTimeProvider.GetUtcNow());
         }
-        else if (!isActive && user.Status.Equals(UserStatus.Active))
-        {
-            user.Deactivate();
-        }
+
+        // Asked on every save that leaves the user active, not only one that reactivates them: a held invitation
+        // whose send failed is kept, and saving the user again is the way to retry it. Never on a save that
+        // deactivates them — the user is still active at this point, and the invitation would go to an account
+        // that is about to be refused.
+        var invitationOwed = !deactivating && await userInvitations.IsOwedAsync(user, cancellationToken);
 
         var graphResult = await usersService.Update(
             user.SubId.Value.ToString(),
             user.Name,
             user.Email,
+            user.PasswordLoginEnabled,
             cancellationToken);
 
         return await graphResult.MatchAsync<Either<UserException, User>>(
-            _ => PersistAndAudit(actorId, user, orgUser.OrganisationId, before, cancellationToken),
+            _ => PersistAndAudit(actorId, user, orgUser.OrganisationId, before, invitationOwed, deactivating, cancellationToken),
             e => new UserUnknownException(user.Id, e));
     }
 
@@ -128,29 +146,65 @@ public class UpdateOrganisationUserCommandHandler(
         User user,
         Domain.Organisations.OrganisationId organisationId,
         string before,
+        bool invitationOwed,
+        bool deactivating,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var saved = await usersRepository.UpdateAsync(user, cancellationToken);
-            userClaimsCache.Invalidate(saved.SubId);
+        // The change and its audit row commit together (BLUM-8748).
+        var result = await transactionRunner.RunAsync<UserException, User>(
+            async token =>
+            {
+                try
+                {
+                    var saved = await usersRepository.UpdateAsync(user, token);
 
-            await auditLogRepository.AppendAsync(
-                AuditLog.Create(
-                    actorId,
-                    AuditTargetType.User,
-                    saved.Id.Value,
-                    AuditAction.UserUpdated,
-                    before,
-                    UserSnapshot.Serialize(saved),
-                    organisationId: organisationId),
-                cancellationToken);
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            actorId,
+                            AuditTargetType.User,
+                            saved.Id.Value,
+                            AuditAction.UserUpdated,
+                            before,
+                            UserSnapshot.Serialize(saved),
+                            organisationId: organisationId),
+                        token);
 
-            return saved;
-        }
-        catch (Exception exception)
-        {
-            return new UserUnknownException(user.Id, exception);
-        }
+                    // Deactivation goes through the same sequence as every other way a user is deactivated, after
+                    // the details are saved: sessions revoked and a user.deactivated row. Flipping the status here
+                    // instead left a deactivated user with live sessions, so reactivating them within a session's
+                    // lifetime skipped the MFA re-verification reactivation relies on (BLUM-6015, BLUM-8751).
+                    //
+                    // It joins this transaction (BLUM-8748), so the edit and the deactivation commit or roll back
+                    // together: a failure leaves the user as they were, and resending the same edit finishes it.
+                    // Joined, it leaves the claims cache to its caller, which drops it below once the status has
+                    // committed — the order UserDeactivator keeps on its own.
+                    if (deactivating)
+                    {
+                        saved = await userDeactivator.DeactivateAsync(saved, actorId, organisationId);
+                    }
+
+                    return saved;
+                }
+                catch (Exception exception)
+                {
+                    return new UserUnknownException(user.Id, exception);
+                }
+            },
+            cancellationToken);
+
+        // Only once committed: the claims cache, and the held invitation, which is best-effort and never fails the
+        // change (and is never owed on a save that deactivates).
+        return await result.MatchAsync<Either<UserException, User>>(
+            async saved =>
+            {
+                userClaimsCache.Invalidate(saved.SubId);
+                if (invitationOwed)
+                {
+                    await userInvitations.SendHeldAsync(saved);
+                }
+
+                return saved;
+            },
+            e => e);
     }
 }

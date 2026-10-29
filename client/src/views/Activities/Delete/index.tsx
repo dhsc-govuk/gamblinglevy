@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../layouts';
 import { LeadParagraph } from '../../../components/GovUKComponents';
 import ConfirmationPanel from '../../../components/Global/Activities/ConfirmationPanel';
@@ -21,11 +21,12 @@ const ActivitiesDelete = (): React.ReactElement => {
 
   const name = (location.state as { name?: string } | null)?.name ?? 'this activity';
 
-  const deleteMutation = useMutation(() => deleteActivity(activityId), {
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteActivity(activityId),
     onSuccess: () => {
-      queryClient.invalidateQueries(activitiesListKey);
-      queryClient.invalidateQueries(activitiesDeletedKey);
-      queryClient.invalidateQueries(activityKey(activityId));
+      queryClient.invalidateQueries({ queryKey: activitiesListKey });
+      queryClient.invalidateQueries({ queryKey: activitiesDeletedKey });
+      queryClient.invalidateQueries({ queryKey: activityKey(activityId) });
       invalidateReportCaches(queryClient, report.collectionId);
       navigate(report.listPath, { state: { banner: 'deleted', name } });
     },
@@ -50,7 +51,7 @@ const ActivitiesDelete = (): React.ReactElement => {
         onConfirm={() => deleteMutation.mutate()}
         cancelLabel="Go back to activity"
         onCancel={() => navigate(activityPath)}
-        isLoading={deleteMutation.isLoading}
+        isLoading={deleteMutation.isPending}
       />
     </GeneralLayout>
   );

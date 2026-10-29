@@ -5,6 +5,7 @@ using Domain.Organisations;
 using Domain.OrganisationUsers;
 using Domain.Users;
 using Domain.ValueObjects;
+using Infrastructure.Persistence.Extensions;
 using LanguageExt;
 using Microsoft.EntityFrameworkCore;
 
@@ -34,6 +35,32 @@ public class OrganisationUserRepository(ApplicationDbContext dbContext)
             .Where(x => x.User!.Status == UserStatus.Active)
             .Select(x => x.User!)
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<OrganisationUserContact>> GetActiveUsersForOrganisationsAsync(
+        IReadOnlyCollection<OrganisationId> organisationIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (organisationIds.Count == 0)
+        {
+            return [];
+        }
+
+        // Materialised as the strongly-typed ids rather than their Guid values: OrganisationId maps through
+        // HasConversion, so Contains over the id records translates to the same IN (...) on organisation_id.
+        var ids = organisationIds.Distinct().ToList();
+
+        var rows = await Context.OrganisationUsers
+            .AsNoTracking()
+            .Where(x => ids.Contains(x.OrganisationId))
+            .Include(x => x.User)
+            .Where(x => x.User!.Status == UserStatus.Active)
+            .Select(x => new { x.OrganisationId, UserId = x.User!.Id, x.User.Email, x.User.Name })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(row => new OrganisationUserContact(row.OrganisationId.Value, row.UserId.Value, row.Email, row.Name.ToString()))
+            .ToList();
     }
 
     public async Task RemoveByOrganisationAsync(OrganisationId organisationId, CancellationToken cancellationToken = default)
@@ -83,7 +110,7 @@ public class OrganisationUserRepository(ApplicationDbContext dbContext)
 
     public async Task<int> Count(Option<OrganisationId> id, Permission permission, CancellationToken cancellationToken)
     {
-        var query = GetQuery(permission.UserRole, permission.OrganisationId);
+        var query = GetQuery(permission);
         return await id.MatchAsync(
             orgId => query.Where(x => x.OrganisationId == orgId).CountAsync(cancellationToken),
             () => query.CountAsync(cancellationToken));
@@ -91,7 +118,7 @@ public class OrganisationUserRepository(ApplicationDbContext dbContext)
 
     public async Task<IReadOnlyList<OrganisationUser>> GetUsers(OrganisationId id, Permission permission, CancellationToken cancellationToken)
     {
-        return await GetQuery(permission.UserRole, permission.OrganisationId)
+        return await GetQuery(permission)
             .AsNoTracking()
             .Include(x => x.User)
             .Where(x => x.OrganisationId == id)
@@ -100,29 +127,15 @@ public class OrganisationUserRepository(ApplicationDbContext dbContext)
 
     public async Task<Option<OrganisationUser>> GetOrganisationUserById(OrganisationUserId id, Permission permission, CancellationToken cancellationToken = default)
     {
-        var entity = await GetQuery(permission.UserRole, permission.OrganisationId)
+        var entity = await GetQuery(permission)
             .AsNoTracking()
             .Include(x => x.User)
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         return entity ?? Option<OrganisationUser>.None;
     }
 
-    private IQueryable<OrganisationUser> GetQuery(UserRole userRole, Option<OrganisationId> organisationId)
-    {
-        if (userRole.Equals(UserRole.Admin))
-        {
-            return Context.OrganisationUsers.AsQueryable();
-        }
-
-        // Lead reads its own LA's users; the mutating actions are gated to Role.UserManagers at the
-        // controller, and AssignableRoles blocks Lead as an actor regardless (BLUM-7038 AC3).
-        if (userRole.IsOrganisationMember())
-        {
-            return organisationId.Match(
-                orgId => Context.OrganisationUsers.AsQueryable().Where(x => x.OrganisationId == orgId),
-                Array.Empty<OrganisationUser>().AsQueryable());
-        }
-
-        return Array.Empty<OrganisationUser>().AsQueryable();
-    }
+    // Lead reads its own LA's users; the mutating actions are gated to Role.UserManagers at the
+    // controller, and AssignableRoles blocks Lead as an actor regardless (BLUM-7038 AC3).
+    private IQueryable<OrganisationUser> GetQuery(Permission permission) =>
+        Context.OrganisationUsers.ScopedTo(permission, orgId => x => x.OrganisationId == orgId);
 }

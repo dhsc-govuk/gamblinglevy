@@ -5,7 +5,6 @@ import { OrganisationManagementLayout } from '../../../../layouts';
 import { GovUKFieldset, GovUKButton, ErrorSummary, NotAuthorised, H1 } from '../../../../components/GovUKComponents';
 import { ROLE_LABELS, laAdminAssignableRoles, useAuthProvider } from '../../../../components/AuthProvider';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import { validateEmailAddress } from '../../../../helpers/validators';
 import { UserLoadFailed, useOrganisationUser, organisationUserPageTitle } from '../../../../components/Global/OrganisationUsers';
 
@@ -61,8 +60,6 @@ const UsersEdit = (): React.ReactElement => {
     setRole(user.role);
   }, [user]);
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
-
   usePageTitle(organisationUserPageTitle(userQuery, 'Edit user'));
 
   // Reached by hand-editing the URL to another LA's user id. NotAuthorised renders its own <main>, so it replaces the
@@ -87,7 +84,7 @@ const UsersEdit = (): React.ReactElement => {
     if (!email.trim()) {
       next.email = "Enter the user's email address";
     } else if (!validateEmailAddress(email.trim())) {
-      next.email = 'Enter a valid email address';
+      next.email = 'Enter an email address in the correct format, like name@example.com';
     }
     return next;
   };
@@ -118,7 +115,7 @@ const UsersEdit = (): React.ReactElement => {
 
   return (
     <OrganisationManagementLayout backLink={{ href: `/organisation-admin/users/${userId}` }}>
-      {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+      <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
       <span className="govuk-caption-l">Edit user</span>
       <H1>User details</H1>

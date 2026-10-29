@@ -1,8 +1,3 @@
-export interface RecoveryCodesListProps {
-  codes: string[];
-  onClose?: () => void;
-}
-
 export interface MfaContextValue {
   status: MfaStatusResponse | null;
   isLoading: boolean;

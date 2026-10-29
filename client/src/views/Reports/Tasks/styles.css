@@ -8,9 +8,11 @@
 }
 
 .reports-tasks > .govuk-heading-xl,
-.reports-tasks__intro,
 .reports-tasks__section .govuk-heading-m,
-.reports-tasks__actions .govuk-button {
+.reports-tasks__intro .govuk-body,
+.reports-tasks__submit .govuk-heading-m,
+.reports-tasks__submit .govuk-body,
+.reports-tasks__submit .govuk-button {
   margin: 0;
 }
 
@@ -22,9 +24,28 @@
 }
 
 .reports-tasks__intro,
-.reports-tasks__section .govuk-heading-m {
+.reports-tasks__summary,
+.reports-tasks__section .govuk-heading-m,
+.reports-tasks__submit {
   width: 630px;
   max-width: 100%;
+}
+
+.reports-tasks__summary {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+.reports-tasks__summary .govuk-summary-list {
+  margin-bottom: 0;
+}
+
+.reports-tasks__intro,
+.reports-tasks__submit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 20px;
 }
 
 .reports-tasks__section {
@@ -64,6 +85,56 @@
   vertical-align: middle;
 }
 
-.reports-tasks__actions {
-  width: 100%;
+/* "Complete your report offline" (BLUM-8310): the body-text width of the submit section, controls at their natural
+   width, and spacing from the section's gap alone. */
+.reports-tasks__offline-intro,
+.reports-tasks__offline-downloads,
+.reports-tasks__offline-upload {
+  width: 630px;
+  max-width: 100%;
 }
+
+.reports-tasks__offline-intro,
+.reports-tasks__offline-downloads,
+.reports-tasks__offline-errors {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.reports-tasks__offline .govuk-heading-s,
+.reports-tasks__offline-intro .govuk-body,
+.reports-tasks__offline-intro .govuk-warning-text,
+.reports-tasks__offline-errors .govuk-body,
+.reports-tasks__offline-errors .govuk-button,
+.reports-tasks__offline-upload .govuk-button {
+  margin: 0;
+}
+
+.reports-tasks__offline-upload {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.reports-tasks__offline-errors {
+  width: 100%;
+  align-items: flex-start;
+}
+
+/* Reflow (WCAG 1.4.10, BLUM-9357). With align-items: flex-start each child is sized fit-content, which never goes below
+   its min-content: Chrome lays out a native file input at about 410px, and GovUKTable's root grows to the width of its
+   table. The file input's own max-width: 100% then resolves against that oversized form group, and the table's scroll
+   box (GovUKTableScroll) just fills its root, so at 320px both pushed the page ~110px sideways. A flex item's
+   percentage max-width resolves against the container instead, which caps them; the input's max-width binds and the
+   table scrolls inside its box. Nothing binds at desktop width, where every child is already narrower than the column. */
+.reports-tasks__offline-upload > *,
+.reports-tasks__offline-errors > * {
+  max-width: 100%;
+}
+
+/* The attachment card brings its own bottom margin; here the column gap spaces the cards. */
+.reports-tasks__offline-downloads .report-file-attachment {
+  margin-bottom: 0;
+}
+

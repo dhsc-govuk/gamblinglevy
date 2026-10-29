@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Api.Dtos;
+using Application.Collections;
 using FluentAssertions;
 using Tests.Common;
 using Xunit;
@@ -45,9 +46,12 @@ public class ReportContextTests(IntegrationTestWebFactory factory) : QuarterlyRe
         dto.CollectionId.Should().Be(collectionId);
         dto.CollectionName.Should().Be("Q1 context");
         dto.Quarter.Should().Be(1);
-        dto.FinancialYear.Should().Be("2026/27");
-        dto.ReportingPeriodStart.Date.Should().Be(new DateTime(2026, 4, 1));
-        dto.ReportingPeriodEnd.Date.Should().Be(new DateTime(2026, 6, 30));
+        dto.FinancialYear.Should().Be(TestFinancialYears.Current);
+        // Derived, not written out: the reporting period follows the collection's financial year, which is now
+        // whichever year the test runs in. ReportingPeriodTests (unit) is what pins Q1 to April-June.
+        var (periodStart, periodEnd) = ReportingPeriod.Derive(TestFinancialYears.Current, 1);
+        dto.ReportingPeriodStart.Date.Should().Be(periodStart.ToDateTime(TimeOnly.MinValue));
+        dto.ReportingPeriodEnd.Date.Should().Be(periodEnd.ToDateTime(TimeOnly.MinValue));
         dto.SubmissionDeadline.Date.Should().Be(deadline.ToDateTime(TimeOnly.MinValue));
         dto.LocalAuthorityName.Should().Be(MainOrg.Name);
         dto.SubmissionId.Should().BeNull();
@@ -72,8 +76,9 @@ public class ReportContextTests(IntegrationTestWebFactory factory) : QuarterlyRe
         dto.CollectionId.Should().Be(q3Id);
         dto.CollectionId.Should().NotBe(q2Id);
         dto.Quarter.Should().Be(3);
-        dto.ReportingPeriodStart.Date.Should().Be(new DateTime(2026, 10, 1));
-        dto.ReportingPeriodEnd.Date.Should().Be(new DateTime(2026, 12, 31));
+        var (periodStart, periodEnd) = ReportingPeriod.Derive(TestFinancialYears.Current, 3);
+        dto.ReportingPeriodStart.Date.Should().Be(periodStart.ToDateTime(TimeOnly.MinValue));
+        dto.ReportingPeriodEnd.Date.Should().Be(periodEnd.ToDateTime(TimeOnly.MinValue));
         dto.SubmissionDeadline.Date.Should().Be(q3Deadline.ToDateTime(TimeOnly.MinValue));
     }
 
@@ -91,8 +96,9 @@ public class ReportContextTests(IntegrationTestWebFactory factory) : QuarterlyRe
         var dto = await response.ToResponseModel<ContextResult>();
         dto.CollectionId.Should().Be(q2Id);
         dto.Quarter.Should().Be(2);
-        dto.ReportingPeriodStart.Date.Should().Be(new DateTime(2026, 7, 1));
-        dto.ReportingPeriodEnd.Date.Should().Be(new DateTime(2026, 9, 30));
+        var (periodStart, periodEnd) = ReportingPeriod.Derive(TestFinancialYears.Current, 2);
+        dto.ReportingPeriodStart.Date.Should().Be(periodStart.ToDateTime(TimeOnly.MinValue));
+        dto.ReportingPeriodEnd.Date.Should().Be(periodEnd.ToDateTime(TimeOnly.MinValue));
     }
 
     [Fact]

@@ -39,7 +39,7 @@ public class UserMfa : IEntity<UserMfaId>
         UpdatedAt = updatedAt;
     }
 
-    public static UserMfa New(UserMfaId id, UserId userId, string encryptedSecret)
+    public static UserMfa New(UserMfaId id, UserId userId, string encryptedSecret, DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(userId, nameof(userId));
@@ -54,11 +54,11 @@ public class UserMfa : IEntity<UserMfaId>
             hashedRecoveryCodes: new List<string>(),
             failedAttempts: 0,
             lockedUntil: null,
-            createdAt: DateTime.UtcNow,
+            createdAt: utcNow,
             updatedAt: null);
     }
 
-    public static UserMfa Create(UserId userId)
+    public static UserMfa Create(UserId userId, DateTime utcNow)
     {
         Guard.NotNull(userId, nameof(userId));
 
@@ -71,32 +71,32 @@ public class UserMfa : IEntity<UserMfaId>
             hashedRecoveryCodes: new List<string>(),
             failedAttempts: 0,
             lockedUntil: null,
-            createdAt: DateTime.UtcNow,
+            createdAt: utcNow,
             updatedAt: null);
     }
 
-    public void Enable()
+    public void Enable(DateTime utcNow)
     {
         IsEnabled = true;
-        EnabledAt = DateTime.UtcNow;
+        EnabledAt = utcNow;
         FailedAttempts = 0;
         LockedUntil = null;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void Enable(List<string> hashedRecoveryCodes)
+    public void Enable(List<string> hashedRecoveryCodes, DateTime utcNow)
     {
         Guard.NotNull(hashedRecoveryCodes, nameof(hashedRecoveryCodes));
 
         IsEnabled = true;
-        EnabledAt = DateTime.UtcNow;
+        EnabledAt = utcNow;
         HashedRecoveryCodes = hashedRecoveryCodes;
         FailedAttempts = 0;
         LockedUntil = null;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void Disable()
+    public void Disable(DateTime utcNow)
     {
         IsEnabled = false;
         EnabledAt = null;
@@ -104,7 +104,7 @@ public class UserMfa : IEntity<UserMfaId>
         HashedRecoveryCodes = new List<string>();
         FailedAttempts = 0;
         LockedUntil = null;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
     /// <summary>
@@ -119,21 +119,21 @@ public class UserMfa : IEntity<UserMfaId>
     /// defaults, so the numbers were unreachable from configuration while looking as though they were not —
     /// making them required turns that drift into a compile error.
     /// </remarks>
-    public bool RecordFailedAttempt(int maxAttempts, int lockoutMinutes)
+    public bool RecordFailedAttempt(int maxAttempts, int lockoutMinutes, DateTime utcNow)
     {
         // A lockout that has run its course ends the counting window with it. Without this the counter stayed
         // at or above the threshold forever, so the first wrong digit after a lock expired re-locked
         // immediately — a permanent lockout with no way out, and not only for codes: recovery-code
         // verification consults the same lock, so the escape hatch designed for exactly this situation was
         // shut too, leaving an administrator's mfa reset as the only route back.
-        if (LockedUntil.HasValue && LockedUntil.Value <= DateTime.UtcNow)
+        if (LockedUntil.HasValue && LockedUntil.Value <= utcNow)
         {
             FailedAttempts = 0;
             LockedUntil = null;
         }
 
         FailedAttempts++;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
 
         // Already locked means a caller reached here without checking, and re-locking would extend the
         // lockout on every attempt made during it — an attacker could hold a victim out indefinitely by
@@ -144,37 +144,37 @@ public class UserMfa : IEntity<UserMfaId>
             return false;
         }
 
-        LockedUntil = DateTime.UtcNow.AddMinutes(lockoutMinutes);
+        LockedUntil = utcNow.AddMinutes(lockoutMinutes);
 
         return true;
     }
 
-    public void ResetFailedAttempts()
+    public void ResetFailedAttempts(DateTime utcNow)
     {
         FailedAttempts = 0;
         LockedUntil = null;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public bool IsLockedOut() => LockedUntil.HasValue && LockedUntil.Value > DateTime.UtcNow;
+    public bool IsLockedOut(DateTime utcNow) => LockedUntil.HasValue && LockedUntil.Value > utcNow;
 
-    public void UpdateRecoveryCodes(List<string> hashedRecoveryCodes)
+    public void UpdateRecoveryCodes(List<string> hashedRecoveryCodes, DateTime utcNow)
     {
         Guard.NotNull(hashedRecoveryCodes, nameof(hashedRecoveryCodes));
         HashedRecoveryCodes = hashedRecoveryCodes;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void RemoveRecoveryCode(string hashedCode)
+    public void RemoveRecoveryCode(string hashedCode, DateTime utcNow)
     {
         HashedRecoveryCodes.Remove(hashedCode);
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void UpdateSecret(string encryptedSecret)
+    public void UpdateSecret(string encryptedSecret, DateTime utcNow)
     {
         Guard.NotNullOrEmpty(encryptedSecret, nameof(encryptedSecret));
         EncryptedSecret = encryptedSecret;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 }

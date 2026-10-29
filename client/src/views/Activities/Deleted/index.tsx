@@ -1,6 +1,6 @@
 import React from 'react';
 import { PageLoading } from '../../../components/GovUKComponents';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { GeneralLayout } from '../../../layouts';
 import { GovUKNotificationBanner, H1, Paragraph, SummaryList } from '../../../components/GovUKComponents';
@@ -18,7 +18,7 @@ const ActivitiesDeleted = (): React.ReactElement => {
   // must not eject the user from the return flow (BLUM-6967).
   const report = useActivityReportContext();
 
-  const { data, isLoading } = useQuery(activitiesDeletedKey, () => getDeletedActivities());
+  const { data, isLoading } = useQuery({ queryKey: activitiesDeletedKey, queryFn: () => getDeletedActivities() });
   const activities = data?.data ?? [];
 
   return (

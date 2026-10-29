@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { PageLoading } from '../../../../components/GovUKComponents';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
 import { ErrorSummary, GovUKButton, GovUKInsetText, GovUKSummaryCard, H3, SummaryList } from '../../../../components/GovUKComponents';
 import ReportFundingPageHeader from '../../../../components/Global/Reports/ReportFundingPageHeader';
@@ -9,23 +9,21 @@ import { useAuthProvider } from '../../../../components/AuthProvider';
 import { formatGBP } from '../../../../helpers/currency';
 import { formatGovUkDate } from '../../../Admin/Collections/display';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import { reportContextKey, reportFundingSpendKey, reportTaskListKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
 import { getFundingSpend } from '../../queries';
 import { completeFundingSpend } from '../../mutations';
 import { mapReportError } from '../../messages';
-import { reportingPeriodLabel } from '../../display';
+import { reportingPeriodValue } from '../../display';
 import { useReportContext } from '../../context';
 import { canEditReport } from '../../navigation';
-import { summaryRows } from '../display';
+import { actualSpendActivities, summaryRows } from '../display';
 import './styles.css';
 
 // "Check your spending totals" (BLUM-6612, screen 3): the saved actual + forecast spend. Continue
 // completes the section (the backend validates every required amount); a 422 surfaces the errors with
 // links back to the screen that owns each one.
 const Check = (): React.ReactElement => {
-  usePageTitle('Check your spending totals');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { userRole } = useAuthProvider();
@@ -34,23 +32,26 @@ const Check = (): React.ReactElement => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitAttempts, setSubmitAttempts] = useState(0);
 
+  usePageTitle(`${Object.keys(errors).length > 0 ? 'Error: ' : ''}Check your spending totals`);
+
   const { collectionId, context, isLoading: contextLoading, isError: contextError } = useReportContext();
   const spendingPath = ROUTES.reports.fundingSpent(collectionId);
   const forecastPath = ROUTES.reports.fundingSpentForecast(collectionId);
   const tasksPath = ROUTES.reports.tasks(collectionId);
 
-  const fundingQuery = useQuery(reportFundingSpendKey(collectionId), () => getFundingSpend(collectionId), {
+  const fundingQuery = useQuery({
+    queryKey: reportFundingSpendKey(collectionId),
+    queryFn: () => getFundingSpend(collectionId),
     enabled: !!collectionId && !!context?.submissionId,
   });
   const funding = fundingQuery.data?.data;
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
-
-  const completeMutation = useMutation(completeFundingSpend, {
+  const completeMutation = useMutation({
+    mutationFn: completeFundingSpend,
     onSuccess: () => {
-      queryClient.invalidateQueries(reportContextKey(collectionId));
-      queryClient.invalidateQueries(reportTaskListKey(collectionId));
-      queryClient.invalidateQueries(reportFundingSpendKey(collectionId));
+      queryClient.invalidateQueries({ queryKey: reportContextKey(collectionId) });
+      queryClient.invalidateQueries({ queryKey: reportTaskListKey(collectionId) });
+      queryClient.invalidateQueries({ queryKey: reportFundingSpendKey(collectionId) });
     },
   });
 
@@ -80,9 +81,11 @@ const Check = (): React.ReactElement => {
     });
   };
 
+  // Each card lists the activities its own screen asked about: Planned activities are forecast-only (BLUM-7672), so
+  // they appear under "Forecast spend" and not here.
   const activitySpendingRows = funding
     ? [
-        ...funding.activities.map((activity) => ({ label: activity.title, value: formatGBP(activity.actualThisQuarter) })),
+        ...actualSpendActivities(funding).map((activity) => ({ label: activity.title, value: formatGBP(activity.actualThisQuarter) })),
         { label: 'Planned spend', value: formatGBP(funding.otherActualThisQuarter) },
       ]
     : [];
@@ -107,17 +110,19 @@ const Check = (): React.ReactElement => {
     .map(([key, message]) => ({ targetName: key, text: message }));
 
   return (
-    <GeneralLayout
-      backLink={{ href: funding && funding.remainingQuarters.length === 0 ? spendingPath : forecastPath, testId: 'reports-funding-spent-check-back' }}>
+    <GeneralLayout backLink={{ href: funding && funding.remainingQuarters.length === 0 ? spendingPath : forecastPath, testId: 'reports-funding-spent-check-back' }}>
       <div className="reports-funding-check">
         {isLoading || !context || !funding ? (
           <PageLoading />
         ) : (
           <>
-            {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} onHandleErrorClick={(targetName) => navigate(pageForError(targetName))} />}
+            <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} onHandleErrorClick={(targetName) => navigate(pageForError(targetName))} />
 
             <div className="reports-funding-check__header">
-              <ReportFundingPageHeader heading="Check your spending totals" reportingPeriod={reportingPeriodLabel(context)} />
+              <ReportFundingPageHeader
+                heading="Check your spending totals"
+                reportingPeriod={reportingPeriodValue(context.quarter, context.reportingPeriodStart, context.reportingPeriodEnd)}
+              />
             </div>
 
             <div className="reports-funding-check__content">
@@ -139,13 +144,13 @@ const Check = (): React.ReactElement => {
 
               <GovUKInsetText className="reports-funding-check__summary" data-testid="reports-funding-spent-check-summary">
                 <H3>Summary for all activities</H3>
-                <SummaryList items={summaryRows(funding.summary, true)} halfWidthColumns testId="reports-funding-spent-check-summary-list" />
+                <SummaryList items={summaryRows(funding.summary, true, true)} halfWidthColumns testId="reports-funding-spent-check-summary-list" />
               </GovUKInsetText>
             </div>
 
             <div className="govuk-button-group reports-funding-check__actions">
               {canEdit && (
-                <GovUKButton onClick={handleComplete} isLoading={completeMutation.isLoading} data-testid="reports-funding-spent-check-continue">
+                <GovUKButton onClick={handleComplete} isLoading={completeMutation.isPending} data-testid="reports-funding-spent-check-continue">
                   Continue
                 </GovUKButton>
               )}

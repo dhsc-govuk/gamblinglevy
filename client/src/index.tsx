@@ -7,11 +7,19 @@ import appConfig from './config.json';
 import reportAccessibility from './report-accessibility';
 import './helpers/analytics';
 
-if (appConfig.sentry_dsn !== '') {
+// App Insights (see helpers/analytics.ts) is this platform's monitoring solution; where it's configured,
+// initialising Sentry too would just report every error to both. Sentry stays live wherever App Insights isn't
+// configured (dev/test, or before the resource is provisioned), so error visibility never silently disappears.
+if (appConfig.sentry_dsn !== '' && appConfig.app_insights_connection_string === '') {
   Sentry.init({
     dsn: appConfig.sentry_dsn,
     integrations: [Sentry.browserTracingIntegration()],
     tracesSampleRate: 1.0,
+    // No request this app makes carries Sentry's tracing headers. From v8 the SDK adds sentry-trace and baggage
+    // to every same-origin request unless told otherwise, and DAC may serve the API from the client's origin,
+    // behind a WAF that has already blocked legitimate requests over their content (BLUM-8320). Nothing reads
+    // those headers on the API side, so there is no trace to lose by leaving them off.
+    tracePropagationTargets: [],
     environment: import.meta.env.MODE,
     release: 'gambling-levy-core-app@1.0.0',
     beforeSend: (event) => {

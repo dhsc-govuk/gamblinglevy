@@ -17,8 +17,7 @@
 }
 
 .reports-strategic-feedback-check__header .govuk-caption-l,
-.reports-strategic-feedback-check__header .govuk-heading-xl,
-.reports-strategic-feedback-check__header .govuk-body {
+.reports-strategic-feedback-check__header .govuk-heading-xl {
   margin-top: 0;
 }
 
@@ -31,7 +30,7 @@
   margin-bottom: 30px;
 }
 
-.reports-strategic-feedback-check__header .govuk-body {
+.reports-strategic-feedback-check__header > .govuk-inset-text {
   margin-bottom: 0;
 }
 
@@ -84,7 +83,6 @@
     line-height: 40px;
   }
 
-  .reports-strategic-feedback-check__header .govuk-body,
   .reports-strategic-feedback-check .govuk-summary-card__title,
   .reports-strategic-feedback-check .govuk-summary-card__actions,
   .reports-strategic-feedback-check .govuk-summary-list,

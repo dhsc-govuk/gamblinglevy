@@ -1,0 +1,55 @@
+/* The document baseline. These are the rules MUI's CssBaseline injected at runtime until BLUM-8758 removed MUI,
+   restated as they computed under this app's theme so nothing moves.
+
+   The box-sizing pair is the load-bearing one: it is the only global box-sizing rule in the app (govuk-frontend 6
+   sets it per component), and layouts/General/Content/styles.css widens .govuk-width-container to 960px plus
+   padding on the assumption that padding sits inside that width. */
+
+html {
+  box-sizing: border-box;
+  -webkit-text-size-adjust: 100%;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+
+strong,
+b {
+  font-weight: 700;
+}
+
+body {
+  margin: 0;
+  color: #0b0c0c;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.5;
+  background-color: #f3f2f1;
+}
+
+/* govuk-react's GlobalStyle injects body { font-family: 'Inter UI' } at runtime, after this file; CssBaseline used to
+   win that tie by being injected later still. Two type selectors keep GDS Transport without depending on order. */
+html body {
+  font-family: "GDS Transport", arial, sans-serif;
+}
+
+body::backdrop {
+  background-color: #f3f2f1;
+}
+
+@media print {
+  body {
+    background-color: #ffffff;
+  }
+}
+
+/* The element every route renders inside (components/App). Splash's full-height layout depends on it. */
+.app-root {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  font-family: "GDS Transport", arial, sans-serif;
+}

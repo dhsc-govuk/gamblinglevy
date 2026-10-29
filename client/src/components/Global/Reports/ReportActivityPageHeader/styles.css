@@ -1,0 +1,10 @@
+.govuk-inset-text.report-activity-page-header__details {
+  box-sizing: border-box;
+  width: 630px;
+  max-width: 100%;
+  margin-top: 0;
+}
+
+.report-activity-page-header__details .govuk-summary-list {
+  margin-bottom: 0;
+}

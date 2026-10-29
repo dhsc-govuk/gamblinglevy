@@ -9,8 +9,8 @@ namespace Api.Tests.Integration.Security;
 /// BLUM-7239 AC4 — the table mapping an endpoint to the budget it draws on.
 ///
 /// Lives in this project because RateLimitPolicyResolver is in the Api layer, which Application.Tests.Unit
-/// does not reference. It declares no class fixture, so it costs no PostgreSQL container — worth knowing,
-/// because every fixture-bearing class in this assembly does, and CI runs them against a 5120 MB sidecar.
+/// does not reference. It declares no class fixture, so it boots no host and creates no database — worth
+/// knowing, because every fixture-bearing class in this assembly does both.
 ///
 /// Every template below is copied from a real [Route]/[Http*] pair in api/src/Api/Controllers. That is the
 /// point of the class: the resolver is only correct relative to routes that actually exist, so a template
@@ -47,12 +47,17 @@ public class RateLimitPolicyResolverTests
     [InlineData("POST", "organisations/local-authorities", RateLimitPolicy.Write)]
     [InlineData("POST", "profile/sessions/{sessionId:guid}/revoke", RateLimitPolicy.Write)]
 
+    // The offline report upload (BLUM-8310) is a small CSV sent again after every round of fixes, often by several
+    // officers behind one council address, so it is an ordinary write rather than an export.
+    [InlineData("POST", "quarterly-report/{collectionId:guid}/offline/upload", RateLimitPolicy.Write)]
+
     // Expensive. Two of the three exports are GETs, which is the whole reason the cost rules sit above the
     // verb rules — as Reads these would run at three hundred a minute while building a ZIP of per-section
     // CSVs across every organisation in the collection.
     [InlineData("GET", "quarterly-report/{collectionId:guid}/export", RateLimitPolicy.Export)]
     [InlineData("GET", "data-collections/{collectionId:guid}/submissions/export", RateLimitPolicy.Export)]
     [InlineData("GET", "data-collections/{collectionId:guid}/submissions/{organisationId:guid}/export", RateLimitPolicy.Export)]
+    [InlineData("GET", "activities/{activityId:guid}/export", RateLimitPolicy.Export)]
     [InlineData("POST", "organisations/local-authorities/bulk-import", RateLimitPolicy.Export)]
     [InlineData("POST", "organisations/local-authorities/bulk-allocations", RateLimitPolicy.Export)]
     [InlineData("POST", "data-collections/{collectionId:guid}/send-reminder", RateLimitPolicy.Export)]
@@ -61,6 +66,11 @@ public class RateLimitPolicyResolverTests
     // as Export would mean fetching the template twice ate a fifth of the budget needed to then import.
     [InlineData("GET", "organisations/local-authorities/bulk-import/template", RateLimitPolicy.Read)]
     [InlineData("GET", "organisations/local-authorities/bulk-allocations/template", RateLimitPolicy.Read)]
+
+    // The offline report's templates (BLUM-8310) are small reads.
+    [InlineData("GET", "quarterly-report/{collectionId:guid}/offline/activity-results/template", RateLimitPolicy.Read)]
+    [InlineData("GET", "quarterly-report/{collectionId:guid}/offline/funding-spent/template", RateLimitPolicy.Read)]
+    [InlineData("GET", "quarterly-report/{collectionId:guid}/offline/strategic-feedback/template", RateLimitPolicy.Read)]
 
     // Auth covers the MFA endpoints that take a credential. Not the status read: the SPA issues that on every
     // mount, and putting routine page loads on the tightest per-address budget meant one council's staff,

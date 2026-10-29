@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../layouts';
 import {
   DeleteConfirmDialog,
@@ -22,6 +22,7 @@ import { formatDateTime } from '../../../helpers/dateDisplay';
 import { mySessionsKey } from '../../../helpers/queriesParams';
 import { getMySessions, SessionDto } from './queries';
 import { revokeSession } from './mutations';
+import './styles.css';
 
 const TEST_ID = 'account-sessions';
 
@@ -44,16 +45,16 @@ const buildColumns = (onRevoke: (session: SessionDto) => void): Column<SessionDt
   {
     key: 'deviceLabel',
     header: 'Device',
+    // The label is a block so the tag always starts a new line. Leaving them inline makes the column's
+    // max-content the two of them side by side, and auto table-layout then hands this column that share
+    // at the date columns' expense — they were the ones that ended up wrapping.
     render: (session) => (
       <>
-        {orNotRecorded(session.deviceLabel)}
+        <span className="account-sessions__device-name">{orNotRecorded(session.deviceLabel)}</span>
         {session.isCurrent && (
-          <>
-            {' '}
-            <GovUKTag colour="green" data-testid={composeTestId(TEST_ID, 'row', session.id, 'current')}>
-              This device
-            </GovUKTag>
-          </>
+          <GovUKTag colour="green" className="govuk-!-margin-top-1" data-testid={composeTestId(TEST_ID, 'row', session.id, 'current')}>
+            This device
+          </GovUKTag>
         )}
       </>
     ),
@@ -61,7 +62,20 @@ const buildColumns = (onRevoke: (session: SessionDto) => void): Column<SessionDt
   {
     key: 'ipAddress',
     header: 'IP address',
-    render: (session) => orNotRecorded(session.ipAddress),
+    headerClassName: 'account-sessions__nowrap-header',
+    // The sign-in address, plus where the session was last used from when that differs (BLUM-7848). A
+    // session is no longer refused for changing address, so a "was that me?" check against the sign-in
+    // address alone would miss a cookie being used from somewhere else.
+    render: (session) => (
+      <>
+        <span className="govuk-!-display-block">{orNotRecorded(session.ipAddress)}</span>
+        {session.lastSeenIpAddress && session.lastSeenIpAddress !== session.ipAddress && (
+          <span className="govuk-body-s govuk-!-display-block govuk-!-margin-top-1 govuk-!-margin-bottom-0" data-testid={composeTestId(TEST_ID, 'row', session.id, 'last-seen-ip')}>
+            Last used from {session.lastSeenIpAddress}
+          </span>
+        )}
+      </>
+    ),
   },
   {
     key: 'createdAt',
@@ -77,6 +91,9 @@ const buildColumns = (onRevoke: (session: SessionDto) => void): Column<SessionDt
     key: 'actions',
     header: 'Action',
     align: 'right',
+    // Sizes the column to the button instead of letting auto table-layout squeeze it to the width of
+    // "Sign" and wrap the label — see styles.css.
+    className: 'account-sessions__column--action',
     // The caller's own row gets no button. Ending the session you are reading this in is just signing out,
     // and the header's Sign out button already does that — offering it here would mostly produce accidents.
     render: (session) =>
@@ -109,17 +126,18 @@ const AccountSessions = (): React.ReactElement => {
 
   // Deliberately not on defaultStaleTime: a stale session list is the one thing this screen must never show,
   // because the user acts on it to shut somebody out.
-  const { data, isLoading, isError } = useQuery(mySessionsKey, getMySessions);
+  const { data, isLoading, isError } = useQuery({ queryKey: mySessionsKey, queryFn: getMySessions });
   const sessions = data?.data ?? [];
 
-  const { mutate, isLoading: isRevoking } = useMutation(revokeSession, {
+  const { mutate, isPending: isRevoking } = useMutation({
+    mutationFn: revokeSession,
     onSuccess: (_response, sessionId) => {
       const revoked = sessions.find((session) => session.id === sessionId);
       setPendingRevoke(null);
       setErrorMessage(null);
       setSignedOutDevice(revoked ? describeDevice(revoked) : NOT_RECORDED);
       setRevokeCount((count) => count + 1);
-      queryClient.invalidateQueries(mySessionsKey);
+      queryClient.invalidateQueries({ queryKey: mySessionsKey });
     },
     onError: () => {
       setPendingRevoke(null);
@@ -129,7 +147,7 @@ const AccountSessions = (): React.ReactElement => {
     },
   });
 
-  // The button that opened the dialog belongs to the row that has just been removed, so MUI's restore-focus
+  // The button that opened the dialog belongs to the row that has just been removed, so the dialog's restore-focus
   // target is detached by the time the dialog closes and focus would silently fall back to <body>. Move it
   // onto the confirmation instead. Keyed on the counter, not the device name, so two revocations of
   // identically-named devices still each move focus.
@@ -165,7 +183,7 @@ const AccountSessions = (): React.ReactElement => {
         </div>
 
         <div id={LIST_ANCHOR_ID} tabIndex={-1}>
-          {/* Shown alongside the list, never instead of it. React Query v3 keeps `data` when a refetch fails,
+          {/* Shown alongside the list, never instead of it. React Query keeps `data` when a refetch fails,
               and the refetch most likely to fail here is the one triggered by a successful revoke — so
               replacing the table would take away the remaining "Sign out" buttons at the exact moment
               somebody is working through an intruder's devices.
@@ -197,7 +215,7 @@ const AccountSessions = (): React.ReactElement => {
           ) : (
             // searchable is on by default, and with no names to search it would paint a "Search by name"
             // box that filters on raw ids and timestamps.
-            <GovUKTable<SessionDto> testId={TEST_ID} data={sessions} columns={columns} keyExtractor={(session) => session.id} searchable={false} />
+            <GovUKTable<SessionDto> label="Where you’re signed in" testId={TEST_ID} data={sessions} columns={columns} keyExtractor={(session) => session.id} searchable={false} />
           )}
         </div>
 
@@ -207,7 +225,9 @@ const AccountSessions = (): React.ReactElement => {
             testId={`${TEST_ID}-revoke-dialog`}
             title="Sign this device out?"
             message="Whoever is using this device will be signed out straight away and will need to sign in again."
-            itemName={`${orNotRecorded(pendingRevoke.deviceLabel)} — ${orNotRecorded(pendingRevoke.ipAddress)}`}
+            itemName={`${orNotRecorded(pendingRevoke.deviceLabel)} — ${orNotRecorded(pendingRevoke.ipAddress)}${
+              pendingRevoke.lastSeenIpAddress && pendingRevoke.lastSeenIpAddress !== pendingRevoke.ipAddress ? `, last used from ${pendingRevoke.lastSeenIpAddress}` : ''
+            }`}
             confirmLabel="Sign out"
             isLoading={isRevoking}
             onCancel={() => setPendingRevoke(null)}

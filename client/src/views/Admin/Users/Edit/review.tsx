@@ -1,16 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { Link as RouterLink, useNavigate, useLocation, useParams } from 'react-router-dom';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { httpStatusOf } from '../../../../helpers/httpErrors';
 import { ManagementLayout } from '../../../../layouts';
 import { GovUKButton, GovUKSummaryCard, SummaryList, ErrorSummary, H1 } from '../../../../components/GovUKComponents';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import { adminUserKey, adminUsersListKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
 import { ROLE_LABELS } from '../../../../components/AuthProvider';
+import { getUser } from '../queries';
 import { updateUser } from '../mutations';
+import { editRefusalMessage } from '../refusals';
 import type { EditUserFormState } from './index';
 import './styles.css';
+
+// The API returns UserException.Message as a bare JSON string, and those messages interpolate the user and
+// organisation GUIDs, so the status code is what we map — never the body. 422 is LastActiveAdminGuard refusing to
+// leave DHSC without an active Super Admin, or the user's organisation without an active LA Admin (BLUM-8751): a
+// permanent refusal, not something a retry fixes, and reachable from the Organisation hint's own suggestion to
+// clear the field to make someone a Super Admin. Which one is told apart by the user's role before the edit.
+const editUserErrorMessage = (status: number | undefined, currentRole: string | undefined): string => {
+  if (status === 409) return 'A user with this email address already exists.';
+  if (status === 422) return editRefusalMessage(currentRole);
+  return 'Could not save the changes. Try again.';
+};
 
 const UsersEditReview = (): React.ReactElement => {
   usePageTitle('Check your answers');
@@ -18,6 +31,9 @@ const UsersEditReview = (): React.ReactElement => {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+
+  // The user as stored, which the edit form has already loaded: only its role says which refusal a 422 is.
+  const { data: currentUser } = useQuery({ queryKey: adminUserKey(userId), queryFn: () => getUser(userId), enabled: !!userId });
 
   const state = location.state as EditUserFormState | null;
 
@@ -31,18 +47,17 @@ const UsersEditReview = (): React.ReactElement => {
   const [submitError, setSubmitError] = useState<string | undefined>();
   const [submitAttempts, setSubmitAttempts] = useState(0);
 
-  useErrorSummaryFocus(submitAttempts, !!submitError);
-
   useEffect(() => {
     if (!state?.userId) {
       navigate(ROUTES.admin.users.edit(userId), { replace: true });
     }
   }, [state, userId, navigate]);
 
-  const { mutate, isLoading } = useMutation(updateUser, {
+  const { mutate, isPending } = useMutation({
+    mutationFn: updateUser,
     onSuccess: () => {
-      queryClient.invalidateQueries(adminUsersListKey);
-      queryClient.invalidateQueries(adminUserKey(userId));
+      queryClient.invalidateQueries({ queryKey: adminUsersListKey });
+      queryClient.invalidateQueries({ queryKey: adminUserKey(userId) });
       navigate(ROUTES.admin.users.detail(userId), {
         replace: true,
         state: {
@@ -53,10 +68,9 @@ const UsersEditReview = (): React.ReactElement => {
         },
       });
     },
-    onError: (error: any) => {
+    onError: (error) => {
       setSubmitAttempts((n) => n + 1);
-      const status = error?.response?.status;
-      setSubmitError(status === 409 ? 'A user with this email address already exists.' : 'Could not save the changes. Try again.');
+      setSubmitError(editUserErrorMessage(httpStatusOf(error), currentUser?.data.role));
     },
   });
 
@@ -96,7 +110,7 @@ const UsersEditReview = (): React.ReactElement => {
   return (
     <ManagementLayout backLink={{ href: ROUTES.admin.users.edit(userId), onClick: () => navigate(ROUTES.admin.users.edit(userId), { state }) }}>
       <div className="admin-users-edit-review">
-        {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+        <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
         <div className="admin-users-edit-review__heading">
           <span className="govuk-caption-l">Edit user</span>
@@ -118,13 +132,13 @@ const UsersEditReview = (): React.ReactElement => {
         </GovUKSummaryCard>
 
         <div className="govuk-button-group admin-users-edit-review__actions">
-          <GovUKButton onClick={handleSave} isLoading={isLoading} disabled={isLoading} data-testid="admin-users-edit-review-save">
+          <GovUKButton onClick={handleSave} isLoading={isPending} disabled={isPending} data-testid="admin-users-edit-review-save">
             Save
           </GovUKButton>
           <GovUKButton
             className="govuk-button govuk-button--secondary"
             onClick={() => navigate(ROUTES.admin.users.editDiscard(userId), { state })}
-            disabled={isLoading}
+            disabled={isPending}
             data-testid="admin-users-edit-review-discard">
             Discard edits
           </GovUKButton>

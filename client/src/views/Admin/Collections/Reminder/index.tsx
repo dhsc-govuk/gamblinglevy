@@ -1,28 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
-import { LoadingBox } from '../../../../components/GovUKComponents';
+import { ErrorSummary, LoadingBox } from '../../../../components/GovUKComponents';
 import ConfirmationPanel from '../../../../components/Global/Activities/ConfirmationPanel';
 import usePageTitle from '../../../../hooks/usePageTitle';
 import { collectionsListKey, collectionKey } from '../../../../helpers/queriesParams';
 import { getCollection } from '../queries';
 import { sendManualReminder } from '../mutations';
+import { mapCollectionError } from '../messages';
 import './styles.css';
 
 const CollectionsReminder = (): React.ReactElement => {
-  usePageTitle('Send a reminder');
   const { collectionId = '' } = useParams<{ collectionId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [reminderError, setReminderError] = useState<string | null>(null);
+  const [attempts, setAttempts] = useState(0);
+  usePageTitle(`${reminderError ? 'Error: ' : ''}Send a reminder`);
 
-  const { isLoading } = useQuery(collectionKey(collectionId), () => getCollection(collectionId), {
-    enabled: !!collectionId,
-  });
-  const reminderMutation = useMutation(() => sendManualReminder(collectionId), {
+  const { isLoading } = useQuery({ queryKey: collectionKey(collectionId), queryFn: () => getCollection(collectionId), enabled: !!collectionId });
+  const reminderMutation = useMutation({
+    mutationFn: () => sendManualReminder(collectionId),
     onSuccess: () => {
-      queryClient.invalidateQueries(collectionsListKey);
-      queryClient.invalidateQueries(collectionKey(collectionId));
+      queryClient.invalidateQueries({ queryKey: collectionsListKey });
+      queryClient.invalidateQueries({ queryKey: collectionKey(collectionId) });
       navigate(`/admin/collections/${collectionId}`, {
         state: {
           banner: {
@@ -31,6 +33,10 @@ const CollectionsReminder = (): React.ReactElement => {
           },
         },
       });
+    },
+    onError: (error) => {
+      setReminderError(mapCollectionError(error));
+      setAttempts((current) => current + 1);
     },
   });
 
@@ -47,19 +53,29 @@ const CollectionsReminder = (): React.ReactElement => {
   return (
     <GeneralLayout backLink={{ href: `/admin/collections/${collectionId}`, onClick: () => navigate(`/admin/collections/${collectionId}`) }}>
       <div className="collections-reminder-page">
+        <ErrorSummary
+          heading="There is a problem"
+          errors={reminderError ? [{ targetName: 'admin-collections-reminder-confirm', text: reminderError }] : []}
+          focusTrigger={attempts}
+          testId="admin-collections-reminder-errors"
+        />
         <ConfirmationPanel
           testId="admin-collections-reminder"
           title="Are you sure you want to send a reminder?"
           body={
             <p className="govuk-body" style={{ color: '#ffffff' }}>
-              This will immediately send an email to all reporting organisations that have not yet submitted their data. If you want to schedule a reminder for a different date, go back to the data collection and edit your automatic reminders.
+              This will immediately send an email to all reporting organisations that have not yet submitted their data. If you want to schedule a reminder for a different date, go
+              back to the data collection and edit your automatic reminders.
             </p>
           }
           confirmLabel="Send reminder now"
-          onConfirm={() => reminderMutation.mutate()}
+          onConfirm={() => {
+            setReminderError(null);
+            reminderMutation.mutate();
+          }}
           cancelLabel="Go back to data collection"
           onCancel={() => navigate(`/admin/collections/${collectionId}`)}
-          isLoading={reminderMutation.isLoading}
+          isLoading={reminderMutation.isPending}
         />
       </div>
     </GeneralLayout>

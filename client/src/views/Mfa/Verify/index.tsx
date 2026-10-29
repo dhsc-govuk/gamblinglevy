@@ -2,28 +2,24 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import usePageTitle from '../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../hooks/useErrorSummaryFocus';
 
-import { InputField } from 'govuk-react';
-import { ErrorSummary, GovUKButton, GovUKBackLink, GovUKDetails, H1 } from '../../../components/GovUKComponents';
+import { ErrorSummary, GovUKButton, GovUKBackLink, GovUKFieldset, H1 } from '../../../components/GovUKComponents';
+
+import SigningInHelp from '../../../components/Global/Mfa/SigningInHelp';
 
 import { useMfa } from '../../../components/MfaProvider';
 
-import { useAuthProvider, roleToAreaMap } from '../../../components/AuthProvider';
+import { useAuthProvider, roleToAreaMap, type EnumUserRole } from '../../../components/AuthProvider';
 
 import { getProfile } from '../../../components/AuthProvider/queries';
 
-import { GovUKHeaderLogo } from '../../../components/Logos';
+import SignInJourneyLayout from '../../../layouts/SignInJourney';
+import { mfaCodeError, mfaCodeRefusalMessage, sanitiseMfaCode } from '../messages';
+import '../styles.css';
 
-import LayoutFooter from '../../../layouts/General/LayoutFooter';
-import { mfaTooManyRequestsMessage } from '../messages';
-
-import { PageWrapper, Header, HeaderContainer, ServiceBanner, ServiceBannerContainer, ServiceName, MainContent, ContentContainer, ContentWrapper, InputWrapper } from './styles';
-
-const baseUrl = import.meta.env.BASE_URL || '/';
+const PAGE_TITLE = 'Check your authenticator app for a security code';
 
 const MfaVerify = (): React.ReactElement => {
-  usePageTitle('Check your authenticator app for a security code');
   const navigate = useNavigate();
 
   const { userRole, signOut } = useAuthProvider();
@@ -35,9 +31,9 @@ const MfaVerify = (): React.ReactElement => {
   const [isLoading, setIsLoading] = useState(false);
   const [submitAttempts, setSubmitAttempts] = useState(0);
 
-  const userRoleRef = useRef(userRole);
+  usePageTitle(error ? `Error: ${PAGE_TITLE}` : PAGE_TITLE);
 
-  useErrorSummaryFocus(submitAttempts, !!error);
+  const userRoleRef = useRef(userRole);
 
   useEffect(() => {
     if (userRole) {
@@ -46,21 +42,17 @@ const MfaVerify = (): React.ReactElement => {
   }, [userRole]);
 
   const handleCodeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>): void => {
-    const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-    setCode(value);
+    setCode(sanitiseMfaCode(e.target.value));
     setError(null);
   }, []);
 
-  const handleVerify = async (): Promise<void> => {
+  const handleVerify = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
     setSubmitAttempts((n) => n + 1);
 
-    if (code.length === 0) {
-      setError('Enter the 6-digit code shown in your authenticator app');
-      return;
-    }
-
-    if (code.length !== 6) {
-      setError('The code must be 6 digits. Check the code and try again');
+    const codeError = mfaCodeError(code);
+    if (codeError) {
+      setError(codeError);
       return;
     }
 
@@ -86,96 +78,60 @@ const MfaVerify = (): React.ReactElement => {
         }
       }
 
-      const homeRoute = role ? `/${roleToAreaMap(role as any)}/home` : '/sign-in';
+      const homeRoute = role ? `/${roleToAreaMap(role as EnumUserRole)}/home` : '/sign-in';
 
       navigate(redirectPath || homeRoute);
-    } catch (err: any) {
-      if (err?.response?.status === 401) {
-        setError('That code no longer works. You need to enter the 6-digit code currently shown in your app');
-      } else if (err?.response?.status === 429) {
-        setError(mfaTooManyRequestsMessage(err));
-      } else {
-        setError('Verification failed. Try again.');
-      }
+    } catch (err) {
+      setError(mfaCodeRefusalMessage(err, 'Verification failed. Try again.'));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent): void => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleVerify();
-    }
-  };
-
   return (
-    <PageWrapper data-testid="mfa-verify">
-      <Header component="header" role="banner">
-        <HeaderContainer>
-          <a href={baseUrl} style={{ color: '#ffffff', textDecoration: 'none' }}>
-            <GovUKHeaderLogo />
-          </a>
-        </HeaderContainer>
-      </Header>
+    <SignInJourneyLayout testId="mfa-verify">
+      <div className="govuk-main-wrapper">
+        <GovUKBackLink onClick={signOut} data-testid="mfa-verify-back">
+          Back
+        </GovUKBackLink>
 
-      <ServiceBanner component="section" aria-label="Service information">
-        <ServiceBannerContainer>
-          <ServiceName>Share progress preventing gambling harms</ServiceName>
-        </ServiceBannerContainer>
-      </ServiceBanner>
+        <ErrorSummary
+          testId="mfa-verify-error-summary"
+          heading="There is a problem"
+          errors={error ? [{ targetName: 'code-input', text: error }] : []}
+          focusTrigger={submitAttempts}
+        />
 
-      <MainContent component="main" role="main">
-        <ContentContainer>
-          <GovUKBackLink onClick={signOut}>Back</GovUKBackLink>
+        <div className="mfa-page__content-wrapper">
+          <H1>{PAGE_TITLE}</H1>
 
-          {error && <ErrorSummary testId="mfa-verify-error-summary" heading="There is a problem" errors={[{ targetName: 'code-input', text: error }]} />}
+          {/* A form, so Enter in the code field submits it like the button does. */}
+          <form noValidate onSubmit={handleVerify}>
+            <GovUKFieldset.Input
+              id="code-input"
+              name="code"
+              label="Security code"
+              hint="This is a 6-digit code, for example 654321"
+              value={code}
+              onChange={handleCodeChange}
+              error={error ?? undefined}
+              width="5"
+              disabled={isLoading}
+              autoComplete="one-time-code"
+              inputMode="numeric"
+              spellCheck={false}
+              testId="mfa-verify-code-input"
+            />
 
-          <ContentWrapper>
-            <H1>Check your authenticator app for a security code</H1>
-
-            <InputWrapper>
-              <InputField
-                input={
-                  {
-                    id: 'code-input',
-                    name: 'code',
-                    'data-testid': 'mfa-verify-code-input',
-                    value: code,
-                    onChange: handleCodeChange,
-                    onKeyPress: handleKeyPress,
-                    disabled: isLoading,
-                    autoComplete: 'one-time-code',
-                    inputMode: 'numeric',
-                    pattern: '[0-9]*',
-                    spellCheck: false,
-                  } as React.InputHTMLAttributes<HTMLInputElement>
-                }
-                meta={{ error: error || undefined, touched: !!error }}
-                hint="This is a 6-digit code. For example 654321">
-                <strong>Authentication code</strong>
-              </InputField>
-            </InputWrapper>
-
-            <GovUKButton onClick={handleVerify} isLoading={isLoading} data-testid="mfa-verify-continue">
+            <GovUKButton type="submit" isLoading={isLoading} data-testid="mfa-verify-continue">
               Continue
             </GovUKButton>
+          </form>
 
-            <GovUKDetails summary="Help with signing in">
-              <p className="govuk-body">If you have problems signing in or getting a code, contact the DHSC support team.</p>
-              <p className="govuk-body">
-                Email:{' '}
-                <a className="govuk-link" href="mailto:gambling.levy@dhsc.gov.uk">
-                  gambling.levy@dhsc.gov.uk
-                </a>
-              </p>
-            </GovUKDetails>
-          </ContentWrapper>
-        </ContentContainer>
-      </MainContent>
-
-      <LayoutFooter />
-    </PageWrapper>
+          <SigningInHelp testId="mfa-verify-help" />
+        </div>
+      </div>
+    </SignInJourneyLayout>
   );
 };
 

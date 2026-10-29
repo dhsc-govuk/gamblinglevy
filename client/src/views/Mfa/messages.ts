@@ -1,4 +1,4 @@
-import { retryAfterOf } from '../../helpers/httpErrors';
+import { httpStatusOf, retryAfterOf } from '../../helpers/httpErrors';
 
 // The two 429s the MFA endpoints answer (BLUM-7239), and the copy for each.
 //
@@ -37,4 +37,39 @@ export const mfaTooManyRequestsMessage = (error: unknown): string => {
   const code = (error as { response?: { data?: { error?: string } } } | undefined)?.response?.data?.error;
 
   return code === 'MFA_LOCKED_OUT' ? LOCKED_OUT : tooManyAttempts(error);
+};
+
+// The 6-digit authenticator code, as every MFA page that takes one handles it (Verify, Setup, RecoveryCodes). One copy,
+// so the three pages cannot drift apart in what they accept or how they word a refusal.
+
+const MFA_CODE_LENGTH = 6;
+
+/** What the code input holds: digits only, at most six. */
+export const sanitiseMfaCode = (raw: string): string => raw.replace(/\D/g, '').slice(0, MFA_CODE_LENGTH);
+
+/** Why a code cannot be sent yet, or null when it can. */
+export const mfaCodeError = (code: string): string | null => {
+  if (code.length === 0) {
+    return 'Enter the 6-digit code shown in your authenticator app';
+  }
+
+  return code.length === MFA_CODE_LENGTH ? null : 'The code must be 6 digits. Check the code and try again';
+};
+
+/**
+ * The message for a code the server refused. A wrong or expired code (401) and too many attempts (429) read the same on
+ * every page. A 400 means something different on each endpoint, so a page that can get one names it; anything else
+ * is the page's own fallback.
+ */
+export const mfaCodeRefusalMessage = (error: unknown, fallback: string, badRequest?: string): string => {
+  const status = httpStatusOf(error);
+
+  if (status === 401) {
+    return 'That code no longer works. You need to enter the 6-digit code currently shown in your app';
+  }
+  if (status === 429) {
+    return mfaTooManyRequestsMessage(error);
+  }
+
+  return status === 400 && badRequest ? badRequest : fallback;
 };

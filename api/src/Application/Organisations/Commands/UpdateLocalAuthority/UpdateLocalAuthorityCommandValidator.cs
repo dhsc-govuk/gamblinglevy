@@ -25,7 +25,12 @@ public class UpdateLocalAuthorityCommandValidator : AbstractValidator<UpdateLoca
             .NotEmpty()
             .WithMessage("Enter the ONS code")
             .When(x => x.Type == OrgTypes.LocalAuthority);
-        RuleFor(x => x.OnsCode).MaximumLength(FieldLimits.OnsCode);
+        // BLUM-7663: validated against the ONS reference list — in practice its shape, since neither this
+        // codebase nor Family Hubs (which this mirrors) holds an enumerated list of real ONS codes. Mirrors
+        // CreateLocalAuthorityCommandValidator so an organisation cannot be edited into a shape create would reject.
+        RuleFor(x => x.OnsCode)
+            .OnsCodeFormat()
+            .When(x => !string.IsNullOrWhiteSpace(x.OnsCode));
         // Required for every organisation type (BLUM-7050). Mirrors CreateLocalAuthorityCommandValidator so an
         // organisation cannot be created valid and then edited into a state the create path would have rejected.
         // Organisations that predate the rule carry no E-code, so their first edit has to supply one.

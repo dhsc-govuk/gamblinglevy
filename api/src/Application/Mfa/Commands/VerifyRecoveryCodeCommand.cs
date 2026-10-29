@@ -24,6 +24,8 @@ public class VerifyRecoveryCodeCommandHandler(
     IAuditLogRepository auditLogRepository,
     MfaAttemptGate attemptGate,
     MfaFailureRecorder failureRecorder,
+    IDateTimeProvider dateTimeProvider,
+    ITransactionRunner transactionRunner,
     ApplicationSettings settings)
     : IRequestHandler<VerifyRecoveryCodeCommand, Either<MfaException, MfaVerifyResponseDto>>
 {
@@ -57,18 +59,20 @@ public class VerifyRecoveryCodeCommandHandler(
 
     private Either<MfaException, UserMfa> ValidateNotLockedOut(UserMfa mfa, UserId userId)
     {
+        var utcNow = dateTimeProvider.GetUtcNow();
+
         // The lock deliberately covers this path too. A recovery code is guessable in exactly the way a TOTP
         // code is, so leaving the escape hatch open during a lockout would mean the lockout could simply be
         // walked around. The cost of that decision — an administrator's mfa reset becomes the only way back
         // for somebody genuinely locked out — is why RecordFailedAttempt now clears an expired lock.
-        return mfa.IsLockedOut()
-            ? new MfaLockedOutException(userId, mfa.LockedUntil!.Value, RetryAfterSeconds(mfa))
+        return mfa.IsLockedOut(utcNow)
+            ? new MfaLockedOutException(userId, mfa.LockedUntil!.Value, RetryAfterSeconds(mfa, utcNow))
             : mfa;
     }
 
-    private int RetryAfterSeconds(UserMfa mfa)
+    private int RetryAfterSeconds(UserMfa mfa, DateTime utcNow)
     {
-        return MfaRetryAfter.Seconds(mfa.LockedUntil, DateTime.UtcNow, settings.Mfa.LockoutMinutes * 60);
+        return MfaRetryAfter.Seconds(mfa.LockedUntil, utcNow, settings.Mfa.LockoutMinutes * 60);
     }
 
     private async Task<Either<MfaException, MfaVerifyResponseDto>> ValidateAndVerifyAsync(
@@ -112,12 +116,21 @@ public class VerifyRecoveryCodeCommandHandler(
         }
 
         rateLimitService.ResetAttempts(request.UserId);
-        mfa.RemoveRecoveryCode(matchedHashedCode);
-        mfa.ResetFailedAttempts();
-        await userMfaRepository.UpdateAsync(mfa, cancellationToken);
+        string spentCode = matchedHashedCode;
 
-        await auditLogRepository.AppendAsync(
-            AuditLog.Create(request.UserId, AuditTargetType.User, request.UserId.Value, AuditAction.MfaRecoveryCodeUsed, before: null, after: null),
+        // The spent code, the counter reset and the audit row commit together (BLUM-8748); the session is created
+        // once they have.
+        await transactionRunner.RunAsync(
+            async token =>
+            {
+                mfa.RemoveRecoveryCode(spentCode, dateTimeProvider.GetUtcNow());
+                mfa.ResetFailedAttempts(dateTimeProvider.GetUtcNow());
+                await userMfaRepository.UpdateAsync(mfa, token);
+
+                await auditLogRepository.AppendAsync(
+                    AuditLog.Create(request.UserId, AuditTargetType.User, request.UserId.Value, AuditAction.MfaRecoveryCodeUsed, before: null, after: null),
+                    token);
+            },
             cancellationToken);
 
         var session = await sessionService.CreateSessionAsync(

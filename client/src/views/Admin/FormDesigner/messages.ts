@@ -1,6 +1,5 @@
 // Reads the structured error code returned by FormDesignerErrorFactory.
-export const formDesignerErrorCode = (error: unknown): string | undefined =>
-  (error as { response?: { data?: { error?: string } } } | undefined)?.response?.data?.error;
+export const formDesignerErrorCode = (error: unknown): string | undefined => (error as { response?: { data?: { error?: string } } } | undefined)?.response?.data?.error;
 
 // Maps a Form Designer API error to a single user-facing message.
 export const mapFormDesignerError = (error: unknown): string => {

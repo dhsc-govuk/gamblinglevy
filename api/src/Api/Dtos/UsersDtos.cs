@@ -71,6 +71,7 @@ public record UserDetailDto(
     string? OrganisationName,
     Guid? OrganisationId,
     string MfaStatus,
+    bool PasswordLoginEnabled,
     AccountHistoryEntryDto? CreatedBy,
     AccountHistoryEntryDto? LastUpdatedBy,
     AccountHistoryEntryDto? DeletedBy)
@@ -86,6 +87,7 @@ public record UserDetailDto(
             OrganisationName: item.OrganisationName,
             OrganisationId: item.OrganisationId,
             MfaStatus: item.MfaEnabled ? "enabled" : "not_set_up",
+            PasswordLoginEnabled: item.PasswordLoginEnabled,
             CreatedBy: item.CreatedHistory != null
                 ? new AccountHistoryEntryDto(item.CreatedHistory.ActorName, item.CreatedHistory.OccurredAt)
                 : null,
@@ -120,7 +122,12 @@ public record Profile(
     string Role,
     DateTime? UpdatedAt,
     Guid? OrganisationId,
-    Guid? LocationId);
+    string? OrganisationName,
+    Guid? LocationId,
+
+    // Names of the feature flags switched on in this environment (Application.Common.Features.Feature). Read live
+    // from configuration, not from the cached user, and mirrored by client/src/helpers/featureFlags.ts.
+    IReadOnlyList<string> Features);
 
 public record LocationAdminHomeDto(
     int Admins);

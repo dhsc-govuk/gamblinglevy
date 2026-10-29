@@ -1,9 +1,9 @@
 import React from 'react';
 import { PageLoading } from '../../../../components/GovUKComponents';
-import { Link as RouterLink, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
-import { GovUKInsetText, GovUKNotificationBanner, GovUKTaskList, type TaskListItem } from '../../../../components/GovUKComponents';
+import { GovUKButton, GovUKInsetText, GovUKNotificationBanner, GovUKTaskList, type TaskListItem } from '../../../../components/GovUKComponents';
 import usePageTitle from '../../../../hooks/usePageTitle';
 import { composeTestId } from '../../../../helpers/testIds';
 import { reportActivitiesKey } from '../../../../helpers/queriesParams';
@@ -29,7 +29,9 @@ const Select = (): React.ReactElement => {
 
   const { collectionId, context, isLoading: contextLoading, isError: contextError } = useReportContext();
 
-  const { data, isLoading: activitiesLoading } = useQuery(reportActivitiesKey(collectionId), () => getReportActivities(collectionId), {
+  const { data, isLoading: activitiesLoading } = useQuery({
+    queryKey: reportActivitiesKey(collectionId),
+    queryFn: () => getReportActivities(collectionId),
     enabled: !!collectionId && !!context?.submissionId,
   });
   const activities = data?.data ?? [];
@@ -65,7 +67,7 @@ const Select = (): React.ReactElement => {
         )}
 
         <div className="reports-key-results-select__heading">
-          <span className="govuk-caption-l">Enter activity key results</span>
+          <span className="govuk-caption-l">Enter activity results</span>
           <h1 className="govuk-heading-l">Select an activity</h1>
         </div>
 
@@ -83,11 +85,12 @@ const Select = (): React.ReactElement => {
           <GovUKTaskList testId="reports-key-results-list" idPrefix="reports-key-results" items={items} />
         )}
 
-        <p className="govuk-body reports-key-results-select__return">
-          <RouterLink to={ROUTES.reports.tasks(collectionId)} className="govuk-link" data-testid="reports-key-results-select-return">
-            Return to manage your report
-          </RouterLink>
-        </p>
+        <GovUKButton
+          className="govuk-button govuk-button--secondary reports-key-results-select__return"
+          onClick={() => navigate(ROUTES.reports.tasks(collectionId))}
+          data-testid="reports-key-results-select-return">
+          Return to manage your report
+        </GovUKButton>
       </div>
     </GeneralLayout>
   );

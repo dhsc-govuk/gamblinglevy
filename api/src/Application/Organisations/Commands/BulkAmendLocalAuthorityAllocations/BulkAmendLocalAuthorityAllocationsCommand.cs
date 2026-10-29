@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Application.Common.Csv;
+using Application.Common.Funding;
 using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
@@ -26,7 +27,8 @@ public class BulkAmendLocalAuthorityAllocationsCommandHandler(
     IOrganisationRepository organisationRepository,
     IOrgFundingAllocationRepository allocationRepository,
     IAuditLogRepository auditLogRepository,
-    PermissionsService permissionsService)
+    PermissionsService permissionsService,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<BulkAmendLocalAuthorityAllocationsCommand, Either<OrganisationException, BulkImportResult>>
 {
     private static readonly string[] RequiredColumns =
@@ -152,6 +154,8 @@ public class BulkAmendLocalAuthorityAllocationsCommandHandler(
         UserId actorId,
         CancellationToken cancellationToken)
     {
+        var utcNow = dateTimeProvider.GetUtcNow();
+
         var orgLookup = await organisationRepository.FindByOnsCodeAsync(onsCode, cancellationToken);
         if (orgLookup.IsNone)
         {
@@ -160,14 +164,19 @@ public class BulkAmendLocalAuthorityAllocationsCommandHandler(
 
         var org = orgLookup.ValueUnsafe();
 
-        var allocationLookup = await allocationRepository.FindLatestForOrganisationAsync(org.Id, cancellationToken);
-        if (allocationLookup.IsNone)
+        // The CSV has one allocated_amount column and no financial year, so this file amends the year in
+        // progress. AllocationSelector, not FindLatestForOrganisationAsync: the latter orders by CreatedAt and
+        // therefore returns the UPCOMING year for any organisation holding two rows, so a bulk upload would have
+        // silently rewritten next year's allocation and reported it as "Updated" (BLUM-7608).
+        var held = await allocationRepository.ListWithWindowsForOrganisationsAsync([org.Id], cancellationToken);
+        var (current, _) = AllocationSelector.Select(held, utcNow);
+        if (current is null)
         {
             return (BulkImportOutcome.Failed, org.Name, "No existing allocation to amend");
         }
 
-        var allocation = allocationLookup.ValueUnsafe();
-        allocation.UpdateAmount(allocatedAmount, actorId);
+        var allocation = current.Allocation;
+        allocation.UpdateAmount(allocatedAmount, actorId, utcNow);
         await allocationRepository.UpdateAsync(allocation, cancellationToken);
 
         return (BulkImportOutcome.Updated, org.Name, null);

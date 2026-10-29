@@ -1,6 +1,9 @@
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
+using Application.Forms.Audit;
 using Application.Forms.Exceptions;
+using Domain.AuditLogs;
 using Domain.Categories;
 using Domain.Forms;
 using LanguageExt;
@@ -17,7 +20,10 @@ public record CreateSectionCommand : IRequest<Either<FormDesignerException, Form
 
 public class CreateSectionCommandHandler(
     IFormSectionRepository sectionRepository,
-    PermissionsService permissionsService)
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner,
+    PermissionsService permissionsService,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<CreateSectionCommand, Either<FormDesignerException, FormSection>>
 {
     public async Task<Either<FormDesignerException, FormSection>> Handle(
@@ -34,16 +40,34 @@ public class CreateSectionCommandHandler(
         Domain.Users.UserId actorId,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var nextOrder = await sectionRepository.GetMaxDisplayOrderAsync(cancellationToken) + 1;
-            var categoryId = request.CategoryId.HasValue ? new CategoryId(request.CategoryId.Value) : null;
-            var section = FormSection.Create(FormSectionId.New(), request.Title!, nextOrder, actorId, request.Description, categoryId);
-            return await sectionRepository.AddAsync(section, cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            return new FormDesignerUnknownException(exception);
-        }
+        // The change and its audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<FormDesignerException, FormSection>(
+            async token =>
+            {
+                try
+                {
+                    var nextOrder = await sectionRepository.GetMaxDisplayOrderAsync(token) + 1;
+                    var categoryId = request.CategoryId.HasValue ? new CategoryId(request.CategoryId.Value) : null;
+                    var section = FormSection.Create(FormSectionId.New(), request.Title!, nextOrder, actorId, dateTimeProvider.GetUtcNow(), request.Description, categoryId);
+                    var saved = await sectionRepository.AddAsync(section, token);
+
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            actorId,
+                            AuditTargetType.Form,
+                            saved.Id.Value,
+                            AuditAction.FormSectionCreated,
+                            before: null,
+                            after: FormSnapshot.Serialize(saved)),
+                        token);
+
+                    return saved;
+                }
+                catch (Exception exception)
+                {
+                    return new FormDesignerUnknownException(exception);
+                }
+            },
+            cancellationToken);
     }
 }

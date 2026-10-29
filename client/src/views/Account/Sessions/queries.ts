@@ -5,6 +5,9 @@ export interface SessionDto {
   id: string;
   deviceLabel: string;
   ipAddress: string;
+  // Where the session's latest request came from, or null while it has only been used from the sign-in
+  // address (BLUM-7848). A session can move without being refused, so this is how the user spots one that did.
+  lastSeenIpAddress: string | null;
   createdAt: string;
   lastActivityAt: string;
   expiresAt: string;

@@ -5,7 +5,7 @@ import './styles.css';
 
 interface Props extends React.PropsWithChildren {
   breadcrumbs?: { label: string; link: string }[];
-  backLink?: { href: string; onClick?: () => void };
+  backLink?: { href: string; onClick?: () => void; testId?: string };
 }
 
 const organisationNavigation = [
@@ -27,6 +27,7 @@ const OrganisationManagementLayout = ({ children, breadcrumbs = [], backLink }: 
         {backLink && (
           <GovUKBackLink
             href={backLink.href}
+            data-testid={backLink.testId}
             onClick={
               backLink.onClick
                 ? (e) => {

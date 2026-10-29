@@ -1,20 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PageLoading } from '../../../components/GovUKComponents';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../layouts';
 import { ErrorSummary, GovUKButton, GovUKDynamicQuestionRenderer } from '../../../components/GovUKComponents';
 import ReportActivityPageHeader from '../../../components/Global/Reports/ReportActivityPageHeader';
 import { useAuthProvider } from '../../../components/AuthProvider';
 import usePageTitle from '../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../hooks/useErrorSummaryFocus';
 import { reportActivitiesKey, reportActivityFormKey, reportContextKey, reportTaskListKey } from '../../../helpers/queriesParams';
 import { ROUTES } from '../../../helpers/routes';
 import { questionErrorTargetId, validateAnswers } from '../../Activities/answers';
 import { getReportActivityForm, type ReportSection } from '../queries';
 import { saveActivityReport } from '../mutations';
 import { mapReportError } from '../messages';
-import { answersToRecord, reportingPeriodLabel, toFormQuestion } from '../display';
+import { answersToRecord, reportingPeriodValue, toFormQuestion } from '../display';
 import { useReportContext } from '../context';
 import { canEditReport } from '../navigation';
 import { trackEvent } from '../../../helpers/analytics';
@@ -29,7 +28,7 @@ interface Props {
   section: ReportSection;
 }
 
-// One page of the "Enter activity key results" flow (BLUM-6611): the 'results' or 'delivery' questions
+// One page of the "Enter activity results" flow (BLUM-6611): the 'results' or 'delivery' questions
 // for one activity. Continue validates this page only, saves this page's answers as a draft (the backend
 // replaces only these question codes, so saving one page never wipes the other's) and moves on;
 // "Save and come back later" skips required checks (type/range errors still block) and returns to the
@@ -50,8 +49,11 @@ const ActivityReportQuestions = ({ section }: Props): React.ReactElement => {
 
   const { collectionId, context, isLoading: contextLoading, isError: contextError } = useReportContext();
 
-  const formQuery = useQuery(reportActivityFormKey(collectionId, activityId), () => getReportActivityForm(collectionId, activityId), {
-    enabled: !!collectionId && !!context?.submissionId && !!activityId,
+  const formEnabled = !!collectionId && !!context?.submissionId && !!activityId;
+  const formQuery = useQuery({
+    queryKey: reportActivityFormKey(collectionId, activityId),
+    queryFn: () => getReportActivityForm(collectionId, activityId),
+    enabled: formEnabled,
   });
   const form = formQuery.data?.data;
 
@@ -66,31 +68,33 @@ const ActivityReportQuestions = ({ section }: Props): React.ReactElement => {
   // refetch returns identical data. A failed refetch renders the retry state below instead of
   // falling back to the stale cache. The not-stale branch never fires under the default staleTime of 0;
   // it exists so a future staleTime on this query cannot leave the page hanging when a fresh-at-mount
-  // cache means no refetch is coming.
+  // cache means no refetch is coming. It asks whether the query is enabled as well, because react-query v5
+  // reports a disabled query as not stale — and a disabled query holding the pre-save cache is exactly what
+  // this effect exists to refuse.
   useEffect(() => {
     if (!form || hydrated) {
       return;
     }
-    if (formQuery.dataUpdatedAt !== initialDataUpdatedAtRef.current || (!formQuery.isFetching && !formQuery.isStale)) {
+    if (formQuery.dataUpdatedAt !== initialDataUpdatedAtRef.current || (formEnabled && !formQuery.isFetching && !formQuery.isStale)) {
       setHydrated(true);
       setAnswers(answersToRecord(form.answers));
     }
-  }, [form, hydrated, formQuery.dataUpdatedAt, formQuery.isFetching, formQuery.isStale]);
+  }, [form, hydrated, formEnabled, formQuery.dataUpdatedAt, formQuery.isFetching, formQuery.isStale]);
 
   const allQuestions = useMemo(() => (form?.questions ?? []).map(toFormQuestion), [form]);
   const pageQuestions = useMemo(() => allQuestions.filter((question) => question.sectionId === section), [allQuestions, section]);
   const resultsQuestions = useMemo(() => allQuestions.filter((question) => question.sectionId === 'results'), [allQuestions]);
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
-
-  const saveMutation = useMutation(saveActivityReport, {
+  const saveMutation = useMutation({
+    mutationFn: saveActivityReport,
     onSuccess: () => {
-      queryClient.invalidateQueries(reportContextKey(collectionId));
-      queryClient.invalidateQueries(reportTaskListKey(collectionId));
-      queryClient.invalidateQueries(reportActivitiesKey(collectionId));
-      // cancelRefetch: a fetch already in flight (started before this save) would otherwise be reused
-      // by the invalidation and resolve with pre-save data that passes the next page's hydration gate.
-      queryClient.invalidateQueries(reportActivityFormKey(collectionId, activityId), undefined, { cancelRefetch: true });
+      queryClient.invalidateQueries({ queryKey: reportContextKey(collectionId) });
+      queryClient.invalidateQueries({ queryKey: reportTaskListKey(collectionId) });
+      queryClient.invalidateQueries({ queryKey: reportActivitiesKey(collectionId) });
+      // cancelRefetch: a fetch already in flight (started before this save) must not be reused by the
+      // invalidation, or it resolves with pre-save data that passes the next page's hydration gate. That is
+      // react-query's default now; it stays written out because this is the call that broke without it.
+      queryClient.invalidateQueries({ queryKey: reportActivityFormKey(collectionId, activityId) }, { cancelRefetch: true });
     },
   });
 
@@ -207,10 +211,15 @@ const ActivityReportQuestions = ({ section }: Props): React.ReactElement => {
           <PageLoading />
         ) : (
           <>
-            {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+            <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
             <div className="reports-key-results-questions__header">
-              <ReportActivityPageHeader heading={copy.heading} reportingPeriod={reportingPeriodLabel(context)} activityTitle={form.activityTitle} note={copy.note} />
+              <ReportActivityPageHeader
+                heading={copy.heading}
+                reportingPeriod={reportingPeriodValue(context.quarter, context.reportingPeriodStart, context.reportingPeriodEnd)}
+                activityTitle={form.activityTitle}
+                note={copy.note}
+              />
             </div>
 
             <div className="reports-key-results-questions__form">
@@ -219,20 +228,21 @@ const ActivityReportQuestions = ({ section }: Props): React.ReactElement => {
                 answers={answers}
                 errors={errors}
                 onAnswerChange={handleAnswerChange}
+                checkboxSize="small"
                 questionSize={section === 'delivery' ? 'm' : undefined}
                 showQuestionCode={false}
               />
             </div>
 
             <div className="govuk-button-group govuk-!-margin-top-6 reports-key-results-questions__actions">
-              <GovUKButton onClick={handleContinue} isLoading={saveMutation.isLoading} data-testid={`reports-key-results-${section}-continue`}>
+              <GovUKButton onClick={handleContinue} isLoading={saveMutation.isPending} data-testid={`reports-key-results-${section}-continue`}>
                 Continue
               </GovUKButton>
               {canEdit && (
                 <GovUKButton
                   className="govuk-button govuk-button--secondary"
                   onClick={handleSaveDraft}
-                  isLoading={saveMutation.isLoading}
+                  isLoading={saveMutation.isPending}
                   data-testid={`reports-key-results-${section}-save`}>
                   Save and come back later
                 </GovUKButton>

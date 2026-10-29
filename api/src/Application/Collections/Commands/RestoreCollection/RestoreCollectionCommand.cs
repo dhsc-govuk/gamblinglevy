@@ -1,5 +1,6 @@
 using Application.Collections.Audit;
 using Application.Collections.Exceptions;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
@@ -23,7 +24,9 @@ public class RestoreCollectionCommandHandler(
     ICollectionQueries collectionQueries,
     ICollectionRepository collectionRepository,
     IAuditLogRepository auditLogRepository,
-    PermissionsService permissionsService)
+    ITransactionRunner transactionRunner,
+    PermissionsService permissionsService,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<RestoreCollectionCommand, Either<CollectionException, Collection>>
 {
     public async Task<Either<CollectionException, Collection>> Handle(
@@ -50,28 +53,42 @@ public class RestoreCollectionCommandHandler(
 
         var collection = lookup.ValueUnsafe();
 
-        try
+        // Names are unique among live collections only (BLUM-9093), so a live collection may have taken this name
+        // since the delete. Refuse with a 409 rather than let the unique index surface as Unknown.
+        if (await collectionQueries.ExistsByNameAsync(collection.Name, collectionId, cancellationToken))
         {
-            var before = CollectionSnapshot.Serialize(collection);
-
-            collection.Restore(actorId);
-            await collectionRepository.UpdateAsync(collection, cancellationToken);
-
-            await auditLogRepository.AppendAsync(
-                AuditLog.Create(
-                    actorId,
-                    AuditTargetType.Collection,
-                    collection.Id.Value,
-                    AuditAction.CollectionRestored,
-                    before: before,
-                    after: CollectionSnapshot.Serialize(collection)),
-                cancellationToken);
-
-            return collection;
+            return new CollectionNameTakenException(collectionId, collection.Name);
         }
-        catch (Exception exception)
-        {
-            return new CollectionUnknownException(collectionId, exception);
-        }
+
+        // The change and its audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<CollectionException, Collection>(
+            async token =>
+            {
+                try
+                {
+                    var utcNow = dateTimeProvider.GetUtcNow();
+                    var before = CollectionSnapshot.Serialize(collection, utcNow);
+
+                    collection.Restore(actorId, utcNow);
+                    await collectionRepository.UpdateAsync(collection, token);
+
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            actorId,
+                            AuditTargetType.Collection,
+                            collection.Id.Value,
+                            AuditAction.CollectionRestored,
+                            before: before,
+                            after: CollectionSnapshot.Serialize(collection, utcNow)),
+                        token);
+
+                    return collection;
+                }
+                catch (Exception exception)
+                {
+                    return new CollectionUnknownException(collectionId, exception);
+                }
+            },
+            cancellationToken);
     }
 }

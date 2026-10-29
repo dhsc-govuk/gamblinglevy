@@ -1,19 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import { PageLoading } from '../../../../components/GovUKComponents';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
 import { ErrorSummary, GovUKButton, GovUKSummaryCard, SummaryList } from '../../../../components/GovUKComponents';
 import ReportActivityPageHeader from '../../../../components/Global/Reports/ReportActivityPageHeader';
 import { useAuthProvider } from '../../../../components/AuthProvider';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import { reportActivitiesKey, reportActivityFormKey, reportContextKey, reportTaskListKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
 import { getReportActivities, getReportActivityForm } from '../../queries';
 import { completeActivityReport } from '../../mutations';
 import { mapReportError } from '../../messages';
-import { answersToRecord, reportingPeriodLabel, toFormQuestion, visibleQuestionRows } from '../../display';
+import { answersToRecord, reportingPeriodValue, toFormQuestion, visibleQuestionRows } from '../../display';
 import { useReportContext } from '../../context';
 import { canEditReport } from '../../navigation';
 import './styles.css';
@@ -37,7 +36,9 @@ const CheckAnswers = (): React.ReactElement => {
 
   const { collectionId, context, isLoading: contextLoading, isError: contextError } = useReportContext();
 
-  const formQuery = useQuery(reportActivityFormKey(collectionId, activityId), () => getReportActivityForm(collectionId, activityId), {
+  const formQuery = useQuery({
+    queryKey: reportActivityFormKey(collectionId, activityId),
+    queryFn: () => getReportActivityForm(collectionId, activityId),
     enabled: !!collectionId && !!context?.submissionId && !!activityId,
   });
   const form = formQuery.data?.data;
@@ -45,7 +46,9 @@ const CheckAnswers = (): React.ReactElement => {
   // The reportable activities with their per-activity progress, so "Report on another activity" can jump
   // straight to the next one still needing input. Already cached from the Select page the user came
   // through, so this resolves without a visible fetch.
-  const activitiesQuery = useQuery(reportActivitiesKey(collectionId), () => getReportActivities(collectionId), {
+  const activitiesQuery = useQuery({
+    queryKey: reportActivitiesKey(collectionId),
+    queryFn: () => getReportActivities(collectionId),
     enabled: !!collectionId && !!context?.submissionId,
   });
   const activities = activitiesQuery.data?.data ?? [];
@@ -54,16 +57,16 @@ const CheckAnswers = (): React.ReactElement => {
   // This page renders the saved server state — answers were persisted by the results/delivery pages.
   const answers = useMemo(() => answersToRecord(form?.answers ?? []), [form]);
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
-
-  const completeMutation = useMutation(completeActivityReport, {
+  const completeMutation = useMutation({
+    mutationFn: completeActivityReport,
     onSuccess: () => {
-      queryClient.invalidateQueries(reportContextKey(collectionId));
-      queryClient.invalidateQueries(reportTaskListKey(collectionId));
-      queryClient.invalidateQueries(reportActivitiesKey(collectionId));
-      // cancelRefetch: a fetch already in flight (started before this mutation) would otherwise be reused
-      // by the invalidation and resolve with pre-complete data (BLUM-6805).
-      queryClient.invalidateQueries(reportActivityFormKey(collectionId, activityId), undefined, { cancelRefetch: true });
+      queryClient.invalidateQueries({ queryKey: reportContextKey(collectionId) });
+      queryClient.invalidateQueries({ queryKey: reportTaskListKey(collectionId) });
+      queryClient.invalidateQueries({ queryKey: reportActivitiesKey(collectionId) });
+      // cancelRefetch: a fetch already in flight (started before this mutation) must not be reused by the
+      // invalidation, or it resolves with pre-complete data (BLUM-6805). That is react-query's default now; it
+      // stays written out because this is the call that broke without it.
+      queryClient.invalidateQueries({ queryKey: reportActivityFormKey(collectionId, activityId) }, { cancelRefetch: true });
     },
   });
 
@@ -86,6 +89,7 @@ const CheckAnswers = (): React.ReactElement => {
   // (BLUM-7020). `isLoading` (not `isFetching`) so a post-complete background refetch doesn't re-block.
   const loadFailed = formQuery.isError;
   const isLoading = contextLoading || formQuery.isLoading || formQuery.isFetching || activitiesQuery.isLoading || !form;
+  const showAnswers = !loadFailed && !isLoading && !!context;
 
   const selectPath = ROUTES.reports.keyResults(collectionId);
   const resultsPath = ROUTES.reports.keyResultsActivity(collectionId, activityId);
@@ -175,6 +179,21 @@ const CheckAnswers = (): React.ReactElement => {
   return (
     <GeneralLayout backLink={{ href: deliveryPath, testId: 'reports-key-results-check-back' }}>
       <div className="reports-key-results-check">
+        {/* Above the loading gate, and emptied while the answers are hidden, rather than inside the last branch
+            below. That gate re-engages on every refetch (isFetching): an error the user has already been told
+            about is not focused again when the answers come back, while a refusal that lands during the refetch
+            is held until the summary has it to show and takes focus then. */}
+        <ErrorSummary
+          heading="There is a problem"
+          errors={showAnswers ? errorList : []}
+          focusTrigger={submitAttempts}
+          onHandleErrorClick={(targetName) => {
+            const target = pageForError(targetName);
+            if (target) {
+              navigate(target);
+            }
+          }}
+        />
         {loadFailed ? (
           <>
             {/* role="alert" announces the failure when the summary replaces the polite "Loading" status. */}
@@ -195,21 +214,12 @@ const CheckAnswers = (): React.ReactElement => {
           <PageLoading />
         ) : (
           <>
-            {errorList.length > 0 && (
-              <ErrorSummary
-                heading="There is a problem"
-                errors={errorList}
-                onHandleErrorClick={(targetName) => {
-                  const target = pageForError(targetName);
-                  if (target) {
-                    navigate(target);
-                  }
-                }}
-              />
-            )}
-
             <div className="reports-key-results-check__header">
-              <ReportActivityPageHeader heading="Check your answers" reportingPeriod={reportingPeriodLabel(context)} activityTitle={form.activityTitle} />
+              <ReportActivityPageHeader
+                heading="Check your answers"
+                reportingPeriod={reportingPeriodValue(context.quarter, context.reportingPeriodStart, context.reportingPeriodEnd)}
+                activityTitle={form.activityTitle}
+              />
             </div>
 
             {resultsRows.length > 0 && (
@@ -232,8 +242,8 @@ const CheckAnswers = (): React.ReactElement => {
               {canEdit && (
                 <GovUKButton
                   onClick={handleComplete}
-                  isLoading={completeMutation.isLoading && pendingAction === 'complete'}
-                  disabled={completeMutation.isLoading && pendingAction !== 'complete'}
+                  isLoading={completeMutation.isPending && pendingAction === 'complete'}
+                  disabled={completeMutation.isPending && pendingAction !== 'complete'}
                   data-testid="reports-key-results-check-continue">
                   Continue
                 </GovUKButton>
@@ -241,7 +251,7 @@ const CheckAnswers = (): React.ReactElement => {
               {canEdit && (
                 <GovUKButton
                   className="govuk-button govuk-button--secondary"
-                  disabled={completeMutation.isLoading}
+                  disabled={completeMutation.isPending}
                   onClick={() =>
                     navigate(selectPath, {
                       state: { banner: 'progressSaved', name: form?.activityTitle },
@@ -255,8 +265,8 @@ const CheckAnswers = (): React.ReactElement => {
                 <GovUKButton
                   className="govuk-button govuk-button--secondary"
                   onClick={handleReportAnother}
-                  isLoading={completeMutation.isLoading && pendingAction === 'another'}
-                  disabled={completeMutation.isLoading && pendingAction !== 'another'}
+                  isLoading={completeMutation.isPending && pendingAction === 'another'}
+                  disabled={completeMutation.isPending && pendingAction !== 'another'}
                   data-testid="reports-key-results-check-another">
                   Report on another activity
                 </GovUKButton>

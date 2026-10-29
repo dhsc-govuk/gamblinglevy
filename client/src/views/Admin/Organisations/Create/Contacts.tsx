@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ManagementLayout } from '../../../../layouts';
 import { GovUKButton, GovUKFieldset, ErrorSummary, H1, H2, Paragraph } from '../../../../components/GovUKComponents';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import usePageTitle from '../../../../hooks/usePageTitle';
 import { ROUTES } from '../../../../helpers/routes';
 import { validateEmailAddress } from '../../../../helpers/validators';
@@ -41,7 +40,6 @@ const LocalAuthoritiesCreateContacts = (): React.ReactElement => {
   const [submitAttempts, setSubmitAttempts] = useState(0);
 
   usePageTitle(`${Object.keys(errors).length > 0 ? 'Error: ' : ''}Contacts`);
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
 
   useEffect(() => {
     if (!organisationState?.name) {
@@ -57,16 +55,16 @@ const LocalAuthoritiesCreateContacts = (): React.ReactElement => {
     contacts.forEach((contact, index) => {
       const { firstName, lastName } = splitFullName(contact.fullName);
       if (!contact.fullName.trim()) {
-        next[`contacts-${index}-fullName`] = "Enter the contact person's full name";
+        next[`contacts-${index}-fullName`] = "Enter the contact's full name";
       } else if (!firstName || !lastName) {
-        next[`contacts-${index}-fullName`] = "Enter the contact person's first and last name";
+        next[`contacts-${index}-fullName`] = "Enter the contact's first and last name";
       }
-      if (!contact.jobRole) next[`contacts-${index}-jobRole`] = 'Select a job role';
-      if (contact.jobRole === JOB_ROLE_OTHER && !contact.jobRoleTitle.trim()) next[`contacts-${index}-jobRoleTitle`] = 'Enter the job role title';
+      if (!contact.jobRole) next[`contacts-${index}-jobRole`] = "Select a contact's job role";
+      if (contact.jobRole === JOB_ROLE_OTHER && !contact.jobRoleTitle.trim()) next[`contacts-${index}-jobRoleTitle`] = "Enter the contact's job title, for example assistant";
       if (!contact.email.trim()) {
-        next[`contacts-${index}-email`] = "Enter the contact person's email address";
+        next[`contacts-${index}-email`] = "Enter the contact's work email address";
       } else if (!validateEmailAddress(contact.email.trim())) {
-        next[`contacts-${index}-email`] = 'Enter a valid email address';
+        next[`contacts-${index}-email`] = 'Enter the email address in the correct format, like name@example.com';
       }
     });
 
@@ -107,7 +105,7 @@ const LocalAuthoritiesCreateContacts = (): React.ReactElement => {
   return (
     <ManagementLayout backLink={{ href: ROUTES.admin.organisations.create, onClick: goBackToDetails }}>
       <div className="organisations-create-page organisations-create-page--contacts">
-        {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+        <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
         <div className="organisations-create-page__heading">
           <span className="govuk-caption-l">Add organisation</span>
@@ -162,7 +160,7 @@ const LocalAuthoritiesCreateContacts = (): React.ReactElement => {
                     <GovUKFieldset.Input
                       id={`contacts-${index}-jobRoleTitle`}
                       name={`contacts-${index}-jobRoleTitle`}
-                      label="Job role title"
+                      label="What is their job title?"
                       value={contact.jobRoleTitle}
                       error={errors[`contacts-${index}-jobRoleTitle`]}
                       onChange={(e) => updateContact(index, 'jobRoleTitle', e.target.value)}

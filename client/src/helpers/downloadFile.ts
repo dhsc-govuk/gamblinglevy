@@ -11,7 +11,12 @@ export const downloadFile = async (url: string, fallbackName: string): Promise<v
   const match = disposition?.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
   const fileName = match ? decodeURIComponent(match[1]) : fallbackName;
 
-  const objectUrl = window.URL.createObjectURL(response.data);
+  saveBlob(response.data, fileName);
+};
+
+// Hands a blob to the browser as a download with the given name.
+export const saveBlob = (blob: Blob, fileName: string): void => {
+  const objectUrl = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = objectUrl;
   link.download = fileName;

@@ -30,7 +30,14 @@ const PORT = Number(process.env.PORT) || 8080;
 
 // Escape hatch: setting CSP_REPORT_ONLY as an app setting downgrades enforcement to reporting
 // without a redeploy, which turns a bad-policy incident into a restart. Defaults to enforcing.
-const CSP_HEADER_NAME = process.env.CSP_REPORT_ONLY ? 'Content-Security-Policy-Report-Only' : 'Content-Security-Policy';
+//
+// The value is read, not merely its presence: an app setting of `false` is the natural way to
+// write "enforce", and a bare truthiness test would take that truthy string as "report only" and
+// ship the whole policy unenforced. Nothing reports the violations either — no report-uri is
+// configured — so the mode is logged at startup rather than left to be inferred.
+const FALSEY = new Set(['', '0', 'false', 'no', 'off']);
+const CSP_REPORT_ONLY = !FALSEY.has((process.env.CSP_REPORT_ONLY ?? '').trim().toLowerCase());
+const CSP_HEADER_NAME = CSP_REPORT_ONLY ? 'Content-Security-Policy-Report-Only' : 'Content-Security-Policy';
 
 // Part of the server, not of the site. Denied before the existence check so they can never be
 // served, whether directly or through the SPA fallback.
@@ -95,15 +102,18 @@ const serveFile = async (req, res, filePath, pathname) => {
   const isIndexHtml = filePath === INDEX;
   const cacheControl = cacheControlFor(pathname, { isIndexHtml });
 
-  let body = await readFile(filePath);
-  let gzipped = false;
+  const gzipped = COMPRESSIBLE.test(type) && /\bgzip\b/.test(req.headers['accept-encoding'] ?? '');
 
-  if (COMPRESSIBLE.test(type) && /\bgzip\b/.test(req.headers['accept-encoding'] ?? '')) {
-    if (!gzipCache.has(filePath)) {
-      gzipCache.set(filePath, gzipSync(body));
+  // Consulted before the read, not after: reading the file first and then discarding it for the
+  // cached buffer would leave every request paying a full read of the bundle off the App Service
+  // file share, which is the cost the cache exists to remove.
+  let body = gzipped ? gzipCache.get(filePath) : undefined;
+  if (!body) {
+    body = await readFile(filePath);
+    if (gzipped) {
+      body = gzipSync(body);
+      gzipCache.set(filePath, body);
     }
-    body = gzipCache.get(filePath);
-    gzipped = true;
   }
 
   respond(req, res, 200, {
@@ -124,9 +134,22 @@ const handleRequest = async (req, res) => {
     return;
   }
 
+  // Node hands over the raw request target, and only origin-form means anything here: absolute-form
+  // is a proxy request. Concatenating the origin rather than passing a base is what stops
+  // `//assets/app.js` being read as protocol-relative — `new URL(target, base)` takes `assets` for
+  // a hostname, drops the segment, and the asset lands on the SPA fallback as HTML.
+  if (!req.url.startsWith('/')) {
+    respond(req, res, 400, { body: Buffer.from('Bad Request') });
+    return;
+  }
+
   let pathname;
   try {
-    pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+    // Normalise after decoding, not before: `/%2fserver.mjs` decodes to `//server.mjs` and
+    // `/x/../server.mjs` collapses to `/server.mjs`. Both have to reach the deny-list and the
+    // prefix tests below in the shape those are written in, or they simply miss and the file
+    // is served by the resolve-and-stat path underneath.
+    pathname = path.posix.normalize(decodeURIComponent(new URL(`http://localhost${req.url}`).pathname));
   } catch {
     respond(req, res, 400, { body: Buffer.from('Bad Request') });
     return;
@@ -152,7 +175,10 @@ const handleRequest = async (req, res) => {
   // A missing asset must not become HTML: it would fail as a MIME error under nosniff instead
   // of a plain 404. Every other unmatched path is a React Router route, or the redirect URI
   // registered in Entra for a file that does not exist, so it has to reach index.html with 200.
-  if (NO_FALLBACK_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+  // Compared with a trailing slash so the directory itself (`/assets`) is refused alongside its
+  // contents, without `/assetsomething` matching the `/assets/` prefix.
+  const fallbackKey = pathname.endsWith('/') ? pathname : `${pathname}/`;
+  if (NO_FALLBACK_PREFIXES.some((prefix) => fallbackKey.startsWith(prefix))) {
     notFound(req, res);
     return;
   }
@@ -178,5 +204,7 @@ process.on('SIGTERM', () => server.close(() => process.exit(0)));
 // No host argument: Node then binds dual-stack, so the platform's health probe is accepted over
 // either IPv4 or IPv6.
 server.listen(PORT, () => {
-  console.log(`[headers] serving ${ROOT} on ${PORT}; connect-src extras: ${JSON.stringify(origins.connectSrc ?? [])}`);
+  console.log(
+    `[headers] serving ${ROOT} on ${PORT}; CSP ${CSP_REPORT_ONLY ? 'REPORT-ONLY (not enforced)' : 'enforced'}; connect-src extras: ${JSON.stringify(origins.connectSrc ?? [])}`
+  );
 });

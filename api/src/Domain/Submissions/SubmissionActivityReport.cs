@@ -4,7 +4,7 @@ using Domain.Users;
 
 namespace Domain.Submissions;
 
-// Per-activity progress inside the "Enter activity key results" section of one submission (unique per submission +
+// Per-activity progress inside the "Enter activity results" section of one submission (unique per submission +
 // activity). Modelled as a separate aggregate with id-only references and its own repository (the ActivityAnswer
 // precedent) so it persists without tracking conflicts against the Submission graph.
 public class SubmissionActivityReport : IEntity<SubmissionActivityReportId>
@@ -39,7 +39,8 @@ public class SubmissionActivityReport : IEntity<SubmissionActivityReportId>
         SubmissionActivityReportId id,
         SubmissionId submissionId,
         ActivityId activityId,
-        UserId createdBy)
+        UserId createdBy,
+        DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(submissionId, nameof(submissionId));
@@ -52,19 +53,19 @@ public class SubmissionActivityReport : IEntity<SubmissionActivityReportId>
             activityId,
             SubmissionSectionStatus.InProgress,
             createdBy,
-            DateTime.UtcNow,
+            utcNow,
             null);
     }
 
-    public void MarkInProgress()
+    public void MarkInProgress(DateTime utcNow)
     {
         Status = SubmissionSectionStatus.InProgress;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void MarkCompleted()
+    public void MarkCompleted(DateTime utcNow)
     {
         Status = SubmissionSectionStatus.Completed;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 }

@@ -24,6 +24,7 @@ public record UserDetailItem(
     string? OrganisationName,
     Guid? OrganisationId,
     bool MfaEnabled,
+    bool PasswordLoginEnabled,
     UserHistoryEntry? CreatedHistory,
     UserHistoryEntry? LastUpdatedHistory,
     UserHistoryEntry? DeletedHistory);

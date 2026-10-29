@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../layouts';
 import ConfirmationPanel from '../../../components/Global/Activities/ConfirmationPanel';
 import usePageTitle from '../../../hooks/usePageTitle';
@@ -20,11 +20,12 @@ const ActivitiesRestore = (): React.ReactElement => {
 
   const name = (location.state as { name?: string } | null)?.name ?? 'this activity';
 
-  const restoreMutation = useMutation(() => restoreActivity(activityId), {
+  const restoreMutation = useMutation({
+    mutationFn: () => restoreActivity(activityId),
     onSuccess: () => {
-      queryClient.invalidateQueries(activitiesListKey);
-      queryClient.invalidateQueries(activitiesDeletedKey);
-      queryClient.invalidateQueries(activityKey(activityId));
+      queryClient.invalidateQueries({ queryKey: activitiesListKey });
+      queryClient.invalidateQueries({ queryKey: activitiesDeletedKey });
+      queryClient.invalidateQueries({ queryKey: activityKey(activityId) });
       // A restored activity rejoins the main list, so the report's derived state has to be re-read.
       invalidateReportCaches(queryClient, report.collectionId);
       navigate(report.activityLink(ROUTES.activities.deleted), { state: { banner: 'restored', name } });
@@ -45,7 +46,7 @@ const ActivitiesRestore = (): React.ReactElement => {
         onConfirm={() => restoreMutation.mutate()}
         cancelLabel="Go back to deleted activities"
         onCancel={() => navigate(deletedActivitiesPath)}
-        isLoading={restoreMutation.isLoading}
+        isLoading={restoreMutation.isPending}
       />
     </GeneralLayout>
   );

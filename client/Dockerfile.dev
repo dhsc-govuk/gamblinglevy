@@ -1,9 +1,12 @@
-FROM node:16-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
-ARG NPM_ORGANISATION_TOKEN
 COPY ./client/package*.json ./
-COPY ./.npmrc ./
+# No .npmrc: the old client/.npmrc only set a registry auth token for the @blumtechgroup
+# packages, which have been removed, so the file has been deleted too (BLUM-8756) —
+# every remaining dependency is public and needs no token.
 RUN npm install
 COPY ./client .
 EXPOSE 80
-CMD ["npm", "start"]
+# docker-compose maps 3000:80 and sets PORT=80, so bind Vite to 80 and to 0.0.0.0
+# (Vite defaults to localhost, which is unreachable from outside the container).
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "80"]

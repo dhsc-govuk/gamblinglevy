@@ -1,6 +1,6 @@
 import React from 'react';
 import { GovUKFieldset } from '../../../GovUKComponents';
-import type { CollectionFormState, CollectionFormAction } from '../../../../views/Admin/Collections/reducer';
+import { COLLECTION_PURPOSE_MAX_LENGTH, type CollectionFormState, type CollectionFormAction } from '../../../../views/Admin/Collections/reducer';
 import { financialYearOptions, quarterOptions } from '../../../../views/Admin/Collections/display';
 
 interface Props {
@@ -45,50 +45,53 @@ const StepDetails = ({ state, dispatch }: Props): React.ReactElement => {
         hint="Organisations will not see this"
         value={state.purpose}
         error={state.errors['purpose']}
+        maxLength={COLLECTION_PURPOSE_MAX_LENGTH}
         onChange={(event) => dispatch({ type: 'SET_FIELD', field: 'purpose', value: event.target.value })}
         testId="admin-collections-create-purpose"
       />
 
-      <GovUKFieldset.RadioGroup
-        name="admin-collections-create-type"
-        legend="What type of data collection is it?"
-        legendSize="m"
-        value={state.type}
-        error={state.errors['type']}
-        size="small"
-        options={[
-          {
-            value: 'quarterly_report',
-            text: 'Quarterly report',
-            conditionalContent:
-              state.type === 'quarterly_report' ? (
-                <div className="collection-wizard__type-fields">
-                  {renderFinancialYearSelect('admin-collections-create-quarterly-financial-year')}
-                  <GovUKFieldset.Select
-                    id="admin-collections-create-quarter"
-                    name="quarter"
-                    label="Quarter"
-                    value={state.quarter}
-                    options={quarters}
-                    error={state.errors['quarter']}
-                    onChange={(event) => dispatch({ type: 'SET_FIELD', field: 'quarter', value: event.target.value })}
-                    testId="admin-collections-create-quarter"
-                  />
-                </div>
-              ) : undefined,
-          },
-          {
-            value: 'maturity_assessment',
-            text: 'Maturity assessment',
-            conditionalContent:
-              state.type === 'maturity_assessment' ? (
-                <div className="collection-wizard__type-fields">{renderFinancialYearSelect('admin-collections-create-maturity-financial-year')}</div>
-              ) : undefined,
-          },
-        ]}
-        onChange={(value) => dispatch({ type: 'SET_TYPE', value: value as CollectionFormState['type'] })}
-        testId="admin-collections-create-type"
-      />
+      <div className="collection-wizard__type">
+        <GovUKFieldset.RadioGroup
+          name="admin-collections-create-type"
+          legend="What type of data collection is it?"
+          legendSize="m"
+          value={state.type}
+          error={state.errors['type']}
+          size="small"
+          options={[
+            {
+              value: 'quarterly_report',
+              text: 'Quarterly report',
+              conditionalContent:
+                state.type === 'quarterly_report' ? (
+                  <div className="collection-wizard__type-fields">
+                    {renderFinancialYearSelect('admin-collections-create-quarterly-financial-year')}
+                    <GovUKFieldset.Select
+                      id="admin-collections-create-quarter"
+                      name="quarter"
+                      label="Quarter"
+                      value={state.quarter}
+                      options={quarters}
+                      error={state.errors['quarter']}
+                      onChange={(event) => dispatch({ type: 'SET_FIELD', field: 'quarter', value: event.target.value })}
+                      testId="admin-collections-create-quarter"
+                    />
+                  </div>
+                ) : undefined,
+            },
+            {
+              value: 'maturity_assessment',
+              text: 'Maturity assessment',
+              conditionalContent:
+                state.type === 'maturity_assessment' ? (
+                  <div className="collection-wizard__type-fields">{renderFinancialYearSelect('admin-collections-create-maturity-financial-year')}</div>
+                ) : undefined,
+            },
+          ]}
+          onChange={(value) => dispatch({ type: 'SET_TYPE', value: value as CollectionFormState['type'] })}
+          testId="admin-collections-create-type"
+        />
+      </div>
     </>
   );
 };

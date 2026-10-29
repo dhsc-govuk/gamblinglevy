@@ -29,6 +29,22 @@ public class Collection : IEntity<CollectionId>
     public bool? IsSubmittedByAllLas { get; private set; }
     public bool IsDraft { get; private set; }
     public bool IsManuallyClosed { get; private set; }
+
+    // When Close() was called (BLUM-8155). A manual close makes GetStatus() report Closed immediately, independent
+    // of SubmissionDeadline — so the date this window actually closed cannot be derived from the deadline alone
+    // once a manual close happens before the deadline. See CollectionWindowClosedLaNotifier.GetNotificationDueDate.
+    public DateTime? ManuallyClosedAt { get; private set; }
+
+    // When the DHSC closure notification for this window was sent (BLUM-7719). Bookkeeping for the notifier,
+    // not user-facing state: closure itself is derived (GetStatus()), so this is the only record that the
+    // one-off email has already gone out, and the only thing stopping the sweep sending it again on every run.
+    public DateTime? ClosureNotifiedAt { get; private set; }
+
+    // When the "reporting window closed" email to LA users of non-submitting organisations was sent (BLUM-8155).
+    // Same bookkeeping role as ClosureNotifiedAt, but a separate marker: different audience (LA users, not DHSC
+    // admins) and different timing (fires a day after close, not immediately), so the two must be able to be
+    // notified independently.
+    public DateTime? WindowClosedLaNotifiedAt { get; private set; }
     public UserId CreatedBy { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public UserId? UpdatedBy { get; private set; }
@@ -76,6 +92,9 @@ public class Collection : IEntity<CollectionId>
         IsSubmittedByAllLas = isSubmittedByAllLas;
         IsDraft = isDraft;
         IsManuallyClosed = false;
+        ManuallyClosedAt = null;
+        ClosureNotifiedAt = null;
+        WindowClosedLaNotifiedAt = null;
         CreatedBy = createdBy;
         CreatedAt = createdAt;
         UpdatedBy = null;
@@ -98,7 +117,8 @@ public class Collection : IEntity<CollectionId>
         DateOnly? deadline,
         bool? isSubmittedByAllLas,
         UserId createdBy,
-        bool saveAsDraft)
+        bool saveAsDraft,
+        DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(createdBy, nameof(createdBy));
@@ -122,7 +142,7 @@ public class Collection : IEntity<CollectionId>
             isSubmittedByAllLas,
             saveAsDraft,
             createdBy,
-            DateTime.UtcNow);
+            utcNow);
     }
 
     public void UpdateDetails(
@@ -138,9 +158,10 @@ public class Collection : IEntity<CollectionId>
         DateOnly? deadline,
         bool? isSubmittedByAllLas,
         UserId actor,
-        bool saveAsDraft)
+        bool saveAsDraft,
+        DateTime utcNow)
     {
-        EnsureEditable();
+        EnsureEditable(utcNow);
         Guard.NotNull(actor, nameof(actor));
         Guard.NotNullOrEmptyOrWhiteSpace(name, nameof(name));
 
@@ -161,38 +182,56 @@ public class Collection : IEntity<CollectionId>
         SubmissionDeadline = deadline;
         IsSubmittedByAllLas = isSubmittedByAllLas;
         UpdatedBy = actor;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void Publish(UserId actor)
+    public void Publish(UserId actor, DateTime utcNow)
     {
         Guard.NotNull(actor, nameof(actor));
 
         IsDraft = false;
         UpdatedBy = actor;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void RevertToDraft(UserId actor)
+    public void RevertToDraft(UserId actor, DateTime utcNow)
     {
         Guard.NotNull(actor, nameof(actor));
 
         IsDraft = true;
         IsManuallyClosed = false;
+
+        // BLUM-9103: the recorded form versions are kept. Only an Open collection can be reverted, so its window has
+        // opened and its versions are fixed (FollowsLatestFormVersions); publishing it again must not move a report
+        // that has started onto newer questions.
+        ManuallyClosedAt = null;
+
+        // Reopening un-closes the window, so both closure notifications are owed again the next time it closes.
+        ClosureNotifiedAt = null;
+        WindowClosedLaNotifiedAt = null;
         UpdatedBy = actor;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void Close(UserId actor)
+    public void Close(UserId actor, DateTime utcNow)
     {
         Guard.NotNull(actor, nameof(actor));
 
         IsManuallyClosed = true;
+        ManuallyClosedAt = utcNow;
         UpdatedBy = actor;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void SoftDelete(UserId actor)
+    // Records that the closure notification has been sent. Deliberately takes no actor and does NOT touch
+    // UpdatedBy/UpdatedAt: the sender is a background sweep with no human behind it, and stamping the audit
+    // fields would make the next CollectionSnapshot read as an admin edit that never happened.
+    public void MarkClosureNotified(DateTime utcNow)
+    {
+        ClosureNotifiedAt = utcNow;
+    }
+
+    public void SoftDelete(UserId actor, DateTime utcNow)
     {
         Guard.NotNull(actor, nameof(actor));
         if (IsDeleted)
@@ -200,13 +239,13 @@ public class Collection : IEntity<CollectionId>
             throw new CollectionAlreadyDeletedException(Id);
         }
 
-        DeletedAt = DateTime.UtcNow;
+        DeletedAt = utcNow;
         DeletedBy = actor;
         UpdatedBy = actor;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void Restore(UserId actor)
+    public void Restore(UserId actor, DateTime utcNow)
     {
         Guard.NotNull(actor, nameof(actor));
         if (!IsDeleted)
@@ -217,7 +256,7 @@ public class Collection : IEntity<CollectionId>
         DeletedAt = null;
         DeletedBy = null;
         UpdatedBy = actor;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
     public void SetForms(IReadOnlyList<FormModuleId> moduleIds)
@@ -238,7 +277,54 @@ public class Collection : IEntity<CollectionId>
         }
     }
 
-    public void SetLocalAuthorities(IReadOnlyList<OrganisationId> laIds)
+    // BLUM-9103: records, for each form that has no version yet, the version this collection will use. A form that
+    // already has one keeps it here; moving it onto a newer version is FollowLatestFormVersions' job. A form with no
+    // entry in `latestVersions` (a maturity catalogue section, which has no versions) stays unrecorded.
+    public void PinFormVersions(IReadOnlyDictionary<FormModuleId, FormModuleVersionId> latestVersions)
+    {
+        Guard.NotNull(latestVersions, nameof(latestVersions));
+
+        foreach (var form in _forms.Where(f => f.FormModuleVersionId is null))
+        {
+            if (latestVersions.TryGetValue(form.FormModuleId, out var versionId))
+            {
+                form.PinVersion(versionId);
+            }
+        }
+    }
+
+    // BLUM-9103 (the PO's answer 1): a published collection uses the latest published version of each form until its
+    // reporting window opens, so its recorded versions move whenever a newer one is published while it is Scheduled.
+    // From the open date on they are fixed. Draft collections are never moved: publishing one records the latest.
+    // Whether a report has already started (an open date moved back into the future) is the caller's check, because
+    // it needs the submissions.
+    public bool FollowsLatestFormVersions(DateTime utcNow) => GetStatus(utcNow).Equals(CollectionStatus.Scheduled);
+
+    // BLUM-9103: moves each recorded version onto its form's latest version, returning what moved. Used for collections
+    // that FollowsLatestFormVersions, and for every collection while form versioning (BLUM_9087) is off: then every
+    // report reads the live form, which FormModuleVersionSync keeps equal to the latest version, and switching the flag
+    // on must not hand open reports the questions they had before a release. A form with no recorded version is left
+    // alone: linking it is PinFormVersions' (or the backfill's) job.
+    public IReadOnlyList<FormVersionMove> FollowLatestFormVersions(IReadOnlyDictionary<FormModuleId, FormModuleVersionId> latestVersions)
+    {
+        Guard.NotNull(latestVersions, nameof(latestVersions));
+
+        var moves = new List<FormVersionMove>();
+        foreach (var form in _forms)
+        {
+            if (form.FormModuleVersionId is { } recorded
+                && latestVersions.TryGetValue(form.FormModuleId, out var latest)
+                && recorded != latest)
+            {
+                form.PinVersion(latest);
+                moves.Add(new FormVersionMove(form.FormModuleId, recorded, latest));
+            }
+        }
+
+        return moves;
+    }
+
+    public void SetLocalAuthorities(IReadOnlyList<OrganisationId> laIds, DateTime utcNow)
     {
         Guard.NotNull(laIds, nameof(laIds));
 
@@ -251,12 +337,12 @@ public class Collection : IEntity<CollectionId>
         {
             if (!currentIds.Contains(laId))
             {
-                _localAuthorities.Add(CollectionLocalAuthority.Create(CollectionLocalAuthorityId.New(), Id, laId));
+                _localAuthorities.Add(CollectionLocalAuthority.Create(CollectionLocalAuthorityId.New(), Id, laId, utcNow));
             }
         }
     }
 
-    public void SetReminders(IReadOnlyList<(ReminderOffsetType Offset, int Days)> reminders)
+    public void SetReminders(IReadOnlyList<(ReminderOffsetType Offset, int Days)> reminders, DateTime utcNow)
     {
         Guard.NotNull(reminders, nameof(reminders));
 
@@ -264,15 +350,15 @@ public class Collection : IEntity<CollectionId>
 
         foreach (var (offset, days) in reminders)
         {
-            _reminders.Add(CollectionReminder.Create(CollectionReminderId.New(), Id, offset, days));
+            _reminders.Add(CollectionReminder.Create(CollectionReminderId.New(), Id, offset, days, utcNow));
         }
     }
 
     public bool IsDeleted => DeletedAt is not null;
 
-    public CollectionStatus GetStatus()
+    public CollectionStatus GetStatus(DateTime utcNow)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = DateOnly.FromDateTime(utcNow);
 
         if (IsDraft)
         {
@@ -292,13 +378,13 @@ public class Collection : IEntity<CollectionId>
         return CollectionStatus.Open;
     }
 
-    private void EnsureEditable()
+    private void EnsureEditable(DateTime utcNow)
     {
         // CollectionStatus is a ValueObject (reference type) with no operator==, so compare by value via Equals
         // rather than ==, which would be reference equality and never match a freshly-built CollectionStatus.Closed.
-        if (GetStatus().Equals(CollectionStatus.Closed))
+        if (GetStatus(utcNow).Equals(CollectionStatus.Closed))
         {
-            throw new CollectionNotEditableException(Id, GetStatus());
+            throw new CollectionNotEditableException(Id, GetStatus(utcNow));
         }
     }
 

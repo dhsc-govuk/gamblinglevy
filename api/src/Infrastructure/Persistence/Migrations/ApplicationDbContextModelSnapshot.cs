@@ -20,7 +20,7 @@ namespace Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.0")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -34,6 +34,10 @@ namespace Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CategoryId")
                         .HasColumnType("uuid")
                         .HasColumnName("category_id");
+
+                    b.Property<string>("ClosureReason")
+                        .HasColumnType("varchar(500)")
+                        .HasColumnName("closure_reason");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -238,6 +242,12 @@ namespace Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("organisation_id");
 
+                    b.Property<int>("PayloadVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("payload_version");
+
                     b.Property<Guid>("TargetId")
                         .HasColumnType("uuid")
                         .HasColumnName("target_id");
@@ -258,6 +268,9 @@ namespace Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OrganisationId")
                         .HasDatabaseName("ix_audit_logs_organisation_id");
+
+                    b.HasIndex("ActorUserId", "OccurredAt")
+                        .HasDatabaseName("ix_audit_logs_actor_user_id_occurred_at");
 
                     b.HasIndex("TargetType", "TargetId")
                         .HasDatabaseName("ix_audit_logs_target_type_target_id");
@@ -354,6 +367,10 @@ namespace Infrastructure.Persistence.Migrations
                     b.HasIndex("IsActive")
                         .HasDatabaseName("ix_categories_is_active");
 
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_categories_name");
+
                     b.ToTable("categories", (string)null);
                 });
 
@@ -362,6 +379,10 @@ namespace Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<DateTime?>("ClosureNotifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closure_notified_at");
 
                     b.Property<DateTime?>("CollectionOpenDate")
                         .HasColumnType("timestamp with time zone")
@@ -398,6 +419,10 @@ namespace Infrastructure.Persistence.Migrations
                     b.Property<bool?>("IsSubmittedByAllLas")
                         .HasColumnType("boolean")
                         .HasColumnName("is_submitted_by_all_las");
+
+                    b.Property<DateTime?>("ManuallyClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("manually_closed_at");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -436,6 +461,10 @@ namespace Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("updated_by");
 
+                    b.Property<DateTime?>("WindowClosedLaNotifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("window_closed_la_notified_at");
+
                     b.Property<bool?>("WindowSameAsReportingPeriod")
                         .HasColumnType("boolean")
                         .HasColumnName("window_same_as_reporting_period");
@@ -448,7 +477,8 @@ namespace Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Name")
                         .IsUnique()
-                        .HasDatabaseName("ix_collections_name");
+                        .HasDatabaseName("ix_collections_name")
+                        .HasFilter("deleted_at IS NULL");
 
                     b.ToTable("collections", (string)null);
                 });
@@ -463,8 +493,21 @@ namespace Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("form_module_id");
 
+                    b.Property<Guid?>("FormModuleVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("form_module_version_id");
+
+                    b.Property<bool>("IsVersionChosen")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_version_chosen");
+
                     b.HasKey("CollectionId", "FormModuleId")
                         .HasName("pk_collection_forms");
+
+                    b.HasIndex("FormModuleVersionId")
+                        .HasDatabaseName("ix_collection_forms_form_module_version_id");
 
                     b.ToTable("collection_forms", (string)null);
                 });
@@ -529,6 +572,72 @@ namespace Infrastructure.Persistence.Migrations
                     b.ToTable("collection_reminders", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.Collections.CollectionReminderDispatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CollectionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("collection_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("Days")
+                        .HasColumnType("integer")
+                        .HasColumnName("days");
+
+                    b.Property<int>("DhscEmailsSent")
+                        .HasColumnType("integer")
+                        .HasColumnName("dhsc_emails_sent");
+
+                    b.Property<string>("OffsetType")
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("offset_type");
+
+                    b.Property<int>("OutstandingOrganisationCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("outstanding_organisation_count");
+
+                    b.Property<int>("ProviderEmailsSent")
+                        .HasColumnType("integer")
+                        .HasColumnName("provider_emails_sent");
+
+                    b.Property<DateTime>("ScheduledFor")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scheduled_for");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<string>("TriggerType")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("trigger_type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_collection_reminder_dispatches");
+
+                    b.HasIndex("CollectionId")
+                        .HasDatabaseName("ix_collection_reminder_dispatches_collection_id");
+
+                    b.HasIndex("CollectionId", "TriggerType", "ScheduledFor")
+                        .IsUnique()
+                        .HasDatabaseName("ix_collection_reminder_dispatches_collection_id_trigger_type_s")
+                        .HasFilter("trigger_type <> 'manual'");
+
+                    b.HasIndex(new[] { "CollectionId" }, "WindowOpenedClaim")
+                        .IsUnique()
+                        .HasDatabaseName("ix_collection_reminder_dispatches_window_opened")
+                        .HasFilter("trigger_type = 'window_opened'");
+
+                    b.ToTable("collection_reminder_dispatches", (string)null);
+                });
+
             modelBuilder.Entity("Domain.DataCollectionForms.DcFormQuestion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -543,6 +652,10 @@ namespace Infrastructure.Persistence.Migrations
                     b.Property<int>("DisplayOrder")
                         .HasColumnType("integer")
                         .HasColumnName("display_order");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("error_message");
 
                     b.Property<Guid>("FormModuleId")
                         .HasColumnType("uuid")
@@ -568,6 +681,14 @@ namespace Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("varchar(500)")
                         .HasColumnName("label");
+
+                    b.Property<int?>("MaxLength")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_length");
+
+                    b.Property<string>("MaxLengthErrorMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("max_length_error_message");
 
                     b.Property<string>("QuestionType")
                         .IsRequired()
@@ -731,6 +852,48 @@ namespace Infrastructure.Persistence.Migrations
                     b.ToTable("form_modules", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.DataCollectionForms.FormModuleVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("content_hash");
+
+                    b.Property<string>("Definition")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("definition");
+
+                    b.Property<Guid>("FormModuleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("form_module_id");
+
+                    b.Property<DateTime>("PublishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("published_at");
+
+                    b.Property<Guid>("PublishedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("published_by");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("version_number");
+
+                    b.HasKey("Id")
+                        .HasName("pk_form_module_versions");
+
+                    b.HasIndex("FormModuleId", "VersionNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_form_module_versions_form_module_id_version_number");
+
+                    b.ToTable("form_module_versions", (string)null);
+                });
+
             modelBuilder.Entity("Domain.Forms.FormQuestion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -762,6 +925,18 @@ namespace Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("display_order");
 
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("error_message");
+
+                    b.Property<string>("ErrorSubject")
+                        .HasColumnType("text")
+                        .HasColumnName("error_subject");
+
+                    b.Property<string>("ErrorSubjectInline")
+                        .HasColumnType("text")
+                        .HasColumnName("error_subject_inline");
+
                     b.Property<string>("HelpText")
                         .HasColumnType("text")
                         .HasColumnName("help_text");
@@ -786,6 +961,18 @@ namespace Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("varchar(500)")
                         .HasColumnName("label");
+
+                    b.Property<int?>("MaxLength")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_length");
+
+                    b.Property<string>("MaxLengthErrorMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("max_length_error_message");
+
+                    b.Property<int?>("MinValue")
+                        .HasColumnType("integer")
+                        .HasColumnName("min_value");
 
                     b.Property<string>("QuestionType")
                         .IsRequired()
@@ -1176,6 +1363,188 @@ namespace Infrastructure.Persistence.Migrations
                     b.ToTable("locations", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.MaturityAssessments.MaturityAssessment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CollectionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("collection_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("OrganisationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organisation_id");
+
+                    b.Property<string>("ReferenceNumber")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("reference_number");
+
+                    b.Property<string>("SnapshotJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("snapshot_json");
+
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<Guid?>("SubmittedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("submitted_by");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_maturity_assessments");
+
+                    b.HasIndex("ReferenceNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_maturity_assessments_reference_number");
+
+                    b.HasIndex("CollectionId", "OrganisationId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_maturity_assessments_collection_id_organisation_id");
+
+                    b.ToTable("maturity_assessments", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.MaturityAssessments.MaturityAssessmentAnswer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AssessmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assessment_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("QuestionCode")
+                        .IsRequired()
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("question_code");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id")
+                        .HasName("pk_maturity_assessment_answers");
+
+                    b.HasIndex("AssessmentId")
+                        .HasDatabaseName("ix_maturity_assessment_answers_assessment_id");
+
+                    b.HasIndex("AssessmentId", "QuestionCode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_maturity_assessment_answers_assessment_id_question_code");
+
+                    b.ToTable("maturity_assessment_answers", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.MaturityAssessments.MaturityAssessmentSection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AssessmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assessment_id");
+
+                    b.Property<string>("SectionCode")
+                        .IsRequired()
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("section_code");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_maturity_assessment_sections");
+
+                    b.HasIndex("AssessmentId", "SectionCode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_maturity_assessment_sections_assessment_id_section_code");
+
+                    b.ToTable("maturity_assessment_sections", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.MaturityAssessments.MaturityBaselineAnswer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("ImportedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("imported_at");
+
+                    b.Property<Guid>("OrganisationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organisation_id");
+
+                    b.Property<string>("QuestionCode")
+                        .IsRequired()
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("question_code");
+
+                    b.Property<int>("SurveyYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("survey_year");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id")
+                        .HasName("pk_maturity_baseline_answers");
+
+                    b.HasIndex("OrganisationId")
+                        .HasDatabaseName("ix_maturity_baseline_answers_organisation_id");
+
+                    b.HasIndex("OrganisationId", "SurveyYear", "QuestionCode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_maturity_baseline_answers_organisation_id_survey_year_quest");
+
+                    b.ToTable("maturity_baseline_answers", (string)null);
+                });
+
             modelBuilder.Entity("Domain.OrganisationUsers.OrganisationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1404,6 +1773,9 @@ namespace Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_submission_activity_answers");
+
+                    b.HasIndex("ActivityId")
+                        .HasDatabaseName("ix_submission_activity_answers_activity_id");
 
                     b.HasIndex("SubmissionId", "ActivityId")
                         .HasDatabaseName("ix_submission_activity_answers_submission_id_activity_id");
@@ -1635,6 +2007,14 @@ namespace Infrastructure.Persistence.Migrations
                         .HasColumnName("last_activity_at")
                         .HasDefaultValueSql("timezone('utc', now())");
 
+                    b.Property<string>("LastSeenIpAddress")
+                        .HasColumnType("varchar(45)")
+                        .HasColumnName("last_seen_ip_address");
+
+                    b.Property<string>("LastSeenIpAddressHash")
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("last_seen_ip_address_hash");
+
                     b.Property<string>("UserAgentHash")
                         .IsRequired()
                         .HasColumnType("varchar(64)")
@@ -1673,10 +2053,18 @@ namespace Infrastructure.Persistence.Migrations
                         .HasColumnType("varchar(320)")
                         .HasColumnName("email");
 
+                    b.Property<DateTime?>("InvitationHeldAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("invitation_held_at");
+
                     b.Property<Name>("Name")
                         .IsRequired()
                         .HasColumnType("jsonb")
                         .HasColumnName("name");
+
+                    b.Property<bool>("PasswordLoginEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("password_login_enabled");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -1768,6 +2156,12 @@ namespace Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_collection_forms_collections_collection_id");
+
+                    b.HasOne("Domain.DataCollectionForms.FormModuleVersion", null)
+                        .WithMany()
+                        .HasForeignKey("FormModuleVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_collection_forms_form_module_versions_form_module_version_id");
                 });
 
             modelBuilder.Entity("Domain.Collections.CollectionLocalAuthority", b =>
@@ -1788,6 +2182,16 @@ namespace Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_collection_reminders_collections_collection_id");
+                });
+
+            modelBuilder.Entity("Domain.Collections.CollectionReminderDispatch", b =>
+                {
+                    b.HasOne("Domain.Collections.Collection", null)
+                        .WithMany()
+                        .HasForeignKey("CollectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_collection_reminder_dispatches_collections_collection_id");
                 });
 
             modelBuilder.Entity("Domain.DataCollectionForms.DcFormQuestion", b =>
@@ -1818,6 +2222,16 @@ namespace Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_dc_form_sections_form_modules_form_module_id");
+                });
+
+            modelBuilder.Entity("Domain.DataCollectionForms.FormModuleVersion", b =>
+                {
+                    b.HasOne("Domain.DataCollectionForms.FormModule", null)
+                        .WithMany()
+                        .HasForeignKey("FormModuleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_form_module_versions_form_modules_form_module_id");
                 });
 
             modelBuilder.Entity("Domain.Forms.FormQuestionOption", b =>
@@ -1861,6 +2275,16 @@ namespace Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_locations_organisations_organisation_id");
 
                     b.Navigation("Organisation");
+                });
+
+            modelBuilder.Entity("Domain.MaturityAssessments.MaturityAssessmentSection", b =>
+                {
+                    b.HasOne("Domain.MaturityAssessments.MaturityAssessment", null)
+                        .WithMany("Sections")
+                        .HasForeignKey("AssessmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_maturity_assessment_sections_maturity_assessments_assessmen");
                 });
 
             modelBuilder.Entity("Domain.OrganisationUsers.OrganisationUser", b =>
@@ -1938,6 +2362,11 @@ namespace Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Domain.Forms.FormQuestion", b =>
                 {
                     b.Navigation("Options");
+                });
+
+            modelBuilder.Entity("Domain.MaturityAssessments.MaturityAssessment", b =>
+                {
+                    b.Navigation("Sections");
                 });
 
             modelBuilder.Entity("Domain.Submissions.Submission", b =>

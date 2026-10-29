@@ -1,6 +1,6 @@
 import React from 'react';
 import { PageLoading } from '../../../../components/GovUKComponents';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { ManagementLayout } from '../../../../layouts';
 import {
@@ -72,7 +72,7 @@ const CollectionsList = (): React.ReactElement => {
   const banner = ((location.state as BannerState | null) ?? {}).banner;
   const breadcrumbs = collectionBreadcrumbs();
 
-  const { data, isLoading } = useQuery(collectionsListKey, getCollections);
+  const { data, isLoading } = useQuery({ queryKey: collectionsListKey, queryFn: getCollections });
   const rows = data?.data ?? [];
 
   return (
@@ -110,6 +110,7 @@ const CollectionsList = (): React.ReactElement => {
           <GovUKInsetText data-testid="admin-collections-list-empty">You have not added any data collections. Once you have set one up, it will appear here.</GovUKInsetText>
         ) : (
           <GovUKTable<CollectionSummaryDto>
+            label="Your data collections"
             testId="admin-collections-list"
             data={rows}
             columns={columns}

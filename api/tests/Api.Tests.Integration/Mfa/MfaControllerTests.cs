@@ -48,6 +48,11 @@ public class MfaControllerTests : BaseIntegrationTest, IAsyncLifetime
         setup.QrCodeUri.Should().StartWith("otpauth://totp/");
         setup.QrCodeUri.Should().Contain("Gambling%20Levy%20Portal");
         setup.ManualEntryKey.Should().NotBeNullOrEmpty();
+
+        // The account the authenticator entry is labelled with comes from the signed-in principal's email
+        // claim. InMemoryIdentityService used to answer that question from a constant, so this assertion
+        // could not tell "labelled with the caller" apart from "labelled with the main admin, whoever called".
+        setup.QrCodeUri.Should().Contain(Uri.EscapeDataString(AdminsData.MainAdmin.Email));
     }
 
     [Fact]

@@ -59,7 +59,8 @@ public class Organisation : IEntity<OrganisationId>
         Region region,
         OrgType type,
         string eCode,
-        OnboardingStatus onboardingStatus)
+        OnboardingStatus onboardingStatus,
+        DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNullOrEmptyOrWhiteSpace(name, nameof(name));
@@ -68,7 +69,7 @@ public class Organisation : IEntity<OrganisationId>
         Guard.NotNullOrEmptyOrWhiteSpace(eCode, nameof(eCode));
         Guard.NotNull(onboardingStatus, nameof(onboardingStatus));
 
-        return new Organisation(id, name, onsCode, region, type, eCode, onboardingStatus, DateTime.UtcNow, null);
+        return new Organisation(id, name, onsCode, region, type, eCode, onboardingStatus, utcNow, null);
     }
 
     public void UpdateDetails(
@@ -76,7 +77,8 @@ public class Organisation : IEntity<OrganisationId>
         Region region,
         OrgType type,
         string eCode,
-        string? onsCode)
+        string? onsCode,
+        DateTime utcNow)
     {
         Guard.NotNullOrEmptyOrWhiteSpace(name, nameof(name));
         Guard.NotNull(region, nameof(region));
@@ -88,24 +90,24 @@ public class Organisation : IEntity<OrganisationId>
         Type = type;
         ECode = eCode;
         OnsCode = onsCode;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void MarkActive()
+    public void MarkActive(DateTime utcNow)
     {
         OnboardingStatus = OnboardingStatus.Active;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void MarkSuspended()
+    public void MarkSuspended(DateTime utcNow)
     {
         OnboardingStatus = OnboardingStatus.Suspended;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void MarkInvited()
+    public void MarkInvited(DateTime utcNow)
     {
         OnboardingStatus = OnboardingStatus.Invited;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 }

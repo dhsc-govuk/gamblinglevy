@@ -1,3 +1,5 @@
+using Application.Common.Funding;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
 using Application.Organisations.Audit;
@@ -30,7 +32,9 @@ public class UpdateLocalAuthorityCommandHandler(
     IOrganisationRepository organisationRepository,
     IOrgFundingAllocationRepository allocationRepository,
     IAuditLogRepository auditLogRepository,
-    PermissionsService permissionsService)
+    ITransactionRunner transactionRunner,
+    PermissionsService permissionsService,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<UpdateLocalAuthorityCommand, Either<OrganisationException, UpdateLocalAuthorityResult>>
 {
     public async Task<Either<OrganisationException, UpdateLocalAuthorityResult>> Handle(
@@ -70,6 +74,8 @@ public class UpdateLocalAuthorityCommandHandler(
         UserId actorId,
         CancellationToken cancellationToken)
     {
+        var utcNow = dateTimeProvider.GetUtcNow();
+
         var newName = request.Name!.Trim();
         var newOnsCode = string.IsNullOrWhiteSpace(request.OnsCode) ? null : request.OnsCode!.Trim();
         // Non-null by validator, which rejects an empty E-code before the handler runs.
@@ -102,37 +108,58 @@ public class UpdateLocalAuthorityCommandHandler(
             }
         }
 
-        var currentAllocation = await allocationRepository.FindLatestForOrganisationAsync(organisation.Id, cancellationToken);
-        var beforeAllocation = currentAllocation.IsSome ? currentAllocation.ValueUnsafe() : null;
-        var before = OrganisationSnapshot.Serialize(organisation, beforeAllocation);
+        // AllocationSelector, not FindLatestForOrganisationAsync: an organisation now holds a row per financial
+        // year, and "latest by CreatedAt" is the UPCOMING year for any organisation created through the
+        // two-allocation path - so the audit snapshot would name the wrong year's money (BLUM-7608).
+        var held = await allocationRepository.ListWithWindowsForOrganisationsAsync([organisation.Id], cancellationToken);
+        var (currentAllocation, nextAllocation) = AllocationSelector.Select(held, utcNow);
+        var beforeAllocation = currentAllocation?.Allocation;
+        var before = OrganisationSnapshot.Serialize(
+            organisation,
+            beforeAllocation,
+            currentAllocation?.Window,
+            nextAllocation?.Allocation,
+            nextAllocation?.Window);
 
-        try
-        {
-            organisation.UpdateDetails(
-                newName,
-                Region.From(request.Region!),
-                OrgType.From(request.Type!),
-                newECode,
-                newOnsCode);
+        // The change and its audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<OrganisationException, UpdateLocalAuthorityResult>(
+            async token =>
+            {
+                try
+                {
+                    organisation.UpdateDetails(
+                        newName,
+                        Region.From(request.Region!),
+                        OrgType.From(request.Type!),
+                        newECode,
+                        newOnsCode,
+                        utcNow);
 
-            var saved = await organisationRepository.UpdateAsync(organisation, cancellationToken);
+                    var saved = await organisationRepository.UpdateAsync(organisation, token);
 
-            await auditLogRepository.AppendAsync(
-                AuditLog.Create(
-                    actorId,
-                    AuditTargetType.Organisation,
-                    saved.Id.Value,
-                    AuditAction.OrganisationUpdated,
-                    before,
-                    OrganisationSnapshot.Serialize(saved, beforeAllocation),
-                    organisationId: saved.Id),
-                cancellationToken);
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            actorId,
+                            AuditTargetType.Organisation,
+                            saved.Id.Value,
+                            AuditAction.OrganisationUpdated,
+                            before,
+                            OrganisationSnapshot.Serialize(
+                                saved,
+                                beforeAllocation,
+                                currentAllocation?.Window,
+                                nextAllocation?.Allocation,
+                                nextAllocation?.Window),
+                            organisationId: saved.Id),
+                        token);
 
-            return new UpdateLocalAuthorityResult(saved, beforeAllocation);
-        }
-        catch (Exception exception)
-        {
-            return new OrganisationUnknownException(organisation.Id, exception);
-        }
+                    return new UpdateLocalAuthorityResult(saved, beforeAllocation);
+                }
+                catch (Exception exception)
+                {
+                    return new OrganisationUnknownException(organisation.Id, exception);
+                }
+            },
+            cancellationToken);
     }
 }

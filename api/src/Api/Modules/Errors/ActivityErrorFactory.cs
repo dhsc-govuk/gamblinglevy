@@ -33,6 +33,18 @@ public static class ActivityErrorFactory
             };
         }
 
+        if (error is ActivityNameRequiredException nameRequired)
+        {
+            return new ObjectResult(new
+            {
+                error = "ACTIVITY_NAME_REQUIRED",
+                message = nameRequired.Message,
+            })
+            {
+                StatusCode = StatusCodes.Status422UnprocessableEntity,
+            };
+        }
+
         return new ObjectResult(error.Message)
         {
             StatusCode = error switch

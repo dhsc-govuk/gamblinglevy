@@ -1,5 +1,8 @@
+using System.Text.Json;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Submissions.Exceptions;
+using Domain.AuditLogs;
 using Domain.Submissions;
 using LanguageExt;
 using MediatR;
@@ -22,7 +25,10 @@ public record SaveFundingActualsCommand : IRequest<Either<SubmissionException, S
 
 public class SaveFundingActualsCommandHandler(
     FundingSpendContextResolver resolver,
-    ISubmissionSpendEntryRepository spendRepository)
+    ISubmissionSpendEntryRepository spendRepository,
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<SaveFundingActualsCommand, Either<SubmissionException, SubmissionSectionStatus>>
 {
     public async Task<Either<SubmissionException, SubmissionSectionStatus>> Handle(
@@ -40,8 +46,7 @@ public class SaveFundingActualsCommandHandler(
         FundingSpendContext context,
         CancellationToken cancellationToken)
     {
-        var reportableIds = context.ReportableActivities.Select(a => a.Id).ToList();
-        var reportableSet = reportableIds.Select(id => id.Value).ToHashSet();
+        var reportableSet = context.ActualSpendActivities.Select(a => a.Id.Value).ToHashSet();
 
         var activityAmounts = new Dictionary<Guid, decimal?>();
         foreach (var input in request.Activities)
@@ -53,35 +58,48 @@ public class SaveFundingActualsCommandHandler(
         }
 
         var errors = FundingSpendValidator.ValidateActuals(
-            reportableIds, activityAmounts, request.OtherAmount, enforceRequired: !request.SaveAsDraft);
+            context.ActualSpendSubjects, activityAmounts, request.OtherAmount, enforceRequired: !request.SaveAsDraft);
         if (errors.Count > 0)
         {
             return new FundingSpendInvalidException(context.Submission.Id, errors);
         }
 
-        try
-        {
-            var entries = new List<SubmissionSpendEntry>();
-            foreach (var id in reportableIds)
+        // The write, the section status and the audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<SubmissionException, SubmissionSectionStatus>(
+            async token =>
             {
-                if (activityAmounts.TryGetValue(id.Value, out var amount) && amount is decimal value)
+                try
                 {
-                    entries.Add(SubmissionSpendEntry.Actual(SubmissionSpendEntryId.New(), context.Submission.Id, id, value, context.ActorId));
+                    var entries = FundingSpendEntries.Actuals(context, activityAmounts, request.OtherAmount, dateTimeProvider.GetUtcNow());
+                    await spendRepository.ReplaceForSubmissionAsync(context.Submission.Id, SpendEntryKind.Actual, entries, token);
+
+                    var status = await resolver.RecomputeDraftStatusAsync(context, token);
+
+                    // Counts only — never the amounts entered.
+                    var after = JsonSerializer.Serialize(new
+                    {
+                        module = SubmissionModules.FundingSpent,
+                        lineCount = entries.Count,
+                        saveAsDraft = request.SaveAsDraft,
+                    });
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            context.ActorId,
+                            AuditTargetType.Submission,
+                            context.Submission.Id.Value,
+                            AuditAction.SubmissionFundingActualsSaved,
+                            before: null,
+                            after,
+                            organisationId: context.OrganisationId),
+                        token);
+
+                    return status;
                 }
-            }
-
-            if (request.OtherAmount is decimal other)
-            {
-                entries.Add(SubmissionSpendEntry.Actual(SubmissionSpendEntryId.New(), context.Submission.Id, null, other, context.ActorId));
-            }
-
-            await spendRepository.ReplaceForSubmissionAsync(context.Submission.Id, SpendEntryKind.Actual, entries, cancellationToken);
-
-            return await resolver.RecomputeDraftStatusAsync(context, cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            return new SubmissionUnknownException(context.Submission.Id, exception);
-        }
+                catch (Exception exception)
+                {
+                    return new SubmissionUnknownException(context.Submission.Id, exception);
+                }
+            },
+            cancellationToken);
     }
 }

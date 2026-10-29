@@ -1,7 +1,7 @@
 import React from 'react';
 import { PageLoading } from '../../../../../components/GovUKComponents';
 import { useParams } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { UsersListView } from '../../../../../components/Global/OrganisationUsers';
 import { localAuthorityKey } from '../../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../../helpers/routes';
@@ -11,11 +11,7 @@ import { getLocalAuthority } from '../../queries';
 const LocalAuthorityUsersList = (): React.ReactElement => {
   const { organisationId = '' } = useParams<{ organisationId: string }>();
 
-  const { data, isLoading } = useQuery(
-    localAuthorityKey(organisationId),
-    () => getLocalAuthority(organisationId),
-    { enabled: !!organisationId },
-  );
+  const { data, isLoading } = useQuery({ queryKey: localAuthorityKey(organisationId), queryFn: () => getLocalAuthority(organisationId), enabled: !!organisationId });
   const org = data?.data;
 
   if (isLoading || !org) {

@@ -1,0 +1,35 @@
+/* Shell of the sign-in journey (layouts/SignInJourney). */
+
+.sign-in-journey {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #ffffff;
+}
+
+.sign-in-journey__main {
+  flex-grow: 1;
+  background-color: #ffffff;
+}
+
+.sign-in-journey__service-banner {
+  background-color: #f4f8fb;
+  padding: 15px 0;
+  border-bottom: 2px solid #8eb8dc;
+}
+
+.sign-in-journey__service-name {
+  font-family: "GDS Transport", arial, sans-serif;
+  font-weight: 700;
+  font-size: 19px;
+  color: #0b0c0c;
+}
+
+/* Moved from styles/govuk-refreshed-branding.css, where it was scoped to .signin-page and .mfa-page. Every page
+   of the journey renders GovUKHeader, so this one rule now gives them all the same bar. */
+.sign-in-journey .govuk-header {
+  background: #1d70b8 !important;
+  background-color: #1d70b8 !important;
+  border-bottom: none !important;
+  padding: 10px 0 !important;
+}

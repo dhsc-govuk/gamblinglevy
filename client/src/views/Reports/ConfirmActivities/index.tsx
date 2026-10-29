@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { PageLoading } from '../../../components/GovUKComponents';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../layouts';
 import usePageTitle from '../../../hooks/usePageTitle';
 import { reportContextKey, reportTaskListKey } from '../../../helpers/queriesParams';
@@ -22,10 +22,11 @@ const ConfirmActivities = (): React.ReactElement => {
 
   const { collectionId, context, isLoading, isError } = useReportContext();
 
-  const confirmMutation = useMutation(confirmActivities, {
+  const confirmMutation = useMutation({
+    mutationFn: confirmActivities,
     onSuccess: () => {
-      queryClient.invalidateQueries(reportContextKey(collectionId));
-      queryClient.invalidateQueries(reportTaskListKey(collectionId));
+      queryClient.invalidateQueries({ queryKey: reportContextKey(collectionId) });
+      queryClient.invalidateQueries({ queryKey: reportTaskListKey(collectionId) });
       navigate(ROUTES.reports.tasks(collectionId), { state: { banner: 'activitiesConfirmed' } });
     },
     onError: (error) => {
@@ -60,7 +61,7 @@ const ConfirmActivities = (): React.ReactElement => {
       reportCollectionId={collectionId}
       backLink={{ href: ROUTES.reports.tasks(collectionId), testId: 'reports-confirm-activities-back' }}
       onConfirm={() => confirmMutation.mutate(collectionId)}
-      confirmLoading={confirmMutation.isLoading}
+      confirmLoading={confirmMutation.isPending}
       confirmError={confirmError}
       confirmAttempts={confirmAttempts}
     />

@@ -1,0 +1,23 @@
+/* Adding the access-level filter gives this row three controls, and GovUKTable then sizes each at
+   a third of the row — which on a page inside OrganisationManagementLayout's
+   govuk-grid-column-three-quarters leaves the search box around 160px, just as email became searchable.
+   Two columns instead: the DOM order (search, sort, access level) falls into two rows on its own, so there
+   is no grid-column spanning or positional selector to keep in step with the component's markup, and the
+   search box keeps the flexible track. Same idiom as Admin/Users/List.
+   Track two is minmax(191px, max-content) rather than a pinned width so a user text-spacing stylesheet
+   (WCAG 1.4.12) widens the select instead of clipping its chosen option, with the growth coming out of the
+   1fr track rather than overflowing the page. */
+.organisation-admin-users-list .govuk-table-filter {
+  align-items: end;
+  column-gap: 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(191px, max-content);
+  margin-bottom: 30px;
+  row-gap: 20px;
+}
+
+@media (max-width: 40.0525em) {
+  .organisation-admin-users-list .govuk-table-filter {
+    grid-template-columns: 1fr;
+  }
+}

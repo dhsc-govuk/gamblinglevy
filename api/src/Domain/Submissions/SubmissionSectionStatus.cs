@@ -10,7 +10,7 @@ public static class SubmissionSectionStatuses
 }
 
 // Progress of one task-list section of a quarterly-report submission (and, reused, of one activity's report inside
-// the "Enter activity key results" section): Not started → In progress (any draft answers saved) → Completed.
+// the "Enter activity results" section): Not started → In progress (any draft answers saved) → Completed.
 public class SubmissionSectionStatus : ValueObject
 {
     private string Value { get; }

@@ -1,20 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { httpMessageOf, httpStatusOf } from '../../../helpers/httpErrors';
 import { GeneralLayout } from '../../../layouts';
-import {
-  GovUKFieldset,
-  GovUKButton,
-  ErrorSummary,
-  H1,
-} from '../../GovUKComponents';
-import {
-  EnumUserRole,
-  ROLE_LABELS,
-  laAdminAssignableRoles,
-} from '../../AuthProvider';
+import { GovUKFieldset, GovUKButton, ErrorSummary, H1 } from '../../GovUKComponents';
+import { EnumUserRole, ROLE_LABELS, laAdminAssignableRoles } from '../../AuthProvider';
 import usePageTitle from '../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../hooks/useErrorSummaryFocus';
 import { organisationUsersListKey } from '../../../helpers/queriesParams';
 import { validateEmailAddress } from '../../../helpers/validators';
 import { createOrganisationUser } from './api';
@@ -43,15 +34,7 @@ export interface UserCreateViewProps {
   testIdPrefix: string;
 }
 
-const UserCreateView = ({
-  organisationId,
-  pageTitle,
-  heading,
-  breadcrumbs,
-  backLinkHref,
-  successNavigateFn,
-  testIdPrefix,
-}: UserCreateViewProps): React.ReactElement => {
+const UserCreateView = ({ organisationId, pageTitle, heading, breadcrumbs, backLinkHref, successNavigateFn, testIdPrefix }: UserCreateViewProps): React.ReactElement => {
   usePageTitle(pageTitle);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -63,32 +46,28 @@ const UserCreateView = ({
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitAttempts, setSubmitAttempts] = useState(0);
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
-
-  const { mutate, isLoading } = useMutation(
-    (payload: { firstName: string; lastName: string; email: string; role: string }) =>
+  const { mutate, isPending } = useMutation({
+    mutationFn: (payload: { firstName: string; lastName: string; email: string; role: string }) =>
       createOrganisationUser(organisationId, {
         ...payload,
         status: 'active',
       }),
-    {
-      onSuccess: (response) => {
-        queryClient.invalidateQueries(organisationUsersListKey(organisationId));
-        navigate(successNavigateFn(response.data.id));
-      },
-      onError: (error: any) => {
-        const status = error?.response?.status;
-        const message = error?.response?.data?.toString() ?? 'Could not create the user. Try again.';
-        if (status === 409) {
-          setErrors({ email: 'A user with this email address already exists.' });
-        } else if (status === 422) {
-          setErrors({ submit: message });
-        } else {
-          setErrors({ submit: message });
-        }
-      },
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: organisationUsersListKey(organisationId) });
+      navigate(successNavigateFn(response.data.id));
     },
-  );
+    onError: (error) => {
+      const status = httpStatusOf(error);
+      const message = httpMessageOf(error) ?? 'Could not create the user. Try again.';
+      if (status === 409) {
+        setErrors({ email: 'A user with this email address already exists.' });
+      } else if (status === 422) {
+        setErrors({ submit: message });
+      } else {
+        setErrors({ submit: message });
+      }
+    },
+  });
 
   const validate = (): FormErrors => {
     const next: FormErrors = {};
@@ -97,7 +76,7 @@ const UserCreateView = ({
     if (!email.trim()) {
       next.email = 'Enter the user’s email address';
     } else if (!validateEmailAddress(email.trim())) {
-      next.email = 'Enter a valid email address';
+      next.email = 'Enter an email address in the correct format, like name@example.com';
     }
     if (!role) next.role = 'Select a role for the user';
     return next;
@@ -124,9 +103,7 @@ const UserCreateView = ({
   return (
     <GeneralLayout breadcrumbs={breadcrumbs} backLink={{ href: backLinkHref }}>
       <div style={{ paddingTop: '20px' }}>
-        {errorList.length > 0 && (
-          <ErrorSummary heading="There is a problem" errors={errorList} />
-        )}
+        <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
         <H1>{heading}</H1>
 
@@ -163,23 +140,9 @@ const UserCreateView = ({
             autoComplete="email"
             required
           />
-          <GovUKFieldset.Select
-            id="role"
-            name="role"
-            label="Role"
-            value={role}
-            options={roleOptions}
-            onChange={(e) => setRole(e.target.value)}
-            error={errors.role}
-            required
-          />
+          <GovUKFieldset.Select id="role" name="role" label="Role" value={role} options={roleOptions} onChange={(e) => setRole(e.target.value)} error={errors.role} required />
 
-          <GovUKButton
-            type="submit"
-            isLoading={isLoading}
-            disabled={isLoading}
-            data-testid={`${testIdPrefix}-create-submit`}
-          >
+          <GovUKButton type="submit" isLoading={isPending} disabled={isPending} data-testid={`${testIdPrefix}-create-submit`}>
             Create user
           </GovUKButton>
         </form>

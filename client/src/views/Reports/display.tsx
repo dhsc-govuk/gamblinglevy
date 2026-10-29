@@ -7,7 +7,10 @@ import type { SubmissionStatus } from '../Admin/Reports/queries';
 import { resolveAnswerDisplay } from '../Activities/answers';
 import { renderAnswerDisplay } from '../Activities/display';
 import type { CollectionType } from '../Admin/Collections/queries';
-import type { MyCollectionSummaryDto, QuarterlyReportContextDto, ReportAnswerDto, ReportProgressStatus, ReportQuestionDto } from './queries';
+import { ROUTES } from '../../helpers/routes';
+import { financialYearEndYear } from '../../helpers/financialYear';
+import { maturityAssessmentName } from '../MaturityAssessment/names';
+import type { MyCollectionSummaryDto, ReportAnswerDto, ReportProgressStatus, ReportQuestionDto } from './queries';
 
 // Shared quarterly-report presentation/copy helpers — single source of truth for the reporting-period
 // label, status-to-task-list mappings and notification-banner copy used across the report pages.
@@ -21,16 +24,23 @@ export { formatGovUkDate, formatDateTime, typeLabel } from '../Admin/Collections
 // separate Admin folders.
 export { reportingPeriodValue } from '../Admin/Reports/display';
 
-// "Quarter 1 (1 April 2026 to 30 June 2026)".
-export const reportingPeriodLabel = (context: QuarterlyReportContextDto): string =>
-  `Quarter ${context.quarter} (${formatGovUkDate(context.reportingPeriodStart)} to ${formatGovUkDate(context.reportingPeriodEnd)})`;
-
 // "Quarterly report for Quarter 3 (1 July 2026 to 30 September 2026)" — the report's display name on the LA
 // submission-history list and detail, composed to match the designs regardless of the admin-entered collection name.
 export const reportName = (quarter: number | null, periodStart: string | null, periodEnd: string | null): string => {
   const period = `${formatGovUkDate(periodStart)} to ${formatGovUkDate(periodEnd)}`;
   return quarter == null ? `Quarterly report (${period})` : `Quarterly report for Quarter ${quarter} (${period})`;
 };
+
+// A collection row's display name on the LA screens, by type (BLUM-7859): a maturity window is "Maturity assessment
+// for {end year}", a quarterly one the reportName above.
+export const collectionDisplayName = (collection: Pick<MyCollectionSummaryDto, 'type' | 'quarter' | 'reportingPeriodStart' | 'reportingPeriodEnd' | 'financialYear'>): string =>
+  collection.type === 'maturity_assessment'
+    ? maturityAssessmentName(financialYearEndYear(collection.financialYear ?? ''))
+    : reportName(collection.quarter, collection.reportingPeriodStart, collection.reportingPeriodEnd);
+
+// Where an open, unsubmitted row on the landing takes the user: each type has its own collection-scoped flow.
+export const collectionAuthoringHref = (collection: Pick<MyCollectionSummaryDto, 'type' | 'collectionId'>): string =>
+  collection.type === 'maturity_assessment' ? ROUTES.reports.maturity(collection.collectionId) : ROUTES.reports.quarterly(collection.collectionId);
 
 // "17 January 2027, 14:23" — the submission detail's "Submitted on" format per the design (Figma 420-80777):
 // 24-hour clock with a comma, unlike the shared formatDateTime's "at 2:05pm" used on the DHSC screens.
@@ -114,7 +124,7 @@ export const reportHistoryRows = (collections: MyCollectionSummaryDto[]): Report
     .filter((collection) => collection.submittedAt != null || collection.submissionStatus === 'overdue')
     .map((collection) => ({
       collectionId: collection.collectionId,
-      displayName: reportName(collection.quarter, collection.reportingPeriodStart, collection.reportingPeriodEnd),
+      displayName: collectionDisplayName(collection),
       type: collection.type,
       status: collection.submissionStatus,
       reportingPeriodStart: collection.reportingPeriodStart ?? '',
@@ -163,6 +173,9 @@ export const toFormQuestion = (question: ReportQuestionDto): FormQuestionDto => 
   minValue: question.minValue,
   maxValue: question.maxValue,
   suffix: question.suffix,
+  errorMessage: question.errorMessage,
+  maxLength: question.maxLength,
+  maxLengthErrorMessage: question.maxLengthErrorMessage,
 });
 
 export const answersToRecord = (answers: ReportAnswerDto[]): Record<string, string> =>

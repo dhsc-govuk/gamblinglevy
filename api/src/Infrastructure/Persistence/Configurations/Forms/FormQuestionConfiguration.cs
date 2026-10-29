@@ -27,6 +27,10 @@ public class FormQuestionConfiguration : IEntityTypeConfiguration<FormQuestion>
         builder.Property(x => x.DisplayOrder).IsRequired();
         builder.Property(x => x.ConditionalQuestionCode).HasColumnType("varchar(100)");
         builder.Property(x => x.ConditionalValue).HasColumnType("varchar(255)");
+        builder.Property(x => x.ErrorMessage).HasColumnType("text");
+        builder.Property(x => x.MaxLengthErrorMessage).HasColumnType("text");
+        builder.Property(x => x.ErrorSubject).HasColumnType("text");
+        builder.Property(x => x.ErrorSubjectInline).HasColumnType("text");
         builder.Property(x => x.CreatedBy).HasConversion(x => x.Value, x => new UserId(x));
         builder.Property(x => x.CreatedAt).HasConversion(new DateTimeUtcConverter());
         builder.Property(x => x.UpdatedAt).HasConversion(new DateTimeUtcConverter());

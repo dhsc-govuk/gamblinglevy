@@ -16,6 +16,7 @@ public class UserProfile
     public UserRole? Role { get; private set; }
     public DateTime? UpdatedAt { get; private set; }
     public Option<OrganisationId> OrganisationId { get; private set; }
+    public Option<string> OrganisationName { get; private set; }
     public Option<LocationId> LocationId { get; private set; }
     public Option<OnboardingStatus> OrganisationStatus { get; private set; }
 
@@ -27,6 +28,7 @@ public class UserProfile
         UserRole role,
         DateTime? updatedAt,
         Option<OrganisationId> organisationId,
+        Option<string> organisationName,
         Option<LocationId> locationId,
         Option<OnboardingStatus> organisationStatus)
     {
@@ -39,6 +41,7 @@ public class UserProfile
             Role = role,
             UpdatedAt = updatedAt,
             OrganisationId = organisationId,
+            OrganisationName = organisationName,
             LocationId = locationId,
             OrganisationStatus = organisationStatus
         };
@@ -54,6 +57,7 @@ public class UserProfile
             user.Role,
             user.UpdatedAt,
             Option<OrganisationId>.None,
+            Option<string>.None,
             Option<LocationId>.None,
             Option<OnboardingStatus>.None);
     }
@@ -69,6 +73,7 @@ public class UserProfile
             user.User.Role,
             user.User.UpdatedAt,
             user.OrganisationId,
+            OrganisationNameOf(user.Organisation),
             Option<LocationId>.None,
             OrganisationStatusOf(user.Organisation));
     }
@@ -78,5 +83,12 @@ public class UserProfile
         return organisation is null
             ? Option<OnboardingStatus>.None
             : Option<OnboardingStatus>.Some(organisation.OnboardingStatus);
+    }
+
+    private static Option<string> OrganisationNameOf(Organisation? organisation)
+    {
+        return organisation is null
+            ? Option<string>.None
+            : Option<string>.Some(organisation.Name);
     }
 }

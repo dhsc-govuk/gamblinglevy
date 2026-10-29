@@ -58,26 +58,38 @@
   margin-bottom: 30px;
 }
 
-.organisations-list-page .govuk-table-filter > [class*='govuk-grid-column'] {
-  box-sizing: border-box;
-  float: none;
-  min-width: 0;
-  padding: 0;
-  width: auto;
+/* At desktop width the three controls share one row: the search box takes what is left after the two
+   dropdowns, which are 191px or their longest option if that is wider (the region select's "Yorkshire and the
+   Humber" does not fit 191px and would be cut off once selected). 60em is 960px at the default font size,
+   where .govuk-width-container reaches its maximum and this page's content column its full 667.5px; narrower
+   than that the two-track grid above stays in force.
+   Flex with wrapping rather than a third grid track, because a grid row cannot wrap: with a user text-spacing
+   stylesheet or enlarged text (WCAG 1.4.12, 1.4.4) the dropdowns grow, and a 1fr search track would be squeezed
+   to nothing with its button over the sort select. Here the region filter drops to a second line instead, as
+   soon as the search box would fall under its 140px basis. */
+@media (min-width: 60em) {
+  .organisations-list-page .govuk-table-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 20px 30px;
+  }
+
+  .organisations-list-page .govuk-table-filter > .govuk-table-filter__search {
+    flex: 1 1 140px;
+  }
+
+  .organisations-list-page .govuk-table-filter > .govuk-table-filter__sort,
+  .organisations-list-page .govuk-table-filter > .govuk-table-filter__filter {
+    flex: 0 0 auto;
+    min-width: 191px;
+  }
 }
 
 .organisations-list-page .govuk-table-filter .govuk-label {
   font-size: 19px;
   line-height: 25px;
   margin-bottom: 5px;
-}
-
-/* Floors rather than fixed heights so a user-defined line height grows these controls instead of clipping
-   their text (WCAG 1.4.12); they still render at 40px at default spacing. */
-.organisations-list-page .govuk-table-filter__input,
-.organisations-list-page .govuk-table-filter__search-button {
-  min-height: 40px;
-  height: auto;
 }
 
 .organisations-list-page .govuk-table-filter .govuk-select {

@@ -24,4 +24,5 @@ public record AuditLogDetailDto(
     Guid? OrganisationId,
     string? OrganisationName,
     string? Before,
-    string? After);
+    string? After,
+    int PayloadVersion);

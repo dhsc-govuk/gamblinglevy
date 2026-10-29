@@ -1,6 +1,6 @@
-export { default as Intro } from './Intro';
 export { default as Tasks } from './Tasks';
 export { default as ConfirmActivities } from './ConfirmActivities';
+export { default as KeyResultsLegacyRedirect } from './KeyResultsLegacyRedirect';
 export { default as KeyResultsSelect } from './KeyResults/Select';
 export { default as KeyResultsResults } from './KeyResults/Results';
 export { default as KeyResultsDelivery } from './KeyResults/Delivery';

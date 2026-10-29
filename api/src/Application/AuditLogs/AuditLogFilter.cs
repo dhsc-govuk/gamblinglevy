@@ -6,6 +6,7 @@ public record AuditLogFilter(
     Guid? TargetUserId,
     Guid? OrganisationId,
     DateTime? FromUtc,
-    DateTime? ToUtc);
+    DateTime? ToUtc,
+    string? Sort);
 
 public record PagedAuditLogs<T>(IReadOnlyList<T> Items, int TotalCount, int Page, int PageSize);

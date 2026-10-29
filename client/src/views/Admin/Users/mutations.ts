@@ -45,4 +45,8 @@ export const reactivateUser = (userId: string) => axios.post<AdminUserDto>(`admi
 
 export const resetUserMfa = (userId: string) => axios.post<AdminUserDto>(`admin/users/${userId}/reset-mfa`);
 
+export const enableUserPasswordLogin = (userId: string) => axios.post<AdminUserDto>(`admin/users/${userId}/enable-password-login`);
+
+export const resetUserPassword = (userId: string) => axios.post<AdminUserDto>(`admin/users/${userId}/reset-password`);
+
 export const deleteUser = (userId: string) => axios.delete(`admin/users/${userId}`);

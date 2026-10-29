@@ -1,3 +1,9 @@
+// True when the API rejected a create/update with a 409 — the collection name is already taken
+// (CollectionNameTakenException, mapped by CollectionErrorFactory). Factored out so callers that need
+// to route this to an inline error on the Name field, rather than the generic banner mapCollectionError
+// produces, can check for it without duplicating the response-shape logic.
+export const isCollectionNameTakenError = (error: unknown): boolean => (error as { response?: { status?: number } } | undefined)?.response?.status === 409;
+
 // Maps a data-collection API error to a single user-facing message for the error summary / notification banner.
 export const mapCollectionError = (error: unknown): string => {
   const response = (error as { response?: { status?: number; data?: unknown } } | undefined)?.response;

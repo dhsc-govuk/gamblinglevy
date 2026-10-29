@@ -21,16 +21,7 @@ function GovUKButton({
 }: GovUKButtonProps): React.ReactElement {
   const buttonClass = [className, start && 'govuk-button--start'].filter(Boolean).join(' ');
   return (
-    <button
-      type={type}
-      className={buttonClass}
-      onClick={onClick}
-      disabled={disabled || isLoading}
-      aria-busy={isLoading}
-      data-module="govuk-button"
-      style={style}
-      {...rest}
-    >
+    <button type={type} className={buttonClass} onClick={onClick} disabled={disabled || isLoading} aria-busy={isLoading} data-module="govuk-button" style={style} {...rest}>
       <span style={{ visibility: isLoading ? 'hidden' : undefined }}>{children}</span>
       {isLoading && (
         <span className="govuk-button__spinner-wrapper" aria-hidden="true">

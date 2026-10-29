@@ -3,18 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useIsAuthenticated } from '@azure/msal-react';
 import usePageTitle from '../../../hooks/usePageTitle';
 import { roleToAreaMap, useAuthProvider } from '../../../components/AuthProvider';
-import { GovUKHeaderLogo } from '../../../components/Logos';
-import {
-  GovUKButton,
-  GovUKDetails,
-  GovUKNotificationBanner,
-  GovUKSkipLink,
-  LoadingBox,
-  OrderedList,
-  ListItem,
-  Paragraph,
-} from '../../../components/GovUKComponents';
-import LayoutFooter from '../../../layouts/General/LayoutFooter';
+import { GovUKButton, GovUKDetails, GovUKNotificationBanner, LoadingBox, OrderedList, ListItem, Paragraph } from '../../../components/GovUKComponents';
+import SignInJourneyLayout from '../../../layouts/SignInJourney';
 import { clearSessionEndedReason, readSessionEndedReason, type SessionEndedReason } from '../../../helpers/sessionEnd';
 import { composeTestId } from '../../../helpers/testIds';
 import './styles.css';
@@ -35,8 +25,7 @@ const SESSION_ENDED_MESSAGES: Record<SessionEndedReason, string> = {
   // Deliberately not the 'revoked' wording: that copy offers three explanations, none of which is what
   // happened, and it would leave someone who is locked out waiting for a sign-in that cannot succeed yet.
   // "try again" rather than "sign in again" because CIAM sign-in is not what is blocked \u2014 entering the code is.
-  locked:
-    'For your security we signed you out after too many incorrect security codes. You can try again in 30 minutes. If you did not try to sign in, tell your administrator.',
+  locked: 'For your security we signed you out after too many incorrect security codes. You can try again in 30 minutes. If you did not try to sign in, tell your administrator.',
 };
 
 const SignIn = () => {
@@ -115,44 +104,27 @@ const SignIn = () => {
 
   const handleSignIn = () => {
     setSigningIn(true);
-    signIn();
+    // signIn settles only when the redirect did not happen: MSAL rejects when it cannot start one, when Back
+    // at the Microsoft screen restores this page from the bfcache, and after 30 seconds still on the page.
+    // Without this the page's only button stays in its loading state until a reload.
+    signIn().catch(() => setSigningIn(false));
   };
 
   return (
-    <div className="signin-page" data-testid="public-signin">
-      <GovUKSkipLink />
-
-      <header className="govuk-header" data-module="govuk-header">
-        <div className="govuk-header__container govuk-width-container">
-          <div className="govuk-header__logo">
-            <a href="https://www.gov.uk" className="govuk-header__link govuk-header__link--homepage">
-              <GovUKHeaderLogo />
-            </a>
-          </div>
-        </div>
-      </header>
-
-      <section className="signin-page__service-banner" aria-label="Service information">
-        <div className="govuk-width-container">
-          <span className="signin-page__service-name">Share progress preventing gambling harms</span>
-        </div>
-      </section>
-
-      <main className="signin-page__main" id="main-content" role="main">
-        <div className="govuk-width-container">
-          {isCompletingSignIn ? (
-            <div className="govuk-main-wrapper">
-              <LoadingBox loading={true}>
-                <div className="signin-page__loading" data-testid="public-signin-loading">
-                  <p className="govuk-body">
-                    Signing you in. This may take a moment if the service is starting up.
-                  </p>
-                </div>
-              </LoadingBox>
+    <SignInJourneyLayout testId="public-signin">
+      {isCompletingSignIn ? (
+        <div className="govuk-main-wrapper">
+          <LoadingBox loading={true}>
+            <div className="signin-page__loading" data-testid="public-signin-loading">
+              <p className="govuk-body">Signing you in. This may take a moment if the service is starting up.</p>
             </div>
-          ) : (
-            <>
-          <a href="https://www.gov.uk" className="govuk-back-link">Back</a>
+          </LoadingBox>
+        </div>
+      ) : (
+        <>
+          <a href="https://www.gov.uk" className="govuk-back-link" data-testid="public-signin-back">
+            Back
+          </a>
           <div className="govuk-main-wrapper" style={{ paddingTop: '10px' }}>
             <div className="signin-page__content">
               {sessionEndedReason && (
@@ -177,9 +149,7 @@ const SignIn = () => {
 
               <h1 className="govuk-heading-xl">Sign in to Share progress preventing gambling harms</h1>
 
-              <p className="govuk-body">
-                To keep your information secure, you&rsquo;ll need to complete 2 steps to sign in.
-              </p>
+              <p className="govuk-body">To keep your information secure, you&rsquo;ll need to complete 2 steps to sign in.</p>
 
               <OrderedList>
                 <ListItem>Verify your email address with Microsoft.</ListItem>
@@ -191,32 +161,24 @@ const SignIn = () => {
               </GovUKButton>
 
               <h2 className="govuk-heading-m">If this is your first time signing in</h2>
-              <p className="govuk-body">
-                You&rsquo;ll need to set up your account security before you can use the service.
-              </p>
+              <p className="govuk-body">You&rsquo;ll need to set up your account security before you can use the service.</p>
 
-              <GovUKDetails summary="Help with setting up your account">
+              <GovUKDetails summary="Help with setting up your account" data-testid="public-signin-help-details">
                 <h3 className="govuk-heading-s">Verify your email address with Microsoft</h3>
                 <p className="govuk-body">
-                  You&rsquo;ll be taken to a Microsoft screen to enter your email. Microsoft will send a
-                  security code to your inbox for you to enter on the next screen. This will verify your
-                  email address.
+                  You&rsquo;ll be taken to a Microsoft screen to enter your email. Microsoft will send a security code to your inbox for you to enter on the next screen. This will
+                  verify your email address.
                 </p>
                 <h3 className="govuk-heading-s">Set up an authenticator app</h3>
                 <p className="govuk-body">
-                  You&rsquo;ll return to this service to set up an authenticator app on your smartphone.
-                  This is to help confirm it&rsquo;s you when you sign in.
+                  You&rsquo;ll return to this service to set up an authenticator app on your smartphone. This is to help confirm it&rsquo;s you when you sign in.
                 </p>
               </GovUKDetails>
             </div>
           </div>
-            </>
-          )}
-        </div>
-      </main>
-
-      <LayoutFooter />
-    </div>
+        </>
+      )}
+    </SignInJourneyLayout>
   );
 };
 

@@ -43,6 +43,10 @@ public class CollectionType : ValueObject
 
     public bool IsQuarterly => Value == CollectionTypes.QuarterlyReport;
 
+    // The annual maturity assessment (BLUM-7855): a full-financial-year window with no quarter, answered once a
+    // year through the MaturityAssessments aggregate rather than the quarterly Submission flow.
+    public bool IsMaturityAssessment => Value == CollectionTypes.MaturityAssessment;
+
     public static implicit operator string(CollectionType type) => type.ToString();
     public static explicit operator CollectionType(string value) => From(value);
 

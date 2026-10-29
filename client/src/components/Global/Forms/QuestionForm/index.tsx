@@ -1,7 +1,6 @@
 import React, { useEffect, useReducer, useState } from 'react';
 import { ErrorSummary, GovUKFieldset, GovUKButton } from '../../../GovUKComponents';
 import OptionsManager from '../OptionsManager';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import {
   DC_QUESTION_TYPES,
   isDcChoiceType,
@@ -25,9 +24,12 @@ interface Props {
   onSubmit: (input: CreateQuestionInput) => void;
   onCancel: () => void;
   isSubmitting?: boolean;
+  // A refusal from the API, shown in the same summary as the form's own validation. The page clears it in the
+  // onSubmit callback, which runs in the same update as this form's submit bump, so the bump is never spent on it.
+  serverError?: { targetName: string; text: string } | null;
 }
 
-const TYPE_LABELS: Record<DcQuestionType, string> = {
+export const QUESTION_TYPE_LABELS: Record<DcQuestionType, string> = {
   Text: 'Text (single line)',
   Textarea: 'Text (multiple lines)',
   Number: 'Number',
@@ -36,7 +38,7 @@ const TYPE_LABELS: Record<DcQuestionType, string> = {
   Select: 'Dropdown (choose one)',
 };
 
-const QuestionForm = ({ sections, question, onSubmit, onCancel, isSubmitting = false }: Props): React.ReactElement => {
+const QuestionForm = ({ sections, question, onSubmit, onCancel, isSubmitting = false, serverError = null }: Props): React.ReactElement => {
   const isEdit = Boolean(question);
   const [state, dispatch] = useReducer(questionFormReducer, createInitialQuestionFormState());
   const [submitAttempts, setSubmitAttempts] = useState(0);
@@ -66,8 +68,6 @@ const QuestionForm = ({ sections, question, onSubmit, onCancel, isSubmitting = f
     }
   }, [question, sections]);
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(state.errors).length > 0);
-
   const sectionOptions = [
     { value: '', label: 'No section' },
     ...sections
@@ -76,7 +76,7 @@ const QuestionForm = ({ sections, question, onSubmit, onCancel, isSubmitting = f
       .map((section) => ({ value: section.id, label: section.title })),
   ];
 
-  const typeOptions = DC_QUESTION_TYPES.map((type) => ({ value: type, label: TYPE_LABELS[type] }));
+  const typeOptions = DC_QUESTION_TYPES.map((type) => ({ value: type, label: QUESTION_TYPE_LABELS[type] }));
 
   const handleSubmit = () => {
     const errors = validateQuestion(state, isEdit);
@@ -88,13 +88,17 @@ const QuestionForm = ({ sections, question, onSubmit, onCancel, isSubmitting = f
     onSubmit(buildQuestionInput(state));
   };
 
+  // A field's own validation first, else the API's refusal when it points at this field.
+  const fieldError = (id: string): string | undefined => state.errors[id] ?? (serverError?.targetName === id ? serverError.text : undefined);
+
   const errorList = Object.entries(state.errors)
     .filter(([, message]) => Boolean(message))
-    .map(([key, message]) => ({ targetName: key, text: message }));
+    .map(([key, message]) => ({ targetName: key, text: message }))
+    .concat(serverError ? [serverError] : []);
 
   return (
     <div data-testid="admin-forms-question-form">
-      {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+      <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
       <fieldset className="govuk-fieldset govuk-!-margin-bottom-6">
         <legend className="govuk-fieldset__legend govuk-fieldset__legend--m">Question details</legend>
@@ -105,7 +109,7 @@ const QuestionForm = ({ sections, question, onSubmit, onCancel, isSubmitting = f
           label="Section"
           value={state.sectionId}
           options={sectionOptions}
-          error={state.errors['admin-forms-question-section']}
+          error={fieldError('admin-forms-question-section')}
           onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'sectionId', value: e.target.value })}
           testId="admin-forms-question-section"
         />
@@ -116,7 +120,7 @@ const QuestionForm = ({ sections, question, onSubmit, onCancel, isSubmitting = f
           label="Question code"
           hint="A unique identifier used to store answers, e.g. DELIVERY_METHOD. Capital letters, numbers and underscores only. Cannot be changed later."
           value={state.code}
-          error={state.errors['admin-forms-question-code']}
+          error={fieldError('admin-forms-question-code')}
           disabled={isEdit}
           required={!isEdit}
           onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'code', value: e.target.value.toUpperCase() })}
@@ -129,7 +133,7 @@ const QuestionForm = ({ sections, question, onSubmit, onCancel, isSubmitting = f
           label="Question label"
           hint="The question shown to the person filling in the form."
           value={state.label}
-          error={state.errors['admin-forms-question-label']}
+          error={fieldError('admin-forms-question-label')}
           required
           onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'label', value: e.target.value })}
           testId="admin-forms-question-label"
@@ -190,12 +194,7 @@ const QuestionForm = ({ sections, question, onSubmit, onCancel, isSubmitting = f
         <GovUKButton onClick={handleSubmit} disabled={isSubmitting} data-testid="admin-forms-question-form-submit">
           {isEdit ? 'Save changes' : 'Save question'}
         </GovUKButton>
-        <button
-          type="button"
-          className="govuk-link"
-          style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
-          onClick={onCancel}
-          data-testid="admin-forms-question-form-cancel">
+        <button type="button" className="govuk-link" onClick={onCancel} data-testid="admin-forms-question-form-cancel">
           Cancel
         </button>
       </div>

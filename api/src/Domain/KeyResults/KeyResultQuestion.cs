@@ -87,6 +87,7 @@ public class KeyResultQuestion : IEntity<KeyResultQuestionId>
         ProtocolFieldType fieldType,
         int displayOrder,
         UserId createdBy,
+        DateTime utcNow,
         string? hint = null,
         bool isRequiredOnComplete = true,
         decimal? minValue = null,
@@ -126,7 +127,16 @@ public class KeyResultQuestion : IEntity<KeyResultQuestionId>
             displayOrder,
             isActive: true,
             createdBy,
-            DateTime.UtcNow);
+            utcNow);
+    }
+
+    // The seeder's only edit to an existing question: it puts a task's catalogued questions back in protocol order
+    // after it has inserted one among them (BLUM-8749).
+    public void SetDisplayOrder(int displayOrder)
+    {
+        Guard.GreaterThanOrEqual(displayOrder, 0, nameof(displayOrder));
+
+        DisplayOrder = displayOrder;
     }
 
     private static string? Normalise(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

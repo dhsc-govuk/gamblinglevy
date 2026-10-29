@@ -23,4 +23,15 @@ public record ResolvedQuestion(
     bool IsPercentage,
     string? PrefillSource,
     string? ErrorMessage,
-    string Section);
+    string Section,
+
+    // The protocol's free-text character limit and the message shown when it is exceeded (BLUM-7620). Only the
+    // "Activity delivery" questions carry one; the results-table questions have no limit.
+    int? MaxLength = null,
+    string? MaxLengthErrorMessage = null)
+{
+    // Answer options DHSC has withdrawn from the question's form version (a restore brings back, inactive, a value a
+    // later version published). Options holds only what an LA may pick, so everything that offers or accepts an
+    // answer reads Options alone; these are kept solely so a stored value still turns into its label (BLUM-9104).
+    public IReadOnlyList<ResolvedQuestionOption> WithdrawnOptions { get; init; } = [];
+}

@@ -1,0 +1,27 @@
+/* The Action column holds a .govuk-button, whose min-content width is its longest word ("Sign"). Auto
+   table-layout is free to squeeze the column down to that, which wrapped the button onto two colliding
+   lines (.govuk-button sets line-height: 1, so the two lines touch). `width: 1%` makes the column's
+   *preferred* width tiny, so the algorithm allocates it exactly its min-content and hands every remaining
+   pixel to the auto columns; `white-space: nowrap` raises that min-content to the whole button. Together
+   they size the column to the button and give the slack back to the date columns.
+
+   Named for the column, not the cell, because Column.className lands on the <th> and on every <td> — which
+   is exactly what the width needs to take effect. Same idiom as admin-users-list__column--name. */
+.account-sessions__column--action {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* Header only. Stops "IP address" splitting over two lines without pinning the cells — an IPv6 address is
+   up to 45 characters and must still be allowed to wrap. */
+.account-sessions__nowrap-header {
+  white-space: nowrap;
+}
+
+/* Puts the "This device" tag on its own line deliberately rather than leaving it to wrap there by accident.
+   Load-bearing for the layout, not cosmetic: keeping the label and the tag on one line pushes the Device
+   column's max-content to ~270px, and auto table-layout hands it that share at the date columns' expense.
+   The tag's own top margin comes from govuk-!-margin-top-1 on the component, not from here. */
+.account-sessions__device-name {
+  display: block;
+}

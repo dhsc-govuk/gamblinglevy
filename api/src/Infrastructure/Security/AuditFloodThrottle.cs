@@ -19,7 +19,7 @@ public readonly record struct AuditThrottleDecision(bool Admitted, int Suppresse
 /// <summary>
 /// Bounds how many audit_logs rows a security event may cause, for any kind of event.
 ///
-/// audit_logs has no retention sweep and every append commits its own transaction, so without a cap the
+/// audit_logs rows are kept for the whole retention period (for ever by default) and every append commits its own transaction, so without a cap the
 /// caller chooses how many transactions the service commits and how much of the genuine user.* and mfa.*
 /// trail gets buried. Suppression degrades an event to telemetry rather than dropping it — the burst still
 /// arrives, as a number on the next admitted row.

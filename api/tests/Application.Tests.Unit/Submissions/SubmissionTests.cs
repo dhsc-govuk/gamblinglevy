@@ -24,7 +24,8 @@ public class SubmissionTests
                 (FormModuleId.New(), KeyResultsModule),
                 (FormModuleId.New(), FundingModule),
             ],
-            Actor);
+            Actor,
+            DateTime.UtcNow);
 
     private static SubmissionSection Section(Submission submission, string moduleCode) =>
         submission.Sections.Single(s => s.ModuleCode == moduleCode);
@@ -45,11 +46,11 @@ public class SubmissionTests
     public void ConfirmActivities_MarksConfirmedAndClearsEveryReviewFlag()
     {
         var submission = Build();
-        submission.ConfirmActivities(Actor);
-        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.InProgress, Actor);
-        submission.FlagActivityListChanged();
+        submission.ConfirmActivities(Actor, DateTime.UtcNow);
+        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.InProgress, Actor, DateTime.UtcNow);
+        submission.FlagActivityListChanged(DateTime.UtcNow);
 
-        submission.ConfirmActivities(Actor);
+        submission.ConfirmActivities(Actor, DateTime.UtcNow);
 
         submission.AreActivitiesConfirmed.Should().BeTrue();
         submission.ActivitiesReviewRequired.Should().BeFalse();
@@ -60,9 +61,9 @@ public class SubmissionTests
     public void FlagActivityListChanged_BeforeConfirmation_IsANoOp()
     {
         var submission = Build();
-        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.InProgress, Actor);
+        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.InProgress, Actor, DateTime.UtcNow);
 
-        submission.FlagActivityListChanged();
+        submission.FlagActivityListChanged(DateTime.UtcNow);
 
         submission.ActivitiesReviewRequired.Should().BeFalse();
         submission.Sections.Should().OnlyContain(s => !s.ReviewRequired);
@@ -72,10 +73,10 @@ public class SubmissionTests
     public void FlagActivityListChanged_AfterConfirmation_FlagsOnlyStartedSections()
     {
         var submission = Build();
-        submission.ConfirmActivities(Actor);
-        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.InProgress, Actor);
+        submission.ConfirmActivities(Actor, DateTime.UtcNow);
+        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.InProgress, Actor, DateTime.UtcNow);
 
-        submission.FlagActivityListChanged();
+        submission.FlagActivityListChanged(DateTime.UtcNow);
 
         submission.ActivitiesReviewRequired.Should().BeTrue();
         Section(submission, KeyResultsModule).ReviewRequired.Should().BeTrue();
@@ -86,11 +87,11 @@ public class SubmissionTests
     public void SetSectionStatus_Completed_ClearsSectionFlagAndSubmissionFlagWhenNoneRemain()
     {
         var submission = Build();
-        submission.ConfirmActivities(Actor);
-        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.InProgress, Actor);
-        submission.FlagActivityListChanged();
+        submission.ConfirmActivities(Actor, DateTime.UtcNow);
+        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.InProgress, Actor, DateTime.UtcNow);
+        submission.FlagActivityListChanged(DateTime.UtcNow);
 
-        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.Completed, Actor);
+        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.Completed, Actor, DateTime.UtcNow);
 
         Section(submission, KeyResultsModule).ReviewRequired.Should().BeFalse();
         submission.ActivitiesReviewRequired.Should().BeFalse();
@@ -100,12 +101,12 @@ public class SubmissionTests
     public void SetSectionStatus_Completed_KeepsSubmissionFlagWhileAnotherSectionIsFlagged()
     {
         var submission = Build();
-        submission.ConfirmActivities(Actor);
-        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.InProgress, Actor);
-        submission.SetSectionStatus(FundingModule, SubmissionSectionStatus.InProgress, Actor);
-        submission.FlagActivityListChanged();
+        submission.ConfirmActivities(Actor, DateTime.UtcNow);
+        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.InProgress, Actor, DateTime.UtcNow);
+        submission.SetSectionStatus(FundingModule, SubmissionSectionStatus.InProgress, Actor, DateTime.UtcNow);
+        submission.FlagActivityListChanged(DateTime.UtcNow);
 
-        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.Completed, Actor);
+        submission.SetSectionStatus(KeyResultsModule, SubmissionSectionStatus.Completed, Actor, DateTime.UtcNow);
 
         Section(submission, KeyResultsModule).ReviewRequired.Should().BeFalse();
         Section(submission, FundingModule).ReviewRequired.Should().BeTrue();
@@ -117,7 +118,7 @@ public class SubmissionTests
     {
         var submission = Build();
 
-        var act = () => submission.SetSectionStatus("unknown_module", SubmissionSectionStatus.InProgress, Actor);
+        var act = () => submission.SetSectionStatus("unknown_module", SubmissionSectionStatus.InProgress, Actor, DateTime.UtcNow);
 
         act.Should().Throw<SubmissionSectionNotFoundException>();
     }

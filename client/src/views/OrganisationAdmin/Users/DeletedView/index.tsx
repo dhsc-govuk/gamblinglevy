@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { OrganisationManagementLayout } from '../../../../layouts';
 import { GovUKInsetText, GovUKSummaryCard, H1, NotFound, PageLoading, SummaryList } from '../../../../components/GovUKComponents';
 import { HISTORICAL_ROLE_LABELS, useAuthProvider } from '../../../../components/AuthProvider';
@@ -52,7 +52,9 @@ const DeletedUserView = (): React.ReactElement => {
     isLoading: logsLoading,
     isSuccess: logsLoaded,
     isError: logsFailed,
-  } = useQuery(deletedUserLogsKey(userId), () => getOrganisationAdminAuditLogs({ targetUserId: userId, pageSize: 100 }), {
+  } = useQuery({
+    queryKey: deletedUserLogsKey(userId),
+    queryFn: () => getOrganisationAdminAuditLogs({ targetUserId: userId, pageSize: 100 }),
     enabled: !!userId && !!organisationId,
   });
 
@@ -66,9 +68,7 @@ const DeletedUserView = (): React.ReactElement => {
     data: detailData,
     isLoading: detailLoading,
     isError: detailFailed,
-  } = useQuery(deletedUserDetailKey(deletedEntry?.id ?? ''), () => getOrganisationAdminAuditLog(deletedEntry!.id), {
-    enabled: !!deletedEntry?.id,
-  });
+  } = useQuery({ queryKey: deletedUserDetailKey(deletedEntry?.id ?? ''), queryFn: () => getOrganisationAdminAuditLog(deletedEntry!.id), enabled: !!deletedEntry?.id });
 
   const snapshot = parseSnapshot(detailData?.data?.before);
   const fullName = snapshot.firstName && snapshot.lastName ? `${snapshot.firstName} ${snapshot.lastName}` : deletedEntry?.targetDisplayName ?? 'Deleted user';

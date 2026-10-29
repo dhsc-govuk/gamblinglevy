@@ -9,8 +9,17 @@ export interface GovUKErrorSummaryItem {
 interface GovUKErrorSummaryProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'children'> {
   heading?: string;
   errors: GovUKErrorSummaryItem[];
-  // Bump this (e.g. a submit-attempt counter) to move DOM focus onto the summary again — needed because the
-  // same error set can be re-shown after a repeat submit without `errors` itself changing.
+  // Bump this (a submit-attempt counter) to move DOM focus onto the summary. Each bump is delivered exactly once,
+  // the first time the summary has errors to show: straight away when they are set along with it, later when a
+  // refusal arrives after it — the bump stays pending while the summary is empty. Mounting never focuses,
+  // whatever the value. So ALWAYS render the summary and hide it with `errors={[]}`: one that only mounts
+  // together with its error has no earlier trigger value to compare with, and misses the bump. ESLint rejects
+  // `cond && <ErrorSummary …/>` for that reason.
+  //
+  // Two things a form has to keep true. A submit handler that leaves the refusal to a mutation's `onError` must
+  // clear or replace its errors in the same update as the bump (or bump again in `onError`) — otherwise the bump
+  // is spent on the errors still showing and the refusal arrives unfocused. And any change of the value counts,
+  // including a reset to 0, so only ever count upwards.
   focusTrigger?: number;
   onHandleErrorClick?: (targetName: string) => void;
   testId?: string;
@@ -24,8 +33,9 @@ interface GovUKErrorSummaryProps extends Omit<React.HTMLAttributes<HTMLDivElemen
 // the spec's "move keyboard focus to the error summary" requirement.
 //
 // This replaces govuk-react's `ErrorSummary` (re-exported as `ErrorSummary` from this index), which renders
-// error text as an onClick-only span with no `href` and no `role="alert"`. The root keeps a stable
-// `data-error-summary` marker for the legacy focusErrorSummary helper used by older forms.
+// error text as an onClick-only span with no `href` and no `role="alert"`. `focusTrigger` is the only way
+// focus reaches a summary (BLUM-8760): each one focuses itself through its own ref, so two mounted at once
+// cannot take each other's focus.
 const GovUKErrorSummary = ({
   heading = 'There is a problem',
   errors,
@@ -73,35 +83,43 @@ const GovUKErrorSummary = ({
     }
   };
 
+  // The trigger value this instance has already acted on. Starting from the value it mounted with is what keeps a
+  // remount silent — a loading gate reopening, a page coming back with its errors restored.
+  const handledTrigger = useRef(focusTrigger);
+  const hasErrors = errors.length > 0;
+
+  // Runs on a bump and when errors appear or go — never on a change within a non-empty list, so a form that clears
+  // one field's error per keystroke (Collections) does not have focus pulled out of the field being typed in.
   useEffect(() => {
-    if (!focusTrigger || errors.length === 0) {
+    // Null while there are no errors: the root below is not rendered. A bump made then is left unhandled, so this
+    // runs again when errors arrive (hasErrors) and delivers it.
+    const summary = ref.current;
+    if (!summary || focusTrigger === handledTrigger.current) {
       return;
     }
-    ref.current?.focus();
-    // Only re-focus when focusTrigger changes (e.g. a new submit attempt) — not on every `errors` update.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusTrigger]);
+    handledTrigger.current = focusTrigger;
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    // preventScroll so the browser's instant focus-scroll does not fight the smooth scroll.
+    summary.focus({ preventScroll: true });
+    summary.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'start' });
+  }, [focusTrigger, hasErrors]);
 
   if (errors.length === 0) {
     return null;
   }
 
   return (
-    <div
-      {...rootProps}
-      className={['govuk-error-summary', className].filter(Boolean).join(' ')}
-      data-error-summary=""
-      data-module="govuk-error-summary"
-      tabIndex={-1}
-      ref={ref}
-      data-testid={dataTestId}>
+    <div {...rootProps} className={['govuk-error-summary', className].filter(Boolean).join(' ')} data-module="govuk-error-summary" tabIndex={-1} ref={ref} data-testid={dataTestId}>
       <div role="alert">
         <h2 className="govuk-error-summary__title">{heading}</h2>
         <div className="govuk-error-summary__body">
           <ul className="govuk-list govuk-error-summary__list">
             {errors.map((error) => (
               <li key={error.targetName}>
-                <a href={`#${error.targetName}`} data-testid={composeTestId(dataTestId, 'link', error.targetName)} onClick={(event) => handleErrorLinkClick(event, error.targetName)}>
+                <a
+                  href={`#${error.targetName}`}
+                  data-testid={composeTestId(dataTestId, 'link', error.targetName)}
+                  onClick={(event) => handleErrorLinkClick(event, error.targetName)}>
                   {error.text}
                 </a>
               </li>

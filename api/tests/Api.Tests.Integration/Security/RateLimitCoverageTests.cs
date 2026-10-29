@@ -24,7 +24,8 @@ namespace Api.Tests.Integration.Security;
 /// safety net nobody had built — the worst kind of documentation, because a reviewer reads it and stops
 /// looking.
 /// </summary>
-public class RateLimitCoverageTests(IntegrationTestWebFactory factory) : IClassFixture<IntegrationTestWebFactory>
+[Collection(EndpointCoverageCollection.Name)]
+public class RateLimitCoverageTests(IntegrationTestWebFactory factory)
 {
     /// <summary>
     /// The only endpoints allowed to be uncounted: Azure's container probes, which are called on a schedule

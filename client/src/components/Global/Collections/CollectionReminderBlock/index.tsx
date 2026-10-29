@@ -30,6 +30,11 @@ interface CollectionReminderBlockProps {
 // number of days after the collection opens or before the submission deadline.
 const CollectionReminderBlock = ({ index, total, reminder, onChange, onRemove, error, testId }: CollectionReminderBlockProps): React.ReactElement => {
   const root = testId ?? `admin-collections-create-reminder-${index}`;
+  // Every reminder repeats the same visible heading, legend, field label and Remove button, so with more
+  // than one on the page nothing distinguishes them in a screen reader's forms or elements list. This is
+  // the visible heading's own wording, announced as part of each control's accessible name.
+  const reminderName = total > 1 ? `Reminder ${index + 1}` : 'Reminder';
+  const hiddenContext = total > 1 ? `for reminder ${index + 1}` : undefined;
   const renderDaysInput = (offsetType: Exclude<ReminderOffset, ''>) => {
     const isAfterOpen = offsetType === 'after_open';
     return (
@@ -48,6 +53,7 @@ const CollectionReminderBlock = ({ index, total, reminder, onChange, onRemove, e
           error={error?.days}
           width="2"
           type="number"
+          visuallyHiddenText={hiddenContext}
           onChange={(event) => onChange({ days: event.target.value })}
           testId={`${root}-${offsetType}-days`}
         />
@@ -58,10 +64,11 @@ const CollectionReminderBlock = ({ index, total, reminder, onChange, onRemove, e
   return (
     <div className="collection-wizard__reminder" data-testid={root}>
       <div className="collection-wizard__reminder-header">
-        <H3>{total > 1 ? `Reminder ${index + 1}` : 'Reminder'}</H3>
+        <H3>{reminderName}</H3>
         {total > 1 && (
           <GovUKButton className="govuk-button govuk-button--secondary" onClick={onRemove} data-testid={`${root}-remove`}>
             Remove
+            {total > 1 && <span className="govuk-visually-hidden"> {reminderName.toLowerCase()}</span>}
           </GovUKButton>
         )}
       </div>
@@ -69,6 +76,7 @@ const CollectionReminderBlock = ({ index, total, reminder, onChange, onRemove, e
       <GovUKFieldset.RadioGroup
         name={`${root}-trigger`}
         legend="When do you want to send the reminder?"
+        visuallyHiddenText={hiddenContext}
         legendSize="s"
         value={reminder.offsetType || undefined}
         error={error?.offsetType}

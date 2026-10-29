@@ -1,0 +1,29 @@
+.maturity-roles__row {
+  margin-bottom: 30px;
+}
+
+/* "Role N" and its Remove button share a line, per the design; the heading carries the row's spacing. */
+.maturity-roles__row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 15px;
+}
+
+.maturity-roles__row-heading,
+.maturity-roles__remove {
+  margin-bottom: 0;
+}
+
+/* govuk-frontend gives .govuk-button width: 100% below 40.0625em and only lifts it to auto above. As a flex item
+   that base size would take most of the row and wrap "Role N" onto two lines, so pin it back to its content. */
+.maturity-roles__remove {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.maturity-roles__row .govuk-form-group:last-of-type {
+  margin-bottom: 20px;
+}

@@ -1,7 +1,10 @@
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
+using Application.DataCollectionForms.Audit;
 using Application.DataCollectionForms.Exceptions;
+using Domain.AuditLogs;
 using Domain.DataCollectionForms;
 using LanguageExt;
 using MediatR;
@@ -18,7 +21,10 @@ public record CreateFormModuleCommand : IRequest<Either<FormModuleException, For
 public class CreateFormModuleCommandHandler(
     IFormModuleRepository moduleRepository,
     IFormModuleQueries moduleQueries,
-    PermissionsService permissionsService)
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner,
+    PermissionsService permissionsService,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<CreateFormModuleCommand, Either<FormModuleException, FormModule>>
 {
     public async Task<Either<FormModuleException, FormModule>> Handle(
@@ -45,24 +51,43 @@ public class CreateFormModuleCommandHandler(
 
         var moduleId = FormModuleId.New();
 
-        try
-        {
-            var activeModules = await moduleQueries.GetAllActiveAsync(cancellationToken);
-            var displayOrder = activeModules.Count + 1;
+        // The change and its audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<FormModuleException, FormModule>(
+            async token =>
+            {
+                try
+                {
+                    var activeModules = await moduleQueries.GetAllActiveAsync(token);
+                    var displayOrder = activeModules.Count + 1;
 
-            var module = FormModule.Create(
-                moduleId,
-                code,
-                request.Name!,
-                displayOrder,
-                actorId,
-                request.Description);
+                    var module = FormModule.Create(
+                        moduleId,
+                        code,
+                        request.Name!,
+                        displayOrder,
+                        actorId,
+                        dateTimeProvider.GetUtcNow(),
+                        request.Description);
 
-            return await moduleRepository.AddAsync(module, cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            return new FormModuleUnknownException(moduleId, exception);
-        }
+                    var saved = await moduleRepository.AddAsync(module, token);
+
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            actorId,
+                            AuditTargetType.DataCollectionForm,
+                            saved.Id.Value,
+                            AuditAction.DataCollectionFormModuleCreated,
+                            before: null,
+                            after: DataCollectionFormSnapshot.Serialize(saved)),
+                        token);
+
+                    return saved;
+                }
+                catch (Exception exception)
+                {
+                    return new FormModuleUnknownException(moduleId, exception);
+                }
+            },
+            cancellationToken);
     }
 }

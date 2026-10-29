@@ -7,6 +7,7 @@ interface AppConfig {
   ad_client_id: string;
   ad_scope: string;
   ad_redirect_uri: string;
+  ad_domain_hint: string;
   accessibility_testing_enabled: string;
   sentry_dsn: string;
   app_insights_connection_string: string;
@@ -19,6 +20,7 @@ const appConfig: AppConfig = {
   ad_client_id: import.meta.env.VITE_AD_CLIENT_ID || staticConfig.ad_client_id,
   ad_scope: import.meta.env.VITE_AD_SCOPE || staticConfig.ad_scope,
   ad_redirect_uri: import.meta.env.VITE_AD_REDIRECT_URI || staticConfig.ad_redirect_uri,
+  ad_domain_hint: import.meta.env.VITE_AD_DOMAIN_HINT || staticConfig.ad_domain_hint,
   accessibility_testing_enabled: import.meta.env.VITE_ACCESSIBILITY_TESTING_ENABLED || staticConfig.accessibility_testing_enabled,
   sentry_dsn: import.meta.env.VITE_SENTRY_DSN || staticConfig.sentry_dsn,
   app_insights_connection_string: import.meta.env.VITE_APP_INSIGHTS_CONNECTION_STRING || staticConfig.app_insights_connection_string,

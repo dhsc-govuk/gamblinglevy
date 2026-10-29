@@ -27,13 +27,15 @@ public class OrganisationAuditLogsController(
         [FromQuery] Guid? targetUserId,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
+        [FromQuery] string? sort = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = FieldLimits.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        // See AdminAuditLogsController for why `action` is bounded rather than allow-listed.
+        // See AdminAuditLogsController for why `action` is bounded rather than allow-listed and `sort` is not.
         QueryGuard.Paging(page, pageSize);
         QueryGuard.MaxLength(action, FieldLimits.AuditAction, nameof(action));
+        QueryGuard.AllowedValue(sort, AuditLogSort.IsSupported, nameof(sort), "Select a valid sort order.");
 
         var permissions = permissionsService.GetOrganisationPermissions();
         return await permissions.MatchAsync<ActionResult<PagedAuditLogs<AuditLogListItemDto>>>(
@@ -45,7 +47,7 @@ public class OrganisationAuditLogsController(
                 }
 
                 var organisationId = p.OrganisationId.ValueUnsafe().Value;
-                var filter = new AuditLogFilter(action, actorUserId, targetUserId, organisationId, from, to);
+                var filter = new AuditLogFilter(action, actorUserId, targetUserId, organisationId, from, to, sort);
                 return await auditLogQueries.GetPaged(filter, page, pageSize, cancellationToken);
             },
             e => Unauthorized(e.Message));

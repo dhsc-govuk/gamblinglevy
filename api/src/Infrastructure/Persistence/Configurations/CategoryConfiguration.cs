@@ -21,5 +21,12 @@ public class CategoryConfiguration : IEntityTypeConfiguration<Category>
         builder.Property(x => x.UpdatedAt).HasConversion(new DateTimeUtcConverter());
 
         builder.HasIndex(x => x.IsActive);
+
+        // The name is the identity everything outside the seeders uses: SeedFormDesigner resolves its sections by
+        // it, CategoryNames pins two of them, and the client mirrors those. It is also what makes the row-scoped
+        // guard on SeedJointPartnershipTaxonomyAsync safe — two instances booting together can both pass an
+        // AnyAsync check, and without this index the loser would silently insert a duplicate category rather than
+        // fail, leaving two identical options in the wizard and a section seeded for only one of them (BLUM-7860).
+        builder.HasIndex(x => x.Name).IsUnique();
     }
 }

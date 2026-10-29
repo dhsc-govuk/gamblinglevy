@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { defaultStaleTime, reportContextKey } from '../../helpers/queriesParams';
-import { isRateLimitedError } from '../../helpers/httpErrors';
+import { shouldRetryQuery } from '../../helpers/queryRetry';
 import { getReportContext } from './queries';
 
 // Same untyped-error read as mapReportError — axios errors reach react-query as `unknown`.
@@ -14,7 +14,9 @@ const isNotFound = (error: unknown): boolean => statusOf(error) === 404;
 // hold theirs in a `?report=` query param (BLUM-6967) and must hit this exact cache entry rather than open a
 // second one.
 export const useReportContextFor = (collectionId: string) => {
-  const { data, isLoading, isError } = useQuery(reportContextKey(collectionId), () => getReportContext(collectionId), {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: reportContextKey(collectionId),
+    queryFn: () => getReportContext(collectionId),
     enabled: !!collectionId,
     // The quarter, deadline and reporting period do not move while someone authors a report, and every page of the
     // flow mounts this query — without a stale time each step re-fetched it. The mutations that can change it
@@ -26,7 +28,7 @@ export const useReportContextFor = (collectionId: string) => {
     // retrying it spends the budget that has to drain first (BLUM-7239). Every other failure keeps react-query's
     // default resilience: a single dropped request must not bounce someone out of the report they are part-way
     // through authoring.
-    retry: (failureCount, requestError) => !isNotFound(requestError) && !isRateLimitedError(requestError) && failureCount < 3,
+    retry: (failureCount, requestError) => !isNotFound(requestError) && shouldRetryQuery(failureCount, requestError),
   });
 
   // isError drives the callers' redirect back to the Reports landing: either the 404 above, or a request that kept

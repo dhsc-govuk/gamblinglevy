@@ -1,8 +1,8 @@
 import React from 'react';
 import { Link as RouterLink, useNavigate, useParams, useLocation } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ManagementLayout } from '../../../../layouts';
-import { GovUKActionMenu, GovUKNotificationBanner, GovUKSummaryCard, SummaryList, H1 } from '../../../../components/GovUKComponents';
+import { GovUKActionMenu, GovUKNotificationBanner, GovUKSummaryCard, GovUKTag, SummaryList, H1 } from '../../../../components/GovUKComponents';
 import { useAuthProvider, ROLE_LABELS, homeLinkForRole, EnumUserRole } from '../../../../components/AuthProvider';
 import usePageTitle from '../../../../hooks/usePageTitle';
 import { adminUserKey } from '../../../../helpers/queriesParams';
@@ -26,17 +26,21 @@ const UsersView = (): React.ReactElement => {
   const { userId = '' } = useParams<{ userId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { userId: actorId } = useAuthProvider();
+  // The profile id is the users.id in the route; the context's userId is the Entra subject, which never matches it.
+  const { user: actor } = useAuthProvider();
   const banner = ((location.state as BannerState | null) ?? {}).banner;
 
-  const { data, isLoading } = useQuery(adminUserKey(userId), () => getUser(userId), { enabled: !!userId });
+  const { data, isLoading } = useQuery({ queryKey: adminUserKey(userId), queryFn: () => getUser(userId), enabled: !!userId });
   const user = data?.data;
 
-  const isSelf = actorId !== null && user?.id === actorId;
+  const isSelf = !!actor?.id && user?.id === actor.id;
   const isActive = user?.status === 'active';
 
   const actionItems = [
     { label: 'Reset MFA', onClick: () => navigate(ROUTES.admin.users.resetMfa(userId)), testId: 'admin-users-view-action-reset-mfa' },
+    ...(user?.passwordLoginEnabled
+      ? [{ label: 'Reset password', onClick: () => navigate(ROUTES.admin.users.resetPassword(userId)), testId: 'admin-users-view-action-reset-password' }]
+      : [{ label: 'Enable password login', onClick: () => navigate(ROUTES.admin.users.enablePasswordLogin(userId)), testId: 'admin-users-view-action-enable-password-login' }]),
     ...(isActive
       ? [
           {
@@ -93,6 +97,10 @@ const UsersView = (): React.ReactElement => {
     ? [
         { label: 'User access', value: isActive ? 'Active' : 'Inactive' },
         { label: 'Multi-factor authentication (MFA)', value: user.mfaStatus === 'enabled' ? 'Enabled' : 'Not set up yet' },
+        {
+          label: 'Password login',
+          value: <GovUKTag colour={user.passwordLoginEnabled ? 'green' : 'grey'}>{user.passwordLoginEnabled ? 'Enabled' : 'Not enabled'}</GovUKTag>,
+        },
       ]
     : [];
 

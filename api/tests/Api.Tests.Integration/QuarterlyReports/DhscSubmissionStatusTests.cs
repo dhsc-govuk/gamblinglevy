@@ -34,7 +34,8 @@ public class DhscSubmissionStatusTests(IntegrationTestWebFactory factory) : Quar
             "julie.smith@example.gov.uk",
             new SubId(Guid.NewGuid()),
             UserStatus.Active,
-            UserRole.Lead);
+            UserRole.Lead,
+            DateTime.UtcNow);
         await Context.Users.AddAsync(submitter);
 
         var submission = Submission.Start(
@@ -42,8 +43,9 @@ public class DhscSubmissionStatusTests(IntegrationTestWebFactory factory) : Quar
             new CollectionId(collectionId),
             (org ?? MainOrg).Id,
             Array.Empty<(FormModuleId ModuleId, string ModuleCode)>(),
-            submitter.Id);
-        submission.Submit("202701-0001", submitter.Id);
+            submitter.Id,
+            DateTime.UtcNow);
+        submission.Submit(TestFinancialYears.Reference(TestFinancialYears.Current, 1, 1), submitter.Id, DateTime.UtcNow);
         await Context.Submissions.AddAsync(submission);
 
         await SaveChangesAsync();
@@ -120,6 +122,25 @@ public class DhscSubmissionStatusTests(IntegrationTestWebFactory factory) : Quar
         detail.SubmittedByName.Should().BeNull();
         detail.SubmittedByEmail.Should().BeNull();
         detail.SubmittedAt.Should().BeNull();
+        detail.ExportSizeBytes.Should().BeNull("there is no file until the report is submitted");
+    }
+
+    // BLUM-9018: the Files caption ("ZIP, 389 KB") is measured through the call the per-organisation download makes, so
+    // it is that file's byte length exactly.
+    [Fact]
+    public async Task GetSubmissionDetail_Submitted_CarriesTheDownloadsByteLength()
+    {
+        var collectionId = await CreateOpenCollectionAsync();
+        await SeedSubmittedSubmissionAsync(collectionId);
+
+        AuthenticateAsAdmin();
+        var detail = await (await GetSubmissionDetailAsync(collectionId, MainOrg.Id.Value)).ToResponseModel<OrgSubmissionDetailDto>();
+        var download = await Client.GetAsync($"data-collections/{collectionId}/submissions/{MainOrg.Id.Value}/export");
+
+        download.StatusCode.Should().Be(HttpStatusCode.OK);
+        var file = await download.Content.ReadAsByteArrayAsync();
+        file.Should().NotBeEmpty();
+        detail.ExportSizeBytes.Should().Be(file.LongLength);
     }
 
     [Fact]
@@ -136,7 +157,7 @@ public class DhscSubmissionStatusTests(IntegrationTestWebFactory factory) : Quar
         detail.SubmittedByName.Should().Be("Julie Smith");
         detail.SubmittedByEmail.Should().Be("julie.smith@example.gov.uk");
         detail.SubmittedAt.Should().NotBeNull();
-        detail.ReferenceNumber.Should().Be("202701-0001");
+        detail.ReferenceNumber.Should().Be(TestFinancialYears.Reference(TestFinancialYears.Current, 1, 1));
     }
 
     // BLUM-7216: a started-but-unsubmitted report — "Incomplete" in the Organisations list — must open and show the
@@ -163,6 +184,7 @@ public class DhscSubmissionStatusTests(IntegrationTestWebFactory factory) : Quar
         detail.ReferenceNumber.Should().BeNull();
         detail.SubmittedByName.Should().BeNull();
         detail.SubmittedByEmail.Should().BeNull();
+        detail.ExportSizeBytes.Should().BeNull("a started report has no file until it is submitted");
     }
 
     // The same case, but with a fully authored (and still unsubmitted) report behind it: sections, activity answers,
@@ -197,7 +219,10 @@ public class DhscSubmissionStatusTests(IntegrationTestWebFactory factory) : Quar
     // quarter by ReportingPeriod.Derive) as well as the collection window (when LAs may submit). Deliberately
     // published with WindowSameAsReportingPeriod = false and a window that sits entirely AFTER the reported quarter,
     // so the two ranges cannot coincide — a regression that re-wired the period back to the window dates fails here.
-    // Fixed dates rather than Today-relative ones: the point of the test is that the two ranges differ.
+    // Fixed dates rather than Today-relative ones: the point of the test is that the two ranges differ. The financial
+    // year is passed explicitly for the same reason — this is one of the few places a literal year is correct, because
+    // the test supplies BOTH the year and the window dates and asserts one against the other. It seeds no allocation
+    // and creates no second collection, so nothing here is measured against the year in progress.
     [Fact]
     public async Task GetSubmissionDetail_ReturnsReportingPeriodDistinctFromCollectionWindow()
     {
@@ -302,26 +327,37 @@ public class DhscSubmissionStatusTests(IntegrationTestWebFactory factory) : Quar
     }
 
     [Fact]
-    public async Task GetSubmissions_MaturityAssessmentCollection_Returns404()
+    public async Task GetSubmissions_MaturityAssessmentCollection_DerivesStatusesFromAssessments()
     {
-        // Maturity assessments have no submission flow; the Reports status surface is quarterly-only. Past its deadline,
-        // so the old (ungated) behaviour would have wrongly shown every assigned org as Overdue.
+        // The maturity assessment is a submission flow of its own since BLUM-7855; its rows live in
+        // maturity_assessments, so an assigned org with nothing started past the deadline is genuinely Overdue.
         var collectionId = await CreateMaturityAssessmentCollectionAsync(
             openDate: Today.AddDays(-30),
             deadline: Today.AddDays(-1),
             localAuthorityIds: [MainOrg.Id.Value]);
 
         AuthenticateAsAdmin();
-        (await GetSubmissionsAsync(collectionId)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var response = await GetSubmissionsAsync(collectionId);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var summary = await response.ToResponseModel<CollectionSubmissionSummaryDto>();
+        summary.CollectionType.Should().Be("maturity_assessment");
+        summary.Organisations.Should().ContainSingle().Which.Status.Should().Be("overdue");
     }
 
     [Fact]
-    public async Task GetSubmissionDetail_MaturityAssessmentCollection_Returns404()
+    public async Task GetSubmissionDetail_MaturityAssessmentCollection_CarriesTheSectionStatuses()
     {
         var collectionId = await CreateMaturityAssessmentCollectionAsync(localAuthorityIds: [MainOrg.Id.Value]);
 
         AuthenticateAsAdmin();
-        (await GetSubmissionDetailAsync(collectionId, MainOrg.Id.Value)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var response = await GetSubmissionDetailAsync(collectionId, MainOrg.Id.Value);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var detail = await response.ToResponseModel<OrgSubmissionDetailDto>();
+        detail.CollectionType.Should().Be("maturity_assessment");
+        detail.HasSubmission.Should().BeFalse();
+        detail.MaturitySections.Should().HaveCount(10).And.OnlyContain(s => s.Status == "not_started");
     }
 
     [Fact]

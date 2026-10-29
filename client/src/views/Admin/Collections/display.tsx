@@ -64,18 +64,12 @@ export const yesNoLabel = (value: boolean | null): string => {
   return value ? 'Yes' : 'No';
 };
 
-// UK financial-year options for the create form, centred on the current calendar year (~6 years).
-// Value/label format is "2026/27" (start year / two-digit next year), matching the list view.
-export const financialYearOptions = (): { value: string; label: string }[] => {
-  const currentYear = new Date().getFullYear();
-  const startYear = currentYear - 1;
-  return Array.from({ length: 6 }, (_unused, index) => {
-    const year = startYear + index;
-    const next = ((year + 1) % 100).toString().padStart(2, '0');
-    const label = `${year}/${next}`;
-    return { value: label, label };
-  });
-};
+// Financial-year helpers moved to helpers/financialYear.ts when organisation allocations needed the same
+// options list (BLUM-7608). Re-exported here so every existing Collections import keeps working — but note the
+// option RANGE shifted with the move: this list used to be centred on the calendar year, and is now centred on
+// the UK financial year, so between 1 January and 5 April it starts one year earlier than it used to. That is
+// the bug fix, not a side effect, but it is a visible change to this wizard.
+export { financialYearOptions, financialYearLabel } from '../../../helpers/financialYear';
 
 // UK fiscal quarters for the quarterly-report type.
 // NOTE this mapping is the confirmed-with-design assumption.
@@ -95,8 +89,6 @@ export const quarterLabel = (quarter: number | string | null): string => {
   }
   return quarterOptions().find((option) => option.value === String(quarter))?.label ?? `Quarter ${quarter}`;
 };
-
-export const financialYearLabel = (financialYear: string | null): string => financialYear || '—';
 
 // Reporting-period bounds for a financial year (and optional quarter), used by the wizard's window step
 // hint. Financial year value is "2026/27" (UK fiscal year starting 1 April 2026). Quarters follow the

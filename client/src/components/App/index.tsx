@@ -1,19 +1,16 @@
 import { GlobalStyle } from 'govuk-react';
 import 'govuk-frontend/dist/govuk/govuk-frontend.min.css';
+import '../../styles/baseline.css';
 import '../../styles/govuk-refreshed-branding.css';
 import { BrowserRouter } from 'react-router-dom';
 import { MsalProvider } from '@azure/msal-react';
-import { CssBaseline } from '@mui/material';
-import { styled } from '@mui/material/styles';
-import { SnackbarProvider } from 'notistack';
-import { QueryClient, QueryClientProvider } from 'react-query';
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import axios from 'axios';
 import type { AccountInfo } from '@azure/msal-browser';
-import AuthProvider, { AuthContext, loginRequest, msalConfig, msalInstance, msalInitPromise, isMsalReady } from '../AuthProvider';
+import AuthProvider, { silentRequest, msalConfig, msalInstance, msalInitPromise, isMsalReady } from '../AuthProvider';
 import { MfaProvider } from '../MfaProvider';
 import AppRoutes from '../../Routes';
-import { CustomThemeProvider, DashboardProvider, GovUKNotificationProvider, type ThemeModes } from '../GovUKComponents';
-import useLocalStorage from '../../hooks/useLocalStorage';
+import { GovUKNotificationProvider } from '../GovUKComponents';
 import {
   canAttemptSessionEnd,
   clearSessionEndAttempts,
@@ -24,66 +21,50 @@ import {
   signedOutAccountFor,
   type SessionEndedReason,
 } from '../../helpers/sessionEnd';
-import { decideAuthFailureAction, sessionEndedReasonFromError } from '../../helpers/authFailure';
-import { isRateLimitedError } from '../../helpers/httpErrors';
-import { withRouter } from '../DashboardProviderArgs';
+import { decideAuthFailureAction, sessionEndedReasonFromError, stripBasePath } from '../../helpers/authFailure';
+import { queryRetryDelay, shouldRetryQuery } from '../../helpers/queryRetry';
+import { isSignInRequiredError, registerExpiredSignInHandler } from '../../helpers/signInRequired';
 import appConfig from '../../config.json';
 
 const baseUrl = import.meta.env.BASE_URL || '/';
 
-const modes: ThemeModes = {
-  primary: {
-    main: '#1d70b8',
-    light: '#5694ca',
-    contrastText: '#ffffff',
-  },
-  secondary: {
-    main: '#505a5f',
-    light: '#626a6e',
-    contrastText: '#ffffff',
-  },
-  light: {
-    background: {
-      paper: '#ffffff',
-      default: '#f3f2f1',
-    },
-    text: {
-      primary: '#0b0c0c',
-      secondary: '#505a5f',
-    },
-  },
-  dark: {
-    background: {
-      paper: '#0b0c0c',
-      default: '#0b0c0c',
-    },
-    text: {
-      primary: '#ffffff',
-      secondary: '#b1b4b6',
-    },
-  },
-};
-
-const Root = styled('div')(() => ({
-  position: 'absolute',
-  width: '100%',
-  height: '100%',
-  fontFamily: '"GDS Transport", arial, sans-serif',
-}));
+// react-query must never park a request (BLUM-8757). Since v4 it can leave one "paused" — not fetching, with
+// no data and no error — where v3 went on reporting it as loading, and no screen here was written for that
+// fourth state: a loading gate falls through to its not-found branch, and the report and maturity pages
+// redirect away (`if (!contextLoading && !context) return <Navigate … />`). Two things pause a request, so
+// there are two settings:
+//   - the browser being offline, which `networkMode: 'always'` below switches off;
+//   - a retry coming due while the tab is hidden, in every network mode, which this switches off. Focus has no
+//     other job in this app, because refetchOnWindowFocus is false.
+// With both, isLoading means what it meant in v3 in every state a query can reach. What v3's pause was for —
+// waiting out a dropped connection instead of failing — is done by the retry rule instead: see shouldRetryQuery.
+focusManager.setFocused(true);
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      // react-query v3 retries a failed query three times by default, which for a 429 turns one refusal into
+      // See the note above.
+      networkMode: 'always',
+      // 'always' flips this default to false, on the theory that such a query does not need the network. Ours
+      // do: without it a query that failed while offline stays failed when the connection returns, and a view
+      // with only a loading state sits on its spinner until somebody reloads.
+      refetchOnReconnect: true,
+      // react-query retries a failed query three times by default, which for a 429 turns one refusal into
       // four requests with backoff — spending the very budget that has to drain before the caller can get
       // back in, and converting a soft limit into a hard one (BLUM-7239). Everything else keeps the default
       // resilience: a single dropped request must not surface as a failed page.
       //
       // A query that sets its own `retry` overrides this rather than composing with it, so each of those has
-      // to repeat the exclusion. Grep for isRateLimitedError to find them — enumerating them here would be
-      // wrong the first time a fourth query sets a predicate.
-      retry: (failureCount: number, error: unknown) => !isRateLimitedError(error) && failureCount < 3,
+      // to build on shouldRetryQuery too. Grep for it to find them — enumerating them here would be wrong the
+      // first time another query sets a predicate.
+      retry: shouldRetryQuery,
+      retryDelay: queryRetryDelay,
+    },
+    mutations: {
+      // Same note. A paused mutation never settles either, so the button that started it spins until the
+      // connection returns and nothing tells the user their change was not sent.
+      networkMode: 'always',
     },
   },
 });
@@ -108,11 +89,28 @@ axios.interceptors.request.use(
     }
     try {
       const msalResponse = await msalInstance.acquireTokenSilent({
-        ...loginRequest,
+        ...silentRequest,
         account,
       });
       config.headers['Authorization'] = 'Bearer ' + msalResponse.accessToken;
     } catch (error) {
+      // The refresh token is dead or revoked, so nothing this tab sends can carry a bearer again until the user
+      // signs in. Sending the request without one, as below, is answered by a bare 401 that no branch of the
+      // response interceptor turns into a redirect: the page fills with load errors, and a reload lands on
+      // NotAuthorised. End the CIAM sign-in instead, exactly as a SESSION_EXPIRED 401 does, so the user reaches
+      // the sign-in page and is told why. This is the only way out of that state since BLUM-8757: silentRequest
+      // no longer falls back to the hidden iframe that used to renew the token in some browsers.
+      //
+      // Only that verdict. A network failure while refreshing says nothing about the sign-in, and signing
+      // somebody out because their connection dropped would lose their work for nothing.
+      //
+      // And never for the sign-out's own request. Someone whose token has died and who then clicks "Sign out"
+      // is signing out on purpose: hold mfa/logout here and signOut() never gets past it, so its clean-up is
+      // skipped and they are told their session expired. Let it go without a bearer, as it always did — the
+      // 401 is caught there, and the CIAM sign-out that follows needs no token.
+      if (isSignInRequiredError(error) && !isSignOutRequest(config.url) && endExpiredSignIn()) {
+        return new Promise<never>(() => {}); // the sign-out navigates away
+      }
       console.error('Failed to acquire token:', error);
     }
     return config;
@@ -132,6 +130,9 @@ const isGateExemptRequest = (url?: string): boolean => {
   return path.startsWith('mfa/') || path.startsWith('health') || path.startsWith('swagger');
 };
 
+// The explicit sign-out's one API call (signOut in components/AuthProvider).
+const isSignOutRequest = (url?: string): boolean => (url ?? '').replace(/^\/+/, '') === 'mfa/logout';
+
 // The app never calls setActiveAccount, so the first cached account is its single source of truth for "who is
 // signed in" — the same one AuthProvider derives subId from. Guarded because a broken storage backend must not
 // take the interceptor down with it.
@@ -143,8 +144,8 @@ const cachedAccount = (): AccountInfo | null => {
   }
 };
 
-// clearCache() cannot report a failure: MSAL catches its own storage errors and logs "Local cache unchanged"
-// (BaseInteractionClient.clearCacheOnLogout), so the promise resolves whether or not the account went. Sweep
+// clearCache() cannot report a failure: MSAL catches its own storage errors and only logs them
+// (clearCacheOnLogout in BaseInteractionClient), so the promise resolves whether or not the account went. Sweep
 // MSAL's keys directly as well, using the predicate MSAL itself uses in BrowserCacheManager.clear — any key
 // whose name contains "msal" or the client id. That is what deterministically drops the refresh token, which
 // is what makes a silent re-mint possible in the first place.
@@ -201,6 +202,28 @@ const endSignedOutSession = (reason: SessionEndedReason) => {
         })
     );
 };
+
+// A refresh token that can no longer be redeemed: the counterpart of a SESSION_EXPIRED 401 for a sign-in that
+// ended at CIAM rather than on our server. Shared by the request interceptor above and by AuthProvider's own
+// token call on a page load, which meets the dead token before any request is made. True when a sign-out is
+// under way, so the caller should wait for the navigation instead of reporting a failure.
+const endExpiredSignIn = (): boolean => {
+  if (sessionEndHandled) {
+    return true;
+  }
+  // Recorded before the budget can refuse, for the reason the 401 path does it there: a failed CIAM sign-out
+  // leaves the account cached, and the marker is what makes the next "Continue to Microsoft sign in" ask for
+  // credentials instead of being answered silently by a session that is still live at the IdP.
+  recordSignedOutAccount(cachedAccount()?.localAccountId, 'expired');
+  // The budget the 401 path spends: if signing out is not working, say so and let the caller fail, rather than
+  // hanging every request on a navigation that is not coming.
+  if (!canAttemptSessionEnd()) {
+    return false;
+  }
+  endSignedOutSession('expired');
+  return true;
+};
+registerExpiredSignInHandler(endExpiredSignIn);
 
 // Replaces a Blob error body with the JSON it contains, so the branches below can read data.error. Any
 // failure to decode leaves the original Blob in place — a download that genuinely returned binary on error
@@ -300,7 +323,12 @@ axios.interceptors.response.use(
           // Query string included, not just the path: an activity page opened from a quarterly return carries its
           // report context in `?report=` (BLUM-6967), and dropping it here silently ejects the user from the
           // return flow on the far side of re-verifying.
-          sessionStorage.setItem('mfa_redirect_path', `${window.location.pathname}${window.location.search}`);
+          //
+          // Stripped of the base path: MfaVerify restores this via React Router's navigate(), which is
+          // basename-aware and re-adds the app's BASE_URL prefix itself. Stashing the raw
+          // window.location.pathname (already basename-inclusive under a sub-path deployment) doubled the
+          // prefix into a 404 on the far side of verifying.
+          sessionStorage.setItem('mfa_redirect_path', `${stripBasePath(baseUrl, window.location.pathname)}${window.location.search}`);
         }
         if (action.forgetPath) {
           sessionStorage.removeItem('mfa_redirect_path');
@@ -336,19 +364,12 @@ const App = () => (
       <BrowserRouter basename={baseUrl}>
         <AuthProvider>
           <MfaProvider>
-            <CustomThemeProvider storageProvider={useLocalStorage} modes={modes}>
-              <DashboardProvider AuthContext={AuthContext} withRouter={withRouter} storageProvider={useLocalStorage} dashboardItems={[]}>
-                <SnackbarProvider maxSnack={3} autoHideDuration={3000} anchorOrigin={{ vertical: 'top', horizontal: 'right' }}>
-                  <CssBaseline />
-                  <GlobalStyle />
-                  <Root>
-                    <GovUKNotificationProvider>
-                      <AppRoutes />
-                    </GovUKNotificationProvider>
-                  </Root>
-                </SnackbarProvider>
-              </DashboardProvider>
-            </CustomThemeProvider>
+            <GlobalStyle />
+            <div className="app-root">
+              <GovUKNotificationProvider>
+                <AppRoutes />
+              </GovUKNotificationProvider>
+            </div>
           </MfaProvider>
         </AuthProvider>
       </BrowserRouter>

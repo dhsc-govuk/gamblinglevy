@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
 import { ConfirmActionPanel, GovUKButton, GovUKNotificationBanner, NotAuthorised, PageLoading, H1, Paragraph } from '../../../../components/GovUKComponents';
 import usePageTitle from '../../../../hooks/usePageTitle';
@@ -22,9 +22,10 @@ const UsersResetMfa = (): React.ReactElement => {
 
   usePageTitle(organisationUserPageTitle(userQuery, 'Reset MFA'));
 
-  const { mutate, isLoading } = useMutation(() => resetOrganisationUserMfa(organisationId!, userId), {
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => resetOrganisationUserMfa(organisationId!, userId),
     onSuccess: () => {
-      queryClient.invalidateQueries(organisationUserKey(organisationId ?? '', userId));
+      queryClient.invalidateQueries({ queryKey: organisationUserKey(organisationId ?? '', userId) });
       navigate(`/organisation-admin/users/${userId}`, {
         state: {
           banner: {
@@ -67,8 +68,8 @@ const UsersResetMfa = (): React.ReactElement => {
           <GovUKButton
             className="govuk-button govuk-button--inverse"
             onClick={() => mutate()}
-            isLoading={isLoading}
-            disabled={isLoading}
+            isLoading={isPending}
+            disabled={isPending}
             data-testid="organisation-admin-users-reset-mfa-confirm">
             Reset MFA
           </GovUKButton>

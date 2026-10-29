@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Api.Dtos;
+using Application.MaturityAssessments.Protocol;
 using Domain.Collections;
+using Domain.Organisations;
 using Domain.ValueObjects;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +29,12 @@ public class DataCollectionsControllerTests : BaseIntegrationTest, IAsyncLifetim
     private sealed record CollectionResult(Guid Id, string Name, string Status, bool IsDraft);
 
     private sealed record SummaryResult(Guid Id, string Name, string Status);
+
+    private sealed record FormOptionResult(Guid ModuleId, string Name, DateTime? LastChangedAt, string Type);
+
+    private sealed record CollectionFormResult(Guid ModuleId, string? Code, string? Name);
+
+    private sealed record CollectionFormsResult(Guid Id, IReadOnlyList<CollectionFormResult> Forms);
 
     public async Task InitializeAsync()
     {
@@ -436,6 +445,31 @@ public class DataCollectionsControllerTests : BaseIntegrationTest, IAsyncLifetim
     }
 
     [Fact]
+    public async Task Create_WithNameOfDeletedCollection_Succeeds()
+    {
+        // BLUM-9093: the unique name index ignored deleted_at, so re-using a deleted collection's name passed the
+        // name check and then failed the insert as "Unknown exception for the collection".
+        var deletedId = await CreateAsync(DraftRequest("Reused name"));
+        (await Client.DeleteAsync($"{Route}/{deletedId}")).IsSuccessStatusCode.Should().BeTrue();
+
+        var response = await Client.PostAsJsonAsync(Route, DraftRequest("Reused name"));
+
+        response.IsSuccessStatusCode.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Restore_WhenLiveCollectionHasSameName_ReturnsConflict()
+    {
+        var deletedId = await CreateAsync(DraftRequest("Taken while deleted"));
+        (await Client.DeleteAsync($"{Route}/{deletedId}")).IsSuccessStatusCode.Should().BeTrue();
+        await CreateAsync(DraftRequest("Taken while deleted"));
+
+        var response = await Client.PostAsync($"{Route}/{deletedId}/restore", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
     public async Task SendReminder_ForOpenCollection_Succeeds()
     {
         var id = await CreateAsync(OpenRequest("Reminder collection"));
@@ -444,6 +478,48 @@ public class DataCollectionsControllerTests : BaseIntegrationTest, IAsyncLifetim
 
         response.IsSuccessStatusCode.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task ReportingLas_ListsEveryLocalAuthority_OrderedByName()
+    {
+        // The names differ in their first letter and share their case, so the expected order is the same
+        // under any collation; they are inserted out of that order.
+        var charlie = LocalAuthority("Charlie Council", "E06020003");
+        var alpha = LocalAuthority("Alpha Council", "E06020001");
+        var bravo = LocalAuthority("Bravo Council", "E06020002", OnboardingStatus.Suspended);
+        await Context.Organisations.AddRangeAsync(charlie, alpha, bravo);
+        await SaveChangesAsync();
+
+        try
+        {
+            var response = await Client.GetAsync($"{Route}/reporting-las");
+
+            // Every LA is offered, whatever its onboarding status: the wizard decides who is assigned.
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            var reportingLas = await response.ToResponseModel<List<ReportingLaDto>>();
+            reportingLas.Should().Equal(
+                new ReportingLaDto(alpha.Id.Value, "Alpha Council"),
+                new ReportingLaDto(bravo.Id.Value, "Bravo Council"),
+                new ReportingLaDto(charlie.Id.Value, "Charlie Council"));
+        }
+        finally
+        {
+            // Nothing else in this class seeds an organisation, and its other tests assume there are none.
+            Context.Organisations.RemoveRange(Context.Organisations);
+            await SaveChangesAsync();
+        }
+    }
+
+    private static Organisation LocalAuthority(string name, string onsCode, OnboardingStatus? status = null) =>
+        Organisation.New(
+            OrganisationId.New(),
+            name,
+            onsCode,
+            Region.London,
+            OrgType.LocalAuthority,
+            "E1000001",
+            status ?? OnboardingStatus.Active,
+            DateTime.UtcNow);
 
     [Fact]
     public async Task List_AsNonAdmin_IsForbidden()
@@ -471,7 +547,7 @@ public class DataCollectionsControllerTests : BaseIntegrationTest, IAsyncLifetim
             IsSubmittedByAllLas: true,
             SaveAsDraft: true,
             LocalAuthorityIds: null,
-            FormModuleIds: new[] { _formModuleId },
+            FormModuleIds: MaturityCollectionForms.Ids,
             Reminders: null);
 
         var id = await CreateAsync(request);
@@ -486,11 +562,98 @@ public class DataCollectionsControllerTests : BaseIntegrationTest, IAsyncLifetim
     public async Task Create_MaturityAssessmentWithQuarter_ReturnsBadRequest()
     {
         // Regression #7: a quarter on a maturity assessment is rejected.
-        var request = DraftRequest("Maturity with quarter") with { Type = "maturity_assessment", Quarter = 2 };
+        var request = DraftRequest("Maturity with quarter") with { Type = "maturity_assessment", Quarter = 2, FormModuleIds = MaturityCollectionForms.Ids };
 
         var response = await Client.PostAsJsonAsync(Route, request);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task FormOptions_ListsQuarterlyModulesThenEveryMaturitySection()
+    {
+        // BLUM-7943: one list serves both types, tagged so the wizard filters locally when the admin switches type.
+        var response = await Client.GetAsync($"{Route}/form-options");
+
+        response.IsSuccessStatusCode.Should().BeTrue();
+        var options = await response.ToResponseModel<List<FormOptionResult>>();
+
+        var quarterly = options.TakeWhile(o => o.Type == CollectionTypes.QuarterlyReport).ToList();
+        quarterly.Should().NotBeEmpty();
+        quarterly.Should().OnlyContain(o => o.LastChangedAt != null && !MaturityCollectionForms.IsMaturityFormId(o.ModuleId));
+
+        var maturity = options.Skip(quarterly.Count).ToList();
+        maturity.Should().OnlyContain(o => o.Type == CollectionTypes.MaturityAssessment && o.LastChangedAt == null);
+        maturity.Select(o => o.ModuleId).Should().Equal(MaturityCollectionForms.Ids);
+        maturity.Select(o => o.Name).Should().Equal(MaturityProtocol.Sections.Select(s => s.Title));
+    }
+
+    [Fact]
+    public async Task Get_MaturityAssessment_NamesItsSectionForms()
+    {
+        var selected = MaturityCollectionForms.All.Take(2).ToList();
+        var id = await CreateAsync(DraftRequest("Maturity forms") with
+        {
+            Type = "maturity_assessment",
+            Quarter = null,
+            FormModuleIds = selected.Select(f => f.Id).ToList(),
+        });
+
+        var response = await Client.GetAsync($"{Route}/{id}");
+
+        response.IsSuccessStatusCode.Should().BeTrue();
+        var dto = await response.ToResponseModel<CollectionFormsResult>();
+        dto.Forms.Should().BeEquivalentTo(selected.Select(f => new CollectionFormResult(f.Id, f.SectionCode, f.Title)));
+    }
+
+    [Fact]
+    public async Task Create_MaturityAssessmentWithQuarterlyForm_ReturnsValidationFailed()
+    {
+        // BLUM-7943: a type switch must never persist the other type's forms — a draft included.
+        var request = DraftRequest("Maturity with quarterly form") with { Type = "maturity_assessment", Quarter = null };
+
+        var response = await Client.PostAsJsonAsync(Route, request);
+
+        await ShouldBeValidationFailedAsync(response, "FormModuleIds", "Select only forms for a maturity assessment");
+        (await Context.Collections.AsNoTracking().AnyAsync(c => c.Name == "Maturity with quarterly form")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Create_QuarterlyReportWithMaturityForm_ReturnsValidationFailed()
+    {
+        var request = DraftRequest("Quarterly with maturity form") with { FormModuleIds = [_formModuleId, MaturityCollectionForms.Ids[0]] };
+
+        var response = await Client.PostAsJsonAsync(Route, request);
+
+        await ShouldBeValidationFailedAsync(response, "FormModuleIds", "Select only forms for a quarterly report");
+        (await Context.Collections.AsNoTracking().AnyAsync(c => c.Name == "Quarterly with maturity form")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Create_DraftWithOpenDateYearOutOfRange_ReturnsValidationFailed()
+    {
+        // BLUM-8053: a four-digit year is not enough — 5050 used to be saved. Checked on drafts too.
+        var request = DraftRequest("Open date in 5050") with { WindowSameAsReportingPeriod = false, OpenDate = new DateOnly(5050, 1, 1) };
+
+        var response = await Client.PostAsJsonAsync(Route, request);
+
+        await ShouldBeValidationFailedAsync(response, "OpenDate", "Year collection opens must be between 2000 and 2100");
+        (await Context.Collections.AsNoTracking().AnyAsync(c => c.Name == "Open date in 5050")).Should().BeFalse();
+    }
+
+    private static async Task ShouldBeValidationFailedAsync(HttpResponseMessage response, string property, string message)
+    {
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        root.GetProperty("error").GetString().Should().Be("validation_failed");
+        root.GetProperty("errors")
+            .EnumerateArray()
+            .Select(e => (Property: e.GetProperty("property").GetString(), Message: e.GetProperty("message").GetString()))
+            .Should()
+            .ContainSingle()
+            .Which.Should().Be((property, message));
     }
 
     [Fact]

@@ -12,44 +12,82 @@ public record ExpectedResultInput(string? KeyResultCode, string? Text);
 public static class ExpectedResultInputs
 {
     // People-and-roles activities have no key results (no protocol questions exist for them).
-    public const string PeopleCategoryName = "People and roles";
+    public const string PeopleCategoryName = CategoryNames.PeopleAndRoles;
 
-    // Needs-assessment key-result screens keep the protocol's original "select at least 2" trigger.
-    public const string NeedsAssessmentCategoryName = "Needs assessment";
+    // All three messages are surfaced verbatim in the 422 body and are mirrored exactly by the client, which uses
+    // them to decide that a refusal belongs on the expected-results field rather than the generic error summary
+    // (EXPECTED_RESULTS_MESSAGES in client/src/views/Activities/messages.ts). Reword one and the other must follow.
+    //
+    // Which of the two minimum messages applies is the screen the user is looking at: a checkbox list of standard
+    // measures says "Select", the free-text-only "Other type of …" screens say "Enter" (Question Protocol,
+    // 13 August — BLUM-7620).
+    public const string SelectionError = "Select at least one measure";
 
-    public const string SelectionError = "Select the outcomes you will use to measure this activity";
+    public const string EntryError = "Enter at least one measure";
 
-    // Minimum key-result selections on completion (Question Protocol 3 July), counting standard selections and
-    // custom entries together: types with standard options need 1, except needs-assessment which stays at 2;
-    // types with no standard options (the "Other type of …" free-text screens) still require 2 custom entries.
-    // People-and-roles is exempt entirely.
-    public static int MinimumFor(bool hasStandardDefinitions, bool isNeedsAssessmentCategory) =>
-        !hasStandardDefinitions || isNeedsAssessmentCategory ? 2 : 1;
+    public const string InvalidCodeError = "One or more selected outcomes are not valid for this activity type.";
 
-    // The single completion-minimum rule shared by CreateActivity and UpdateActivity: resolves the category
-    // name, applies the People-and-roles exemption and the per-category minimum, and returns the error message
-    // when too few key results are selected (null when satisfied).
-    public static async Task<string?> ValidateMinimumAsync(
+    // The activity name became mandatory on completion in the 13 August protocol (1.BCDEF.1.1). People-and-roles
+    // is exempt for the same reason it is exempt from key results: a role record is named by its role type and
+    // never shows the field. Joint partnership is exempt too since BLUM-8090 — see ValidateCompletionAsync.
+    public const string NameRequiredError = "Enter the name of the activity";
+
+    // Minimum key-result selections on completion, counting standard selections and custom entries together. The
+    // 13 August protocol struck needs assessment's "<2 selected" trigger through in favour of "<1 selected", and
+    // reworded every screen's error and hint to "at least one" — including the free-text-only screens, which drop
+    // from 2 entries to 1. People-and-roles is exempt entirely.
+    public const int MinimumSelections = 1;
+
+    // The minimum message for a screen: standard checkbox options ask the user to select, the free-text-only
+    // "Other type of …" screens ask them to enter.
+    public static string MinimumMessageFor(bool hasStandardDefinitions) => hasStandardDefinitions ? SelectionError : EntryError;
+
+    // The completion rules that need the category resolved, shared by CreateActivity and UpdateActivity: the
+    // activity name and the key-result minimum. The category name is read once and answers both. Each element is
+    // null when its rule is satisfied.
+    //
+    // The two exemptions are kept as independent rules rather than one "is this a special category?" branch.
+    // People-and-roles is exempt from both (a role is named by its role type, and no protocol questions exist for
+    // any of its types). Joint partnership is exempt from the minimum because it has no key-result definitions
+    // (BLUM-7860), and from the name since BLUM-8090 removed the field from its record — the Figma asks only what
+    // was committed and who the partners are. The consequence BLUM-7860 named the field to avoid is accepted: the
+    // funding section labels each row Title -> CustomTaskText -> type name, so an unnamed partnership reads "Joint
+    // partnership" there and in every list.
+    public static async Task<(string? NameError, string? ExpectedResultsError)> ValidateCompletionAsync(
         ICategoryQueries categoryQueries,
         CategoryId? categoryId,
+        string? title,
         int standardDefinitionCount,
         int selectedRowCount,
         CancellationToken cancellationToken)
     {
-        string? categoryName = null;
-        if (categoryId is not null)
-        {
-            var categories = await categoryQueries.GetActiveCategoriesAsync(cancellationToken);
-            categoryName = categories.FirstOrDefault(c => c.Id == categoryId)?.Name;
-        }
+        var categoryName = await ResolveCategoryNameAsync(categoryQueries, categoryId, cancellationToken);
 
-        if (categoryName == PeopleCategoryName)
+        var namedByItsType = categoryName == PeopleCategoryName || categoryName == CategoryNames.JointPartnership;
+        var hasKeyResults = categoryName != PeopleCategoryName && categoryName != CategoryNames.JointPartnership;
+
+        var nameError = !namedByItsType && string.IsNullOrWhiteSpace(title) ? NameRequiredError : null;
+        var minimumError = hasKeyResults && selectedRowCount < MinimumSelections
+            ? MinimumMessageFor(standardDefinitionCount > 0)
+            : null;
+        return (nameError, minimumError);
+    }
+
+    // The name of the category a command names, or null when it names none (a draft) or one that is not active.
+    // Category ids are minted per environment, so every category-specific completion rule keys on this name — the
+    // two above, and the Joint partnership start-date exemption in Create/UpdateActivityCommandValidator.
+    public static async Task<string?> ResolveCategoryNameAsync(
+        ICategoryQueries categoryQueries,
+        CategoryId? categoryId,
+        CancellationToken cancellationToken)
+    {
+        if (categoryId is null)
         {
             return null;
         }
 
-        var minimum = MinimumFor(standardDefinitionCount > 0, categoryName == NeedsAssessmentCategoryName);
-        return selectedRowCount < minimum ? SelectionError : null;
+        var categories = await categoryQueries.GetActiveCategoriesAsync(cancellationToken);
+        return categories.FirstOrDefault(c => c.Id == categoryId)?.Name;
     }
 
     // Normalises raw inputs into persistable (code, text) rows against the activity type's standard definitions.
@@ -69,7 +107,7 @@ public static class ExpectedResultInputs
                 var code = input.KeyResultCode.Trim();
                 if (!labelByCode.TryGetValue(code, out var label))
                 {
-                    return ([], "One or more selected key results are not valid for this activity type.");
+                    return ([], InvalidCodeError);
                 }
 
                 if (seenCodes.Add(code))

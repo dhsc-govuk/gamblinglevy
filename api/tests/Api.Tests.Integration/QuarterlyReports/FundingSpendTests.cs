@@ -1,5 +1,6 @@
 using System.Net;
 using Api.Dtos;
+using Application.Collections;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Tests.Common;
@@ -173,8 +174,10 @@ public class FundingSpendTests(IntegrationTestWebFactory factory) : QuarterlyRep
         funding.CurrentQuarter.Should().Be(1);
         funding.RemainingQuarters.Select(q => q.Quarter).Should().Equal(2, 3, 4);
         var firstForecastQuarter = funding.RemainingQuarters.Single(q => q.Quarter == 2);
-        firstForecastQuarter.Start.Should().Be(new DateOnly(2026, 7, 1));
-        firstForecastQuarter.End.Should().Be(new DateOnly(2026, 9, 30));
+        // Derived from the collection's own financial year, which is whichever year the test runs in.
+        var (q2Start, q2End) = ReportingPeriod.Derive(TestFinancialYears.Current, 2);
+        firstForecastQuarter.Start.Should().Be(q2Start);
+        firstForecastQuarter.End.Should().Be(q2End);
     }
 
     // BLUM-7216 review: an admin can revert a PUBLISHED collection to draft after LAs have started reporting, and
@@ -208,11 +211,50 @@ public class FundingSpendTests(IntegrationTestWebFactory factory) : QuarterlyRep
         feedback.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    // BLUM-7672, all three ACs seen from both ends. A Planned activity has not started, so it has no actual spend and
+    // no results to report (SaveActivityReportTests.Save_ForAPlannedActivity_Returns422 covers the results write
+    // side) — but it is exactly what the LA expects to spend on, so it takes a forecast. BLUM-7504 had taken it off
+    // both funding screens; this puts it back on the forecast only. Active, closed and finished are unchanged: on both
+    // funding screens and in the results picker.
     [Fact]
-    public async Task GetFundingSpend_IncludesPlannedActivities()
+    public async Task PlannedActivity_IsForecastOnlyInFundingSpend_AndNotInActivityResults()
     {
         AuthenticateAsMainOrgLead();
         var collectionId = await CreateOpenCollectionAsync();
+        var planned = await CreateRnaActivityAsync(status: "planned", title: "Planned work");
+        var active = await CreateRnaActivityAsync(status: "active", title: "Active work");
+        var closed = await CreateRnaActivityAsync(status: "closed", title: "Closed work");
+        var finished = await CreateRnaActivityAsync(status: "finished", title: "Finished work");
+        await CreateSubmissionAsync(collectionId);
+        await ConfirmActivitiesAsync(collectionId);
+
+        var funding = await GetFundingSpendAsync(collectionId);
+
+        var plannedRow = funding.Activities.Should().ContainSingle(a => a.ActivityId == planned.Id).Subject;
+        plannedRow.ForecastOnly.Should().BeTrue("a Planned activity belongs on Forecast spend, not Activity spending");
+        plannedRow.ActualThisQuarter.Should().BeNull();
+        plannedRow.Forecast.Keys.Should().BeEquivalentTo(funding.RemainingQuarters.Select(q => q.Quarter));
+
+        funding.Activities
+            .Where(a => a.ActivityId != planned.Id)
+            .Select(a => (a.ActivityId, a.ForecastOnly))
+            .Should().BeEquivalentTo([(active.Id, false), (closed.Id, false), (finished.Id, false)]);
+
+        var activitiesResponse = await Client.GetAsync($"quarterly-report/{collectionId}/activities");
+        activitiesResponse.EnsureSuccessStatusCode();
+        var reportable = await activitiesResponse.ToResponseModel<List<ReportableActivityDto>>();
+        reportable.Select(a => a.ActivityId).Should().BeEquivalentTo([active.Id, closed.Id, finished.Id]);
+    }
+
+    // Q4 has no quarters left to forecast, so a Planned activity has nothing to fill in there — but it keeps its
+    // forecast-only row, because that row is where the export reads the forecasts it was given in the Q1-Q3 reports
+    // (ExportSubmissions_Q4Export_KeepsAStillPlannedActivitysEarlierForecast). With no remaining quarters, Complete
+    // owes nothing for it.
+    [Fact]
+    public async Task GetFundingSpend_ForAQ4Collection_KeepsPlannedActivitiesAsForecastOnlyRows()
+    {
+        AuthenticateAsMainOrgLead();
+        var collectionId = await CreateOpenQuarterCollectionAsync(4, "Planned in Q4");
         var planned = await CreateRnaActivityAsync(status: "planned", title: "Planned work");
         var active = await CreateRnaActivityAsync(status: "active", title: "Active work");
         await CreateSubmissionAsync(collectionId);
@@ -220,11 +262,125 @@ public class FundingSpendTests(IntegrationTestWebFactory factory) : QuarterlyRep
 
         var funding = await GetFundingSpendAsync(collectionId);
 
-        // The funding report covers the LA's whole activity list, Planned activities included — unlike the
-        // key-results report, which excludes them (see SaveActivityReportTests.Save_ForAPlannedActivity_Returns422).
-        var ids = funding.Activities.Select(a => a.ActivityId).ToList();
-        ids.Should().Contain(planned.Id);
-        ids.Should().Contain(active.Id);
+        funding.RemainingQuarters.Should().BeEmpty();
+        var plannedRow = funding.Activities.Should().ContainSingle(a => a.ActivityId == planned.Id).Subject;
+        plannedRow.ForecastOnly.Should().BeTrue();
+        plannedRow.ActualThisQuarter.Should().BeNull();
+        plannedRow.Forecast.Should().BeEmpty("a Q4 report has no quarters left to forecast");
+        funding.Activities.Single(a => a.ActivityId == active.Id).ForecastOnly.Should().BeFalse();
+
+        (await SaveFundingActualsAsync(collectionId, saveAsDraft: true, otherAmount: 0m, (active.Id, 100m)))
+            .EnsureSuccessStatusCode();
+        (await CompleteFundingSpendAsync(collectionId)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // The write side has to agree with the screens, or a stale client could record an actual the Activity spending
+    // screen never offered. The forecast is kept and the actual dropped, silently, the same way any other id the
+    // screen does not show is dropped.
+    [Fact]
+    public async Task SaveSpend_ForAPlannedActivity_KeepsItsForecastAndDropsItsActual()
+    {
+        AuthenticateAsMainOrgLead();
+        var collectionId = await CreateOpenCollectionAsync();
+        var planned = await CreateRnaActivityAsync(status: "planned", title: "Planned work");
+        await CreateSubmissionAsync(collectionId);
+        await ConfirmActivitiesAsync(collectionId);
+        var funding = await GetFundingSpendAsync(collectionId);
+
+        (await SaveFundingActualsAsync(collectionId, saveAsDraft: true, otherAmount: 0m, (planned.Id, 500m)))
+            .EnsureSuccessStatusCode();
+        var forecast = new[]
+        {
+            new FundingActivityForecastInputDto(
+                planned.Id,
+                funding.RemainingQuarters.Select(q => new FundingQuarterAmountInputDto(q.Quarter, 250m)).ToList()),
+        };
+        (await SaveFundingForecastAsync(collectionId, saveAsDraft: true, forecast, [])).EnsureSuccessStatusCode();
+
+        var plannedId = new Domain.Activities.ActivityId(planned.Id);
+        var entries = await Context.SubmissionSpendEntries.AsNoTracking().Where(e => e.ActivityId == plannedId).ToListAsync();
+        entries.Should().OnlyContain(e => e.Kind.IsForecast && e.Amount == 250m);
+        entries.Select(e => e.Quarter).Should().BeEquivalentTo(funding.RemainingQuarters.Select(q => (int?)q.Quarter));
+
+        var saved = await GetFundingSpendAsync(collectionId);
+        var row = saved.Activities.Single(a => a.ActivityId == planned.Id);
+        row.Forecast.Values.Should().OnlyContain(v => v == 250m);
+        saved.Summary.TotalForecast.Should().Be(250m * funding.RemainingQuarters.Count);
+        saved.Summary.TotalSpendThisQuarter.Should().Be(0m);
+    }
+
+    // Each screen is held to its own set on Complete: a Planned activity owes a forecast for every remaining quarter
+    // (£0 is an answer, as for any other row on that screen) but never an actual.
+    [Fact]
+    public async Task Complete_RequiresAForecastButNoActual_ForAPlannedActivity()
+    {
+        AuthenticateAsMainOrgLead();
+        var collectionId = await CreateOpenCollectionAsync();
+        var planned = await CreateRnaActivityAsync(status: "planned", title: "Planned work");
+        var active = await CreateRnaActivityAsync(status: "active", title: "Active work");
+        await CreateSubmissionAsync(collectionId);
+        await ConfirmActivitiesAsync(collectionId);
+        var funding = await GetFundingSpendAsync(collectionId);
+        var remaining = funding.RemainingQuarters.Select(q => q.Quarter).ToList();
+
+        // Everything the active activity and the "Other" lines need — nothing for the Planned one yet.
+        (await SaveFundingActualsAsync(collectionId, saveAsDraft: true, otherAmount: 0m, (active.Id, 100m)))
+            .EnsureSuccessStatusCode();
+        var activeForecast = new FundingActivityForecastInputDto(
+            active.Id, remaining.Select(q => new FundingQuarterAmountInputDto(q, 50m)).ToList());
+        var otherForecast = remaining.Select(q => new FundingQuarterAmountInputDto(q, 0m)).ToList();
+        (await SaveFundingForecastAsync(collectionId, saveAsDraft: true, [activeForecast], otherForecast)).EnsureSuccessStatusCode();
+
+        var refused = await CompleteFundingSpendAsync(collectionId);
+
+        refused.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        var envelope = await refused.ToResponseModel<AnswersInvalidEnvelope>();
+        envelope.AnswerErrors.Select(e => e.QuestionCode)
+            .Should().BeEquivalentTo(remaining.Select(q => $"forecast-{planned.Id}-q{q}"));
+
+        var plannedForecast = new FundingActivityForecastInputDto(
+            planned.Id, remaining.Select(q => new FundingQuarterAmountInputDto(q, 0m)).ToList());
+        (await SaveFundingForecastAsync(collectionId, saveAsDraft: true, [activeForecast, plannedForecast], otherForecast))
+            .EnsureSuccessStatusCode();
+
+        var completed = await CompleteFundingSpendAsync(collectionId);
+
+        completed.StatusCode.Should().Be(HttpStatusCode.OK, "no actual is owed for a Planned activity");
+        var taskList = await GetTaskListAsync(collectionId);
+        taskList.Sections.Single(s => s.ModuleCode == FundingModuleCode).Status.Should().Be("completed");
+    }
+
+    // A Joint partnership record reports its funding like any other activity, and — since BLUM-8090 moved its
+    // progress questions off the record and into the report — its delivery in "Enter activity results" too. BLUM-7860
+    // kept it out of that section; this is the same assertion turned round, on both the picker and the questions
+    // endpoint, because the list and the write side have to agree (an activity the picker offers but the questions
+    // endpoint refuses could never be completed).
+    //
+    // Strategic feedback needs no assertion: it has no activity fan-out at all (StrategicFeedbackContextResolver),
+    // so no activity of any category can appear there.
+    [Fact]
+    public async Task JointPartnershipActivity_IsInFundingSpendAndInActivityResults()
+    {
+        AuthenticateAsMainOrgLead();
+        var collectionId = await CreateOpenCollectionAsync();
+        var jointPartnership = await CreateCompletedActivityAsync(
+            taskName: "Joint partnership", expectedResults: [], title: "Greater Manchester pool");
+        var rna = await CreateRnaActivityAsync(title: "Regional needs assessment");
+        await CreateSubmissionAsync(collectionId);
+        await ConfirmActivitiesAsync(collectionId);
+
+        var funding = await GetFundingSpendAsync(collectionId);
+        funding.Activities.Select(a => a.ActivityId).Should().Contain([jointPartnership.Id, rna.Id]);
+
+        var activitiesResponse = await Client.GetAsync($"quarterly-report/{collectionId}/activities");
+        activitiesResponse.EnsureSuccessStatusCode();
+        var reportable = await activitiesResponse.ToResponseModel<List<ReportableActivityDto>>();
+        reportable.Select(a => a.ActivityId).Should().Contain([rna.Id, jointPartnership.Id]);
+
+        // No measures, so no "Activity results" page — only the delivery questions (the wording is pinned by
+        // QuestionResolutionTests).
+        var questions = await GetActivityQuestionsAsync(collectionId, jointPartnership.Id);
+        questions.Questions.Should().NotBeEmpty().And.OnlyContain(q => q.Section == "delivery");
     }
 
     [Fact]

@@ -51,29 +51,26 @@
   margin: 0 0 30px;
 }
 
+/* Two rows, not one. GovUKTable drops every control to a quarter-width column as soon as a second filter
+   is present, which is sized for a full-width page. This page is not one: .govuk-width-container is 960px
+   with 30px padding (900px), .govuk-grid-row adds back 15px a side (930px), and ManagementLayout puts the
+   content in govuk-grid-column-three-quarters (697.5px) less 30px padding — 667.5px. Four quarters is 144px
+   each, under the 191px every other filter row here is built around, and three minmax(191px, max-content)
+   tracks (the Admin/Reports/List idiom, which works only because that page is full-width) would leave 4.5px
+   for the search box. Two columns let the DOM order — search, sort, organisation, access level — fall into
+   two rows on its own, so there is no grid-column spanning or positional selector to keep in step with the
+   component's markup, and the organisation filter lands in the wide track: it is the one control whose
+   options are long and unbounded (LA names are varchar(255)).
+   Track two is minmax(191px, max-content) rather than a pinned width so a user text-spacing stylesheet
+   (WCAG 1.4.12) widens the select instead of clipping its chosen option, and that growth comes out of the
+   1fr track rather than overflowing the page. */
 .admin-users-list__table .govuk-table-filter {
-  align-items: flex-end;
-  flex-wrap: nowrap;
-  gap: 30px;
-  margin: 0 0 30px;
-}
-
-.admin-users-list__table .govuk-table-filter > .govuk-grid-column-two-thirds {
-  flex: 1 1 auto;
-  float: none;
-  padding: 0;
-  width: auto;
-}
-
-/* flex-basis auto + a 191px floor rather than a pinned 191px, so a user text-spacing stylesheet
-   (WCAG 1.4.12) can widen the select instead of clipping its chosen option. The floor keeps the
-   default-spacing width at 191px. */
-.admin-users-list__table .govuk-table-filter > .govuk-grid-column-one-third {
-  flex: 0 0 auto;
-  float: none;
-  min-width: 191px;
-  padding: 0;
-  width: auto;
+  align-items: end;
+  column-gap: 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(191px, max-content);
+  margin-bottom: 30px;
+  row-gap: 20px;
 }
 
 .admin-users-list__table .govuk-table {
@@ -107,14 +104,6 @@
   }
 
   .admin-users-list__table .govuk-table-filter {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 20px;
-  }
-
-  .admin-users-list__table .govuk-table-filter > .govuk-grid-column-two-thirds,
-  .admin-users-list__table .govuk-table-filter > .govuk-grid-column-one-third {
-    flex-basis: auto;
-    width: 100%;
+    grid-template-columns: 1fr;
   }
 }

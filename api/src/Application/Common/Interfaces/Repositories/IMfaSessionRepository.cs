@@ -48,6 +48,14 @@ public interface IMfaSessionRepository
     Task<int> TryUpdateLastActivityAsync(MfaSessionId sessionId, DateTime lastActivityAt, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Moves the session's last-seen address (BLUM-7848), conditional on it still being
+    /// <paramref name="expectedHash"/> (null meaning "never moved"). Returns the rows changed: 0 means a
+    /// concurrent request already recorded this transition, which is how one move stays worth one audit row.
+    /// Targets only the two columns, for the same reason TryUpdateLastActivityAsync does.
+    /// </summary>
+    Task<int> TryUpdateLastSeenIpAsync(MfaSessionId sessionId, string? expectedHash, string newHash, string newIpAddress, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deletes session records — anyone's — whose absolute expiry passed before <paramref name="endedBefore"/>,
     /// at most <paramref name="batchSize"/> of them, returning how many went. This is a data-retention
     /// control, not a cache eviction: since BLUM-7241 the rows carry an IP address and a device description,

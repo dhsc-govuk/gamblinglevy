@@ -1,4 +1,5 @@
 using Application.Common.Validation;
+using Application.MaturityAssessments.Protocol;
 using Domain.Collections;
 using FluentValidation;
 
@@ -41,10 +42,29 @@ public class CreateCollectionCommandValidator : AbstractValidator<CreateCollecti
             .When(x => x.Type == CollectionTypes.MaturityAssessment)
             .WithMessage("A maturity assessment must not have a quarter.");
 
+        // Forms belong to a collection type (BLUM-7943): a maturity assessment picks catalogue sections, a quarterly
+        // report picks form modules. Checked on drafts too, like every other supplied value, so a type switch can never
+        // persist the other type's forms. The message reaches the admin verbatim, so it is written as GOV.UK copy.
+        RuleFor(x => x.FormModuleIds)
+            .Must(ids => ids.All(MaturityCollectionForms.IsMaturityFormId))
+            .When(x => string.Equals(x.Type, CollectionTypes.MaturityAssessment, StringComparison.Ordinal))
+            .WithErrorCode(ErrorCodes.NotAllowed)
+            .WithMessage("Select only forms for a maturity assessment");
+
+        RuleFor(x => x.FormModuleIds)
+            .Must(ids => !ids.Any(MaturityCollectionForms.IsMaturityFormId))
+            .When(x => string.Equals(x.Type, CollectionTypes.QuarterlyReport, StringComparison.Ordinal))
+            .WithErrorCode(ErrorCodes.NotAllowed)
+            .WithMessage("Select only forms for a quarterly report");
+
         RuleFor(x => x.OpenDate)
             .Must((command, openDate) => openDate!.Value <= command.Deadline!.Value)
             .When(x => x.OpenDate.HasValue && x.Deadline.HasValue)
             .WithMessage("The collection open date must be on or before the submission deadline.");
+
+        // Checked on drafts too, like every other supplied value. Worded to match the wizard's client-side message.
+        RuleFor(x => x.OpenDate).YearInRange("Year collection opens");
+        RuleFor(x => x.Deadline).YearInRange("Year of submission deadline");
 
         RuleFor(x => x.Reminders).Bounded(FieldLimits.MaxReminders);
 

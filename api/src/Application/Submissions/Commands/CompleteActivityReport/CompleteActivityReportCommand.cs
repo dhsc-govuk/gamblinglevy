@@ -1,6 +1,10 @@
+using Application.Common.Features;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
+using Application.Submissions.Audit;
 using Application.Submissions.Exceptions;
 using Application.Submissions.Protocol;
+using Domain.AuditLogs;
 using Domain.Submissions;
 using LanguageExt;
 using MediatR;
@@ -20,7 +24,10 @@ public record CompleteActivityReportCommand : IRequest<Either<SubmissionExceptio
 
 public class CompleteActivityReportCommandHandler(
     ActivityReportContextResolver resolver,
-    ISubmissionActivityAnswerRepository answerRepository)
+    ISubmissionActivityAnswerRepository answerRepository,
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner,
+    IFeatureFlags featureFlags)
     : IRequestHandler<CompleteActivityReportCommand, Either<SubmissionException, SubmissionActivityReport>>
 {
     public async Task<Either<SubmissionException, SubmissionActivityReport>> Handle(
@@ -37,34 +44,46 @@ public class CompleteActivityReportCommandHandler(
         ActivityReportContext context,
         CancellationToken cancellationToken)
     {
-        var resolved = await resolver.GetResolvedQuestionsAsync(context.Activity, cancellationToken);
+        var resolved = await resolver.GetResolvedQuestionsAsync(context.Collection, context.Activity, cancellationToken);
         var saved = await answerRepository.GetForActivityAsync(context.Submission.Id, context.Activity.Id, cancellationToken);
         var answersMap = saved.ToDictionary(a => a.QuestionCode, a => (string?)a.Value, StringComparer.Ordinal);
 
-        var answerErrors = SubmissionAnswerValidator.Validate(resolved, answersMap, enforceRequired: true);
+        var answerErrors = SubmissionAnswerValidator.Validate(
+            resolved, answersMap, enforceRequired: true, transitive: featureFlags.IsEnabled(Feature.BLUM_9087));
         if (answerErrors.Count > 0)
         {
             return new SubmissionAnswersInvalidException(context.Submission.Id, context.Activity.Id, answerErrors);
         }
 
-        try
-        {
-            var persistable = SubmissionAnswerValidator.CollectPersistable(resolved, answersMap);
-            var answers = persistable
-                .Select(p => SubmissionActivityAnswer.Record(
-                    SubmissionActivityAnswerId.New(), context.Submission.Id, context.Activity.Id, p.Question.Code, p.Value, context.ActorId))
-                .ToList();
+        // The completed report, its audit row and the section roll-up commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<SubmissionException, SubmissionActivityReport>(
+            async token =>
+            {
+                try
+                {
+                    var report = await resolver.WriteCompletedReportAsync(context, resolved, answersMap, token);
 
-            await answerRepository.ReplaceForActivityAsync(context.Submission.Id, context.Activity.Id, answers, cancellationToken);
+                    // Appended before the recompute changes the section status, so the snapshot records the completion.
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            context.ActorId,
+                            AuditTargetType.Submission,
+                            context.Submission.Id.Value,
+                            AuditAction.SubmissionActivityReportCompleted,
+                            before: null,
+                            after: SubmissionSnapshot.Serialize(context.Submission, context.Activity.Id.Value),
+                            organisationId: context.OrganisationId),
+                        token);
 
-            var report = await resolver.UpsertReportAsync(context, completed: true, cancellationToken);
-            await resolver.RecomputeSectionStatusAsync(context, cancellationToken);
+                    await resolver.RecomputeSectionStatusAsync(context, token);
 
-            return report;
-        }
-        catch (Exception exception)
-        {
-            return new SubmissionUnknownException(context.Submission.Id, exception);
-        }
+                    return report;
+                }
+                catch (Exception exception)
+                {
+                    return new SubmissionUnknownException(context.Submission.Id, exception);
+                }
+            },
+            cancellationToken);
     }
 }

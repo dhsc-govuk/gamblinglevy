@@ -25,10 +25,16 @@ public class AuditLogsConfiguration : IEntityTypeConfiguration<AuditLog>
         builder.Property(x => x.OccurredAt)
             .HasConversion(new DateTimeUtcConverter())
             .HasDefaultValueSql("timezone('utc', now())");
+        builder.Property(x => x.PayloadVersion)
+            .IsRequired()
+            .HasDefaultValue(AuditLog.InitialPayloadVersion);
 
         builder.HasIndex(x => new { x.TargetType, x.TargetId });
         builder.HasIndex(x => x.OccurredAt);
         builder.HasIndex(x => x.OrganisationId);
         builder.HasIndex(x => x.Action);
+
+        // Serves the actor filter on the admin audit log, which orders by occurred_at (BLUM-8750).
+        builder.HasIndex(x => new { x.ActorUserId, x.OccurredAt });
     }
 }

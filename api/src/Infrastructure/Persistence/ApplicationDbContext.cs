@@ -8,6 +8,7 @@ using Domain.Forms;
 using Domain.Funding;
 using Domain.KeyResults;
 using Domain.LocationUsers;
+using Domain.MaturityAssessments;
 using Domain.Organisations;
 using Domain.OrganisationUsers;
 using Domain.Submissions;
@@ -41,10 +42,12 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<CollectionForm> CollectionForms { get; set; }
     public DbSet<CollectionLocalAuthority> CollectionLocalAuthorities { get; set; }
     public DbSet<CollectionReminder> CollectionReminders { get; set; }
+    public DbSet<CollectionReminderDispatch> CollectionReminderDispatches { get; set; }
     public DbSet<FormModule> FormModules { get; set; }
     public DbSet<DcFormSection> DcFormSections { get; set; }
     public DbSet<DcFormQuestion> DcFormQuestions { get; set; }
     public DbSet<DcFormQuestionOption> DcFormQuestionOptions { get; set; }
+    public DbSet<FormModuleVersion> FormModuleVersions { get; set; }
     public DbSet<KeyResultDefinition> KeyResultDefinitions { get; set; }
     public DbSet<KeyResultQuestion> KeyResultQuestions { get; set; }
     public DbSet<Submission> Submissions { get; set; }
@@ -53,6 +56,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<SubmissionActivityAnswer> SubmissionActivityAnswers { get; set; }
     public DbSet<SubmissionFeedbackAnswer> SubmissionFeedbackAnswers { get; set; }
     public DbSet<SubmissionSpendEntry> SubmissionSpendEntries { get; set; }
+    public DbSet<MaturityAssessment> MaturityAssessments { get; set; }
+    public DbSet<MaturityAssessmentSection> MaturityAssessmentSections { get; set; }
+    public DbSet<MaturityAssessmentAnswer> MaturityAssessmentAnswers { get; set; }
+    public DbSet<MaturityBaselineAnswer> MaturityBaselineAnswers { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

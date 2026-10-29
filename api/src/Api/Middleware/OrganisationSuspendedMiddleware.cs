@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using System.Text.Json;
 using Domain.Organisations;
 
 namespace Api.Middleware;
@@ -39,7 +38,7 @@ public class OrganisationSuspendedMiddleware
         }
 
         var path = context.Request.Path.Value ?? string.Empty;
-        if (IsExemptPath(path))
+        if (GlobalGate.IsExemptPath(path, ExemptPaths))
         {
             await _next(context);
             return;
@@ -48,38 +47,15 @@ public class OrganisationSuspendedMiddleware
         var organisationStatus = context.User.FindFirstValue("organisationStatus");
         if (string.Equals(organisationStatus, OnboardingStatuses.Suspended, StringComparison.OrdinalIgnoreCase))
         {
-            await WriteOrganisationSuspendedResponse(context);
+            await GlobalGate.WriteEnvelopeAsync(
+                context,
+                StatusCodes.Status403Forbidden,
+                "ORGANISATION_SUSPENDED",
+                "Your organisation's access has been suspended. Contact DHSC.");
             return;
         }
 
         await _next(context);
-    }
-
-    private static bool IsExemptPath(string path)
-    {
-        foreach (var exemptPath in ExemptPaths)
-        {
-            if (path.StartsWith(exemptPath, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static async Task WriteOrganisationSuspendedResponse(HttpContext context)
-    {
-        context.Response.StatusCode = StatusCodes.Status403Forbidden;
-        context.Response.ContentType = "application/json";
-
-        var response = new
-        {
-            error = "ORGANISATION_SUSPENDED",
-            message = "Your organisation's access has been suspended. Contact DHSC.",
-        };
-
-        await context.Response.WriteAsync(JsonSerializer.Serialize(response));
     }
 }
 

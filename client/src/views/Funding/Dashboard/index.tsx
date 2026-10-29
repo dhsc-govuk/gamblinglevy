@@ -1,6 +1,6 @@
 import React from 'react';
 import { PageLoading } from '../../../components/GovUKComponents';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../layouts';
 import { H1, Paragraph, GovUKSummaryCard, SummaryList, GovUKInsetText } from '../../../components/GovUKComponents';
 import { homeLinkForRole, useAuthProvider } from '../../../components/AuthProvider';
@@ -13,7 +13,7 @@ const Dashboard = (): React.ReactElement => {
   usePageTitle('Funding');
   const { userRole } = useAuthProvider();
 
-  const { data, isLoading } = useQuery(laFundingDashboardKey, getFundingDashboard);
+  const { data, isLoading } = useQuery({ queryKey: laFundingDashboardKey, queryFn: getFundingDashboard });
   const funding = data?.data;
 
   const cardTitle = funding?.financialYear ? `Annual funding ${funding.financialYear}` : 'Annual funding';

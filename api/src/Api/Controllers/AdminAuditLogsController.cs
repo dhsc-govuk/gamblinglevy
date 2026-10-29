@@ -22,6 +22,7 @@ public class AdminAuditLogsController(IAuditLogQueries auditLogQueries) : Contro
         [FromQuery] Guid? organisationId,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
+        [FromQuery] string? sort = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = FieldLimits.DefaultPageSize,
         CancellationToken cancellationToken = default)
@@ -34,7 +35,12 @@ public class AdminAuditLogsController(IAuditLogQueries auditLogQueries) : Contro
         // audit_logs.action varchar(64), beyond which nothing could match anyway.
         QueryGuard.MaxLength(action, FieldLimits.AuditAction, nameof(action));
 
-        var filter = new AuditLogFilter(action, actorUserId, targetUserId, organisationId, from, to);
+        // `sort` is allow-listed rather than bounded, unlike `action` above: it is a closed pair that the
+        // repository switches on, so an unrecognised value would answer in the opposite order to the one
+        // the caller asked for rather than return nothing.
+        QueryGuard.AllowedValue(sort, AuditLogSort.IsSupported, nameof(sort), "Select a valid sort order.");
+
+        var filter = new AuditLogFilter(action, actorUserId, targetUserId, organisationId, from, to, sort);
         var result = await auditLogQueries.GetPaged(filter, page, pageSize, cancellationToken);
         return result;
     }

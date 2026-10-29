@@ -45,7 +45,8 @@ public class ActivityAnswer : IEntity<ActivityAnswerId>
         FormQuestionId questionId,
         string questionCode,
         string value,
-        UserId createdBy)
+        UserId createdBy,
+        DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(activityId, nameof(activityId));
@@ -60,7 +61,7 @@ public class ActivityAnswer : IEntity<ActivityAnswerId>
             questionCode.Trim(),
             value ?? string.Empty,
             createdBy,
-            DateTime.UtcNow,
+            utcNow,
             null);
     }
 }

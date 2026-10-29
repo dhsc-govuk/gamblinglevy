@@ -1,6 +1,9 @@
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
+using Application.Forms.Audit;
 using Application.Forms.Exceptions;
+using Domain.AuditLogs;
 using Domain.Forms;
 using LanguageExt;
 using MediatR;
@@ -25,7 +28,10 @@ public record CreateQuestionCommand : IRequest<Either<FormDesignerException, For
 public class CreateQuestionCommandHandler(
     IFormSectionRepository sectionRepository,
     IFormQuestionRepository questionRepository,
-    PermissionsService permissionsService)
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner,
+    PermissionsService permissionsService,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<CreateQuestionCommand, Either<FormDesignerException, FormQuestion>>
 {
     public async Task<Either<FormDesignerException, FormQuestion>> Handle(
@@ -71,34 +77,53 @@ public class CreateQuestionCommandHandler(
             }
         }
 
-        try
-        {
-            var nextOrder = await questionRepository.GetMaxDisplayOrderForSectionAsync(sectionId, cancellationToken) + 1;
-            var question = FormQuestion.Create(
-                FormQuestionId.New(),
-                sectionId,
-                code,
-                request.Label!,
-                questionType,
-                nextOrder,
-                actorId,
-                request.IsRequired,
-                request.Hint,
-                request.HelpText,
-                request.HelpTextSummary,
-                request.ConditionalQuestionCode,
-                request.ConditionalValue);
-
-            foreach (var option in request.Options)
+        // The change and its audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<FormDesignerException, FormQuestion>(
+            async token =>
             {
-                question.AddOption(FormQuestionOptionId.New(), option.Value, option.Label, option.DisplayOrder);
-            }
+                try
+                {
+                    var nextOrder = await questionRepository.GetMaxDisplayOrderForSectionAsync(sectionId, token) + 1;
+                    var question = FormQuestion.Create(
+                        FormQuestionId.New(),
+                        sectionId,
+                        code,
+                        request.Label!,
+                        questionType,
+                        nextOrder,
+                        actorId,
+                        dateTimeProvider.GetUtcNow(),
+                        request.IsRequired,
+                        request.Hint,
+                        request.HelpText,
+                        request.HelpTextSummary,
+                        request.ConditionalQuestionCode,
+                        request.ConditionalValue);
 
-            return await questionRepository.AddAsync(question, cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            return new FormDesignerUnknownException(exception);
-        }
+                    foreach (var option in request.Options)
+                    {
+                        question.AddOption(FormQuestionOptionId.New(), option.Value, option.Label, option.DisplayOrder, dateTimeProvider.GetUtcNow());
+                    }
+
+                    var saved = await questionRepository.AddAsync(question, token);
+
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            actorId,
+                            AuditTargetType.Form,
+                            saved.Id.Value,
+                            AuditAction.FormQuestionCreated,
+                            before: null,
+                            after: FormSnapshot.Serialize(saved)),
+                        token);
+
+                    return saved;
+                }
+                catch (Exception exception)
+                {
+                    return new FormDesignerUnknownException(exception);
+                }
+            },
+            cancellationToken);
     }
 }

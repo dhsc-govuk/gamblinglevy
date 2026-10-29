@@ -21,6 +21,15 @@ public class CreateLocalAuthorityCommandValidator : AbstractValidator<CreateLoca
         // See AmendLocalAuthorityAllocationCommandValidator: GreaterThan(0) alone left the numeric(18,2)
         // column's upper bound and scale unguarded (BLUM-7240).
         RuleFor(x => x.AllocatedAmount).PositiveMoney("Annual Allocation");
+        // Optional (the handler falls back to the current FY), but checked when supplied: the financial year
+        // selects the funding window by exact string equality, so a malformed value silently creates a window
+        // nothing else in the system matches rather than failing (BLUM-7608).
+        RuleFor(x => x.FinancialYear)
+            .FinancialYearFormat()
+            .When(x => !string.IsNullOrWhiteSpace(x.FinancialYear));
+        // The upcoming year's allocation is optional - DHSC may not know the figure at onboarding - but when it
+        // is supplied it is bounded exactly like the current year's.
+        RuleFor(x => x.NextYearAllocatedAmount).PositiveMoney("Annual Allocation");
         // An ONS code identifies a Local Authority geography, so only LAs have one — requiring it of a VCSE
         // would make that organisation type impossible to create (BLUM-7051). The message is set explicitly
         // rather than left to FluentValidation's default so the client can surface it verbatim.
@@ -28,7 +37,11 @@ public class CreateLocalAuthorityCommandValidator : AbstractValidator<CreateLoca
             .NotEmpty()
             .WithMessage("Enter the ONS code")
             .When(x => x.Type == OrgTypes.LocalAuthority);
-        RuleFor(x => x.OnsCode).MaximumLength(FieldLimits.OnsCode);
+        // BLUM-7663: validated against the ONS reference list — in practice its shape, since neither this
+        // codebase nor Family Hubs (which this mirrors) holds an enumerated list of real ONS codes.
+        RuleFor(x => x.OnsCode)
+            .OnsCodeFormat()
+            .When(x => !string.IsNullOrWhiteSpace(x.OnsCode));
         // Unconditional, unlike OnsCode above: an E-code is the organisation's DHSC finance identifier, which
         // every organisation receiving levy money has regardless of type, so there is no LA/VCSE condition to
         // apply (BLUM-7050). The message is set explicitly so the client can surface it verbatim.
@@ -43,5 +56,11 @@ public class CreateLocalAuthorityCommandValidator : AbstractValidator<CreateLoca
             .Must(e => e!.Trim().Length <= Organisation.ECodeMaxLength)
             .WithMessage($"E-code must be {Organisation.ECodeMaxLength} characters or fewer")
             .When(x => !string.IsNullOrWhiteSpace(x.ECode));
+        // BLUM-7945: the admin must choose "Activate it now" or "Leave it deactivated" - there is no default,
+        // because either one silently picked would decide whether the organisation's users can sign in. Message
+        // matches the client's own check on the radio so both read the same.
+        RuleFor(x => x.ActivateImmediately)
+            .NotNull()
+            .WithMessage("Select when you want to activate this account");
     }
 }

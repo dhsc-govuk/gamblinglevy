@@ -28,14 +28,18 @@ public record ReportSnapshotSection(string Title, IReadOnlyList<ReportSnapshotRo
     public IReadOnlyList<ReportSnapshotRow> Rows { get; init; } = Rows ?? [];
 }
 
-public record ReportSnapshotRow(string Question, string Answer);
+// Code is the question's protocol code (BLUM-8329), frozen so a consumer can find a question without matching its
+// label, which copy edits and flags change. Null on rows frozen before it existed and on the funding summary rows,
+// which are metrics rather than questions.
+public record ReportSnapshotRow(string Question, string Answer, string? Code = null);
 
 // The "Record funding spent" table frozen as already-rendered string cells (money formatted, dynamic forecast-quarter
 // columns resolved), so the live activity titles it draws on are frozen too.
 public record ReportSnapshotFunding(
     IReadOnlyList<string> Header,
     IReadOnlyList<IReadOnlyList<string>> Rows,
-    IReadOnlyList<ReportSnapshotRow> Summary)
+    IReadOnlyList<ReportSnapshotRow> Summary,
+    ReportSnapshotFundingTotals? Totals = null)
 {
     public IReadOnlyList<string> Header { get; init; } = Header ?? [];
 
@@ -43,3 +47,30 @@ public record ReportSnapshotFunding(
 
     public IReadOnlyList<ReportSnapshotRow> Summary { get; init; } = Summary ?? [];
 }
+
+// The organisation-level totals rendered as columns 5-17 of funding-summary.csv (BLUM-7130 CSV review). Pre-rendered
+// money strings, frozen at submit time like the rest of the funding block. Strongly typed rather than folded into
+// the melted Summary list above — the quarter breakdown is a matrix, not a scalar metric, and the wide CSV pivot
+// must not string-match labels out of a free-form list. Nullable on ReportSnapshotFunding: snapshots frozen before
+// this field existed deserialise with Totals = null, and every reader must treat that as "render blank cells", not
+// throw.
+public record ReportSnapshotFundingTotals(
+    string AnnualAllocation,
+    string Q1TotalActual,
+    string Q2Forecast,
+    string Q2TotalActual,
+    string Q3Forecast,
+    string Q3TotalActual,
+    string Q4Forecast,
+    string Q4TotalActual,
+    string TotalSpendToDate,
+    string RemainingBudget,
+    string TotalForecast,
+    string ProjectedYearEnd,
+    string ProjectedVariance,
+    // BLUM-7608. Nullable and trailing for the same reason Totals itself is nullable on ReportSnapshotFunding: a
+    // snapshot frozen before these existed deserialises with them null, and every reader renders a blank cell
+    // rather than throwing.
+    string? AnnualAllocationFinancialYear = null,
+    string? NextYearAnnualAllocation = null,
+    string? NextYearFinancialYear = null);

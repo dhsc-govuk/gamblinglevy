@@ -1,4 +1,5 @@
 using Application.Common.Validation;
+using Application.MaturityAssessments.Protocol;
 using Domain.Collections;
 using FluentValidation;
 
@@ -43,6 +44,21 @@ public class UpdateCollectionCommandValidator : AbstractValidator<UpdateCollecti
             .When(x => string.Equals(x.Type, CollectionTypes.MaturityAssessment, StringComparison.Ordinal))
             .WithMessage("A maturity assessment must not have a quarter.");
 
+        // Forms belong to a collection type (BLUM-7943): a maturity assessment picks catalogue sections, a quarterly
+        // report picks form modules. Checked on drafts too, like every other supplied value, so a type switch can never
+        // persist the other type's forms. The message reaches the admin verbatim, so it is written as GOV.UK copy.
+        RuleFor(x => x.FormModuleIds)
+            .Must(ids => ids.All(MaturityCollectionForms.IsMaturityFormId))
+            .When(x => string.Equals(x.Type, CollectionTypes.MaturityAssessment, StringComparison.Ordinal))
+            .WithErrorCode(ErrorCodes.NotAllowed)
+            .WithMessage("Select only forms for a maturity assessment");
+
+        RuleFor(x => x.FormModuleIds)
+            .Must(ids => !ids.Any(MaturityCollectionForms.IsMaturityFormId))
+            .When(x => string.Equals(x.Type, CollectionTypes.QuarterlyReport, StringComparison.Ordinal))
+            .WithErrorCode(ErrorCodes.NotAllowed)
+            .WithMessage("Select only forms for a quarterly report");
+
         RuleFor(x => x.Reminders).Bounded(FieldLimits.MaxReminders);
 
         RuleForEach(x => x.Reminders).ChildRules(reminder =>
@@ -60,6 +76,10 @@ public class UpdateCollectionCommandValidator : AbstractValidator<UpdateCollecti
             .GreaterThanOrEqualTo(x => x.CollectionOpenDate!.Value)
             .When(x => x.CollectionOpenDate.HasValue && x.SubmissionDeadline.HasValue)
             .WithMessage("The submission deadline must be on or after the collection open date.");
+
+        // Checked on drafts too, like every other supplied value. Worded to match the wizard's client-side message.
+        RuleFor(x => x.CollectionOpenDate).YearInRange("Year collection opens");
+        RuleFor(x => x.SubmissionDeadline).YearInRange("Year of submission deadline");
 
         // Completeness is only enforced when finishing setup (publishing), not when saving a draft.
         When(x => !x.SaveAsDraft, () =>

@@ -10,7 +10,7 @@ using Xunit;
 namespace Api.Tests.Integration.QuarterlyReports;
 
 // PUT quarterly-report/{collectionId}/activities/{activityId}/answers — saving one activity's key-result answers,
-// the per-activity report status and the "Enter activity key results" section roll-up.
+// the per-activity report status and the "Enter activity results" section roll-up.
 public class SaveActivityReportTests(IntegrationTestWebFactory factory) : QuarterlyReportTestBase(factory)
 {
     private sealed record AnswerErrorRow(string QuestionCode, string Message);
@@ -26,6 +26,36 @@ public class SaveActivityReportTests(IntegrationTestWebFactory factory) : Quarte
     {
         var collectionId = await CreateOpenCollectionAsync();
         var activity = await CreateRnaActivityAsync();
+        await CreateSubmissionAsync(collectionId);
+        await ConfirmActivitiesAsync(collectionId);
+        return (collectionId, activity);
+    }
+
+    // Open collection + an RNA activity whose selected key result is the information list — the one offering
+    // "Other" — plus a confirmed submission. Needs assessment keeps the protocol's "select at least 2" rule, so
+    // rna_published rides along; Closed status keeps the finished-only RNA_PUBLISHED_URL out of the way. Like
+    // StartConfirmedReportAsync, the caller must already be authenticated as a Main-org activity manager.
+    private async Task<(Guid CollectionId, ActivityDto Activity)> StartConfirmedInformationReportAsync()
+    {
+        var collectionId = await CreateOpenCollectionAsync();
+        var (_, taskId) = await GetTypeAsync(RnaTaskName);
+        var results = await StandardResultsAsync(taskId, "rna_information", "rna_published");
+        var activity = await CreateCompletedActivityAsync(RnaTaskName, "closed", results);
+        await CreateSubmissionAsync(collectionId);
+        await ConfirmActivitiesAsync(collectionId);
+        return (collectionId, activity);
+    }
+
+    // Open collection + a Closed screening activity whose one selected key result unlocks the services list, plus a
+    // confirmed submission. Help types carry standard definitions, so a single selection satisfies the completion
+    // minimum. Like StartConfirmedReportAsync, the caller must already be authenticated as a Main-org activity
+    // manager.
+    private async Task<(Guid CollectionId, ActivityDto Activity)> StartConfirmedScreeningReportAsync()
+    {
+        var collectionId = await CreateOpenCollectionAsync();
+        var (_, taskId) = await GetTypeAsync(ScreeningTaskName);
+        var results = await StandardResultsAsync(taskId, "scr_tool");
+        var activity = await CreateCompletedActivityAsync(ScreeningTaskName, "closed", results);
         await CreateSubmissionAsync(collectionId);
         await ConfirmActivitiesAsync(collectionId);
         return (collectionId, activity);
@@ -94,6 +124,224 @@ public class SaveActivityReportTests(IntegrationTestWebFactory factory) : Quarte
         var envelope = await response.ToResponseModel<AnswersInvalidEnvelope>();
         envelope.Error.Should().Be("SUBMISSION_ANSWERS_INVALID");
         envelope.AnswerErrors.Should().Contain(e => e.QuestionCode == "LSG_MEMBERS");
+    }
+
+    // Open collection + a steering-group activity measuring "List of members" + a confirmed submission. Like the
+    // helpers above, the caller must already be authenticated as a Main-org activity manager.
+    private async Task<(Guid CollectionId, ActivityDto Activity)> StartConfirmedSteeringGroupReportAsync()
+    {
+        var collectionId = await CreateOpenCollectionAsync();
+        var (_, taskId) = await GetTypeAsync(SteeringGroupTaskName);
+        var results = await StandardResultsAsync(taskId, "lsg_members");
+        var activity = await CreateCompletedActivityAsync(SteeringGroupTaskName, "active", results);
+        await CreateSubmissionAsync(collectionId);
+        await ConfirmActivitiesAsync(collectionId);
+        return (collectionId, activity);
+    }
+
+    // Free-text answers for the module's unconditional "Activity delivery" questions, read from the form rather
+    // than hardcoded so these tests keep working when that module is edited. Without them a non-draft save is
+    // refused for the delivery questions, which says nothing about the steering group.
+    private static (string Code, string? Value)[] DeliveryAnswers(ActivityReportQuestionsDto form) =>
+        form.Questions
+            .Where(q => q.Section == "delivery" && q.IsRequired)
+            .Select(q => (q.Code, (string?)"Progress made this quarter"))
+            .ToArray();
+
+    // BLUM-7788: the engagement question is asked once per member, so each ticked member owns a required question
+    // that names them — both in the label and in the message, since the error summary has to say which member is
+    // unanswered. A single shared "...of each steering group member" message could not.
+    [Fact]
+    public async Task NonDraftSave_TickingMembersWithoutTheirEngagement_Returns422PerMember()
+    {
+        AuthenticateAsMainOrgLead();
+        var (collectionId, activity) = await StartConfirmedSteeringGroupReportAsync();
+        var form = await GetActivityQuestionsAsync(collectionId, activity.Id);
+
+        var response = await SaveAnswersAsync(
+            collectionId,
+            activity.Id,
+            saveAsDraft: false,
+            [("LSG_MEMBERS", "licensing,police"), .. DeliveryAnswers(form)]);
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        var envelope = await response.ToResponseModel<AnswersInvalidEnvelope>();
+        envelope.AnswerErrors.Should().Contain(e =>
+            e.QuestionCode == "LSG_ENGAGEMENT_LICENSING" && e.Message == "Select the level of engagement of Licensing");
+        envelope.AnswerErrors.Should().Contain(e =>
+            e.QuestionCode == "LSG_ENGAGEMENT_POLICE" && e.Message == "Select the level of engagement of Police");
+
+        // The members left unticked are the whole point of the fan-out: their questions are not shown, so they are
+        // not demanded either. Nothing is saved by a refused non-draft save.
+        envelope.AnswerErrors.Should().NotContain(e => e.QuestionCode == "LSG_ENGAGEMENT_HOUSING");
+        (await Context.SubmissionActivityAnswers.AsNoTracking().AnyAsync()).Should().BeFalse();
+    }
+
+    // The happy path: one engagement answer per ticked member, each persisted under its own question code — the
+    // unique (submission, activity, question_code) index is what forces the per-member codes in the first place.
+    [Fact]
+    public async Task NonDraftSave_StoresOneEngagementAnswerPerTickedMember()
+    {
+        AuthenticateAsMainOrgLead();
+        var (collectionId, activity) = await StartConfirmedSteeringGroupReportAsync();
+        var form = await GetActivityQuestionsAsync(collectionId, activity.Id);
+
+        var response = await SaveAnswersAsync(
+            collectionId,
+            activity.Id,
+            saveAsDraft: false,
+            [
+                ("LSG_MEMBERS", "licensing,police"),
+                ("LSG_ENGAGEMENT_LICENSING", "attends_engages"),
+                ("LSG_ENGAGEMENT_POLICE", "no_engagement"),
+                .. DeliveryAnswers(form),
+            ]);
+
+        response.IsSuccessStatusCode.Should().BeTrue(
+            "saving the steering-group answers failed: {0}", await response.Content.ReadAsStringAsync());
+
+        var saved = await Context.SubmissionActivityAnswers.AsNoTracking()
+            .Where(a => a.ActivityId == new ActivityId(activity.Id) && a.QuestionCode.StartsWith("LSG_ENGAGEMENT_"))
+            .ToListAsync();
+
+        saved.Should().HaveCount(2);
+        saved.Should().ContainSingle(a => a.QuestionCode == "LSG_ENGAGEMENT_LICENSING" && a.Value == "attends_engages");
+        saved.Should().ContainSingle(a => a.QuestionCode == "LSG_ENGAGEMENT_POLICE" && a.Value == "no_engagement");
+    }
+
+    // Unticking a member hides its engagement question, and Complete replaces the activity's answers with the
+    // visible set — so the answer given for a member the LA has since dropped does not survive into the submitted
+    // report or the export, which renders whatever the snapshot froze.
+    [Fact]
+    public async Task Complete_DropsTheEngagementAnswerOfAnUntickedMember()
+    {
+        AuthenticateAsMainOrgLead();
+        var (collectionId, activity) = await StartConfirmedSteeringGroupReportAsync();
+        var form = await GetActivityQuestionsAsync(collectionId, activity.Id);
+
+        var first = await SaveAnswersAsync(
+            collectionId,
+            activity.Id,
+            saveAsDraft: true,
+            [
+                ("LSG_MEMBERS", "licensing,police"),
+                ("LSG_ENGAGEMENT_LICENSING", "attends_engages"),
+                ("LSG_ENGAGEMENT_POLICE", "no_engagement"),
+                .. DeliveryAnswers(form),
+            ]);
+        first.IsSuccessStatusCode.Should().BeTrue();
+
+        // Police is dropped from the members list; the client no longer renders its engagement question, so it
+        // never posts that code again and the stale answer is left behind for Complete to prune.
+        var second = await SaveAnswersAsync(collectionId, activity.Id, saveAsDraft: true, ("LSG_MEMBERS", "licensing"));
+        second.IsSuccessStatusCode.Should().BeTrue();
+
+        var complete = await CompleteActivityAsync(collectionId, activity.Id);
+        complete.IsSuccessStatusCode.Should().BeTrue(
+            "an unticked member's engagement question is not visible, so it is not required: {0}",
+            await complete.Content.ReadAsStringAsync());
+
+        var saved = await Context.SubmissionActivityAnswers.AsNoTracking()
+            .Where(a => a.ActivityId == new ActivityId(activity.Id) && a.QuestionCode.StartsWith("LSG_ENGAGEMENT_"))
+            .ToListAsync();
+
+        saved.Should().ContainSingle()
+            .Which.QuestionCode.Should().Be("LSG_ENGAGEMENT_LICENSING");
+    }
+
+    // BLUM-7472: "Other" on a protocol list reveals a free-text companion, which is required for as long as the
+    // reveal is showing. Ticking "other" and leaving it blank must be refused — otherwise the answer is
+    // uncapturable, since the checkbox validator also rejects free text posted into the parent code.
+    [Fact]
+    public async Task NonDraftSave_TickingOtherWithoutTheFreeText_Returns422()
+    {
+        AuthenticateAsMainOrgLead();
+        var (collectionId, activity) = await StartConfirmedInformationReportAsync();
+
+        var response = await SaveAnswersAsync(
+            collectionId,
+            activity.Id,
+            saveAsDraft: false,
+            ("RNA_INFORMATION", "prevalence,other"),
+            ("RNA_PUBLISHED", "no"),
+            ("AKR_DELIVERY_PROGRESS", "Drafted the assessment"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        var envelope = await response.ToResponseModel<AnswersInvalidEnvelope>();
+        envelope.Error.Should().Be("SUBMISSION_ANSWERS_INVALID");
+        envelope.AnswerErrors.Should().ContainSingle(e =>
+            e.QuestionCode == "RNA_INFORMATION_OTHER" && e.Message == "Enter the other information covered");
+    }
+
+    [Fact]
+    public async Task NonDraftSave_WithTheOtherFreeText_SucceedsAndPersistsIt()
+    {
+        AuthenticateAsMainOrgLead();
+        var (collectionId, activity) = await StartConfirmedInformationReportAsync();
+
+        var response = await SaveAnswersAsync(
+            collectionId,
+            activity.Id,
+            saveAsDraft: false,
+            ("RNA_INFORMATION", "prevalence,other"),
+            ("RNA_INFORMATION_OTHER", "Licensing enforcement data"),
+            ("RNA_PUBLISHED", "no"),
+            ("AKR_DELIVERY_PROGRESS", "Drafted the assessment"));
+
+        response.IsSuccessStatusCode.Should().BeTrue(
+            "saving failed: {0}", await response.Content.ReadAsStringAsync());
+
+        var saved = await Context.SubmissionActivityAnswers.AsNoTracking()
+            .Where(a => a.ActivityId == new ActivityId(activity.Id))
+            .ToListAsync();
+        saved.Should().ContainSingle(a =>
+            a.QuestionCode == "RNA_INFORMATION_OTHER" && a.Value == "Licensing enforcement data");
+    }
+
+    // BLUM-7475: the services question used to be free text, so anything at all saved. Now it is a checkbox list
+    // held to the seeded option values, and the comma-joined selection is what persists.
+    [Fact]
+    public async Task NonDraftSave_WithTheScreeningServicesSelected_SucceedsAndPersistsThem()
+    {
+        AuthenticateAsMainOrgLead();
+        var (collectionId, activity) = await StartConfirmedScreeningReportAsync();
+
+        var response = await SaveAnswersAsync(
+            collectionId,
+            activity.Id,
+            saveAsDraft: false,
+            ("SCR_SERVICES", "police,mental_health"),
+            ("AKR_DELIVERY_PROGRESS", "Rolled the screening tool out"));
+
+        response.IsSuccessStatusCode.Should().BeTrue(
+            "saving failed: {0}", await response.Content.ReadAsStringAsync());
+
+        var saved = await Context.SubmissionActivityAnswers.AsNoTracking()
+            .Where(a => a.ActivityId == new ActivityId(activity.Id))
+            .ToListAsync();
+        saved.Should().ContainSingle(a =>
+            a.QuestionCode == "SCR_SERVICES" && a.Value == "police,mental_health");
+    }
+
+    [Fact]
+    public async Task NonDraftSave_TickingOtherOnTheScreeningServices_RequiresTheFreeText()
+    {
+        AuthenticateAsMainOrgLead();
+        var (collectionId, activity) = await StartConfirmedScreeningReportAsync();
+
+        var response = await SaveAnswersAsync(
+            collectionId,
+            activity.Id,
+            saveAsDraft: false,
+            ("SCR_SERVICES", "police,other"),
+            ("AKR_DELIVERY_PROGRESS", "Rolled the screening tool out"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        var envelope = await response.ToResponseModel<AnswersInvalidEnvelope>();
+        envelope.Error.Should().Be("SUBMISSION_ANSWERS_INVALID");
+        envelope.AnswerErrors.Should().ContainSingle(e =>
+            e.QuestionCode == "SCR_SERVICES_OTHER"
+            && e.Message == "Enter which other services are currently screening for gambling harms");
     }
 
     [Fact]

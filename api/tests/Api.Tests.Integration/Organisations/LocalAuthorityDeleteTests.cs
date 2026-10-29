@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using Domain.AuditLogs;
+using Domain.MaturityAssessments;
 using Domain.Organisations;
 using Domain.OrganisationUsers;
 using FluentAssertions;
@@ -21,7 +22,8 @@ public class LocalAuthorityDeleteTests(IntegrationTestWebFactory factory)
         Region.London,
         OrgType.LocalAuthority,
         "E1000001",
-        OnboardingStatus.Invited);
+        OnboardingStatus.Invited,
+        DateTime.UtcNow);
 
     private readonly Organisation _active = Organisation.New(
         OrganisationId.New(),
@@ -30,7 +32,8 @@ public class LocalAuthorityDeleteTests(IntegrationTestWebFactory factory)
         Region.London,
         OrgType.LocalAuthority,
         "E1000001",
-        OnboardingStatus.Active);
+        OnboardingStatus.Active,
+        DateTime.UtcNow);
 
     private readonly Organisation _suspended = Organisation.New(
         OrganisationId.New(),
@@ -39,7 +42,8 @@ public class LocalAuthorityDeleteTests(IntegrationTestWebFactory factory)
         Region.London,
         OrgType.LocalAuthority,
         "E1000001",
-        OnboardingStatus.Suspended);
+        OnboardingStatus.Suspended,
+        DateTime.UtcNow);
 
     private readonly Organisation _invitedWithUsers = Organisation.New(
         OrganisationId.New(),
@@ -48,7 +52,8 @@ public class LocalAuthorityDeleteTests(IntegrationTestWebFactory factory)
         Region.London,
         OrgType.LocalAuthority,
         "E1000001",
-        OnboardingStatus.Invited);
+        OnboardingStatus.Invited,
+        DateTime.UtcNow);
 
     private OrganisationUser _activeOrgUser = null!;
 
@@ -79,6 +84,23 @@ public class LocalAuthorityDeleteTests(IntegrationTestWebFactory factory)
     {
         var response = await Client.DeleteAsync($"organisations/local-authorities/{_active.Id.Value}");
         response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    // A started maturity assessment is a record like a quarterly submission, and its rows carry no FK to the
+    // organisation — the guard has to ask, or the delete orphans them silently (BLUM-7855 code review).
+    [Fact]
+    public async Task ShouldReject_WhenAMaturityAssessmentExists()
+    {
+        var assessment = MaturityAssessment.Start(MaturityAssessmentId.New(), Domain.Collections.CollectionId.New(), _invited.Id, ["la_capacity"], AdminsData.MainAdmin.Id, DateTime.UtcNow);
+        await Context.MaturityAssessments.AddAsync(assessment);
+        await SaveChangesAsync();
+
+        var response = await Client.DeleteAsync($"organisations/local-authorities/{_invited.Id.Value}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await response.Content.ReadAsStringAsync()).Should().ContainEquivalentOf("submission");
+        (await Context.Organisations.AsNoTracking().AnyAsync(x => x.Id == _invited.Id)).Should().BeTrue();
+        (await Context.MaturityAssessments.AsNoTracking().AnyAsync(x => x.Id == assessment.Id)).Should().BeTrue();
     }
 
     [Fact]
@@ -135,6 +157,7 @@ public class LocalAuthorityDeleteTests(IntegrationTestWebFactory factory)
 
     public async Task DisposeAsync()
     {
+        Context.MaturityAssessments.RemoveRange(Context.MaturityAssessments);
         Context.AuditLogs.RemoveRange(Context.AuditLogs);
         Context.OrgFundingAllocations.RemoveRange(Context.OrgFundingAllocations);
         Context.FundingWindows.RemoveRange(Context.FundingWindows);

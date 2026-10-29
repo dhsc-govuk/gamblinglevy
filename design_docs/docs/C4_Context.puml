@@ -1,0 +1,30 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+title C1 - System Context - Gambling Levy Portal
+
+Person(reportingOrgUser, "Reporting Organisation User", "LA or VCSE staff member. Role (lead / contributor / finance / read-only) is set per UserOrgMembership and scopes what they can do within an Org. A single user may hold memberships in multiple Orgs (supports proxy submission).")
+Person(superAdmin, "DHSC Super Admin", "Configures collections, form versions, Key Results, org onboarding, and reference data.")
+Person(dataVerifier, "DHSC Data Verifier", "Reviews submitted returns and records acceptance or return-for-changes.")
+Person(dataAnalyst, "DHSC Data Analyst", "Consumes cross-org reporting views; produces policy outputs.")
+
+System_Boundary(gamblingLevyBoundary, "Gambling Levy Portal") {
+    System(gamblingLevySystem, "Gambling Levy Portal", "Secure, cloud-native, multi-org web application for administering the gambling harm prevention levy across ~153 LAs and participating VCSEs. Manages three collections: Annual Maturity Survey, Activities Registry, and Quarterly Reporting. Quarterly returns are dynamically shaped by each Org's registered Activities and Key Results.")
+}
+
+System_Ext(authSystem, "Azure Entra External ID", "Identity provider handling federated email-OTP authentication. MFA is enforced separately via an in-platform TOTP layer.")
+System_Ext(govNotify, "GOV.UK Notify", "Email delivery service for collection notifications, deadline reminders, and verification outcomes.")
+System_Ext(appInsights, "Application Insights", "Monitoring service for metrics, exceptions, and performance tracing.")
+System_Ext(analyticsTool, "External Analytics Tool", "PowerBI or internal BI tool consuming reporting views and exports.")
+
+Rel(reportingOrgUser, gamblingLevySystem, "Maintains maturity profile, registers activities, submits quarterly returns", "via web browser")
+Rel(superAdmin, gamblingLevySystem, "Configures collections, forms, Key Results, orgs, and reminders", "via web browser")
+Rel(dataVerifier, gamblingLevySystem, "Reviews and accepts / returns submissions", "via web browser")
+Rel(dataAnalyst, gamblingLevySystem, "Performs cross-org analysis, exports data", "via web browser / data extracts")
+
+Rel(gamblingLevySystem, authSystem, "Delegates authentication via federated email identity", "OIDC/OAuth2")
+Rel(gamblingLevySystem, govNotify, "Sends notifications", "HTTPS API")
+Rel(gamblingLevySystem, appInsights, "Sends metrics, exceptions, traces", "HTTPS")
+Rel(gamblingLevySystem, analyticsTool, "Provides reporting views / exports to", "SQL / CSV / Parquet")
+
+@enduml

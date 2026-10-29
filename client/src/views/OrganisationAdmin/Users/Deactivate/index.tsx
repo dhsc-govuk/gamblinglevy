@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
 import { ConfirmActionPanel, GovUKButton, GovUKNotificationBanner, NotAuthorised, PageLoading, H1, Paragraph } from '../../../../components/GovUKComponents';
 import usePageTitle from '../../../../hooks/usePageTitle';
@@ -25,11 +25,12 @@ const UsersDeactivate = (): React.ReactElement => {
   usePageTitle(organisationUserPageTitle(userQuery, actionPageTitle));
 
   const invalidate = () => {
-    queryClient.invalidateQueries(organisationUsersListKey(organisationId ?? ''));
-    queryClient.invalidateQueries(organisationUserKey(organisationId ?? '', userId));
+    queryClient.invalidateQueries({ queryKey: organisationUsersListKey(organisationId ?? '') });
+    queryClient.invalidateQueries({ queryKey: organisationUserKey(organisationId ?? '', userId) });
   };
 
-  const { mutate: deactivate, isLoading: deactivating } = useMutation(() => deactivateOrganisationUser(organisationId!, userId), {
+  const { mutate: deactivate, isPending: deactivating } = useMutation({
+    mutationFn: () => deactivateOrganisationUser(organisationId!, userId),
     onSuccess: () => {
       invalidate();
       navigate(`/organisation-admin/users/${userId}`, {
@@ -44,7 +45,8 @@ const UsersDeactivate = (): React.ReactElement => {
     onError: () => setErrorMessage('Could not deactivate the account. Try again.'),
   });
 
-  const { mutate: reactivate, isLoading: reactivating } = useMutation(() => reactivateOrganisationUser(organisationId!, userId), {
+  const { mutate: reactivate, isPending: reactivating } = useMutation({
+    mutationFn: () => reactivateOrganisationUser(organisationId!, userId),
     onSuccess: () => {
       invalidate();
       navigate(`/organisation-admin/users/${userId}`, {

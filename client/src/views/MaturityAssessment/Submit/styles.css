@@ -1,0 +1,28 @@
+.govuk-main-wrapper > .govuk-width-container > .govuk-back-link[data-testid='la-maturity-submit-back'] {
+  margin-bottom: 50px;
+}
+
+.maturity-submit {
+  display: flex;
+  width: 960px;
+  max-width: 100%;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.maturity-submit .confirm-action-panel {
+  box-sizing: border-box;
+  width: 960px;
+  max-width: 100%;
+  margin-top: 0;
+}
+
+@media (max-width: 640px) {
+  .govuk-main-wrapper > .govuk-width-container > .govuk-back-link[data-testid='la-maturity-submit-back'] {
+    margin-bottom: 30px;
+  }
+
+  .maturity-submit {
+    gap: 20px;
+  }
+}

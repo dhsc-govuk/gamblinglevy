@@ -2,6 +2,9 @@ using System.IO.Compression;
 using System.Net;
 using System.Text.RegularExpressions;
 using Api.Dtos;
+using Application.AuditLogs;
+using Application.AuditLogs.Dtos;
+using Domain.AuditLogs;
 using Domain.Collections;
 using Domain.Users;
 using Domain.ValueObjects;
@@ -23,9 +26,6 @@ public class SubmitReportTests(IntegrationTestWebFactory factory) : QuarterlyRep
     // DateOnly (the ReportContextTests precedent).
     private sealed record ContextResult(Guid CollectionId, int Quarter, Guid? SubmissionId, DateTime? SubmittedAt);
 
-    private Task<HttpResponseMessage> SubmitReportAsync(Guid collectionId) =>
-        Client.PostAsync($"quarterly-report/{collectionId}/submission/submit", null);
-
     // Starts + confirms the report and completes all three sections as the current identity. Creates the activity to
     // report on unless the caller supplies one — two open collections must report on the SAME activity, since creating
     // a second one after a list is confirmed flags that report for review.
@@ -37,6 +37,62 @@ public class SubmitReportTests(IntegrationTestWebFactory factory) : QuarterlyRep
         await CompleteActivityReportAsync(collectionId, activity);
         await CompleteFundingSpendSectionAsync(collectionId);
         await CompleteStrategicFeedbackSectionAsync(collectionId);
+    }
+
+    // An LA that pools all of its levy money into joint partnerships. BLUM-7860 kept partnerships out of "Enter
+    // activity results", so confirming rolled that section straight to Completed for this organisation; BLUM-8090
+    // moved the partnership's progress questions into the report, so it now has a delivery report to complete like
+    // any other activity — and the section, and with it the submission, waits for it.
+    [Fact]
+    public async Task SubmitReport_WhenTheOnlyActivityIsAJointPartnership_WaitsForItsDeliveryReport()
+    {
+        AuthenticateAsMainOrgLead();
+        var collectionId = await CreateOpenCollectionAsync();
+        var jointPartnership = await CreateCompletedActivityAsync(taskName: "Joint partnership", expectedResults: []);
+        await CreateSubmissionAsync(collectionId);
+        await ConfirmActivitiesAsync(collectionId);
+        await CompleteFundingSpendSectionAsync(collectionId);
+        await CompleteStrategicFeedbackSectionAsync(collectionId);
+
+        var beforeReporting = await GetTaskListAsync(collectionId);
+        beforeReporting.Sections.Single(s => s.ModuleCode == KeyResultsModuleCode).Status.Should().Be("not_started");
+        beforeReporting.CanSubmit.Should().BeFalse();
+        (await SubmitReportAsync(collectionId)).StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        await CompleteActivityReportAsync(collectionId, jointPartnership.Id);
+
+        var taskList = await GetTaskListAsync(collectionId);
+        taskList.Sections.Single(s => s.ModuleCode == KeyResultsModuleCode).Status.Should().Be("completed");
+        taskList.CanSubmit.Should().BeTrue();
+
+        var response = await SubmitReportAsync(collectionId);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var spend = await Context.SubmissionSpendEntries.AsNoTracking().ToListAsync();
+        spend.Should().Contain(e => e.ActivityId == new Domain.Activities.ActivityId(jointPartnership.Id));
+    }
+
+    // Alongside another activity, a partnership's report is owed as well as that activity's: reporting on the other
+    // one alone does not complete the section.
+    [Fact]
+    public async Task SubmitReport_WhenAReportableActivityIsUnreported_IsStillBlocked()
+    {
+        AuthenticateAsMainOrgLead();
+        var collectionId = await CreateOpenCollectionAsync();
+        await CreateCompletedActivityAsync(taskName: "Joint partnership", expectedResults: []);
+        var rna = await CreateRnaActivityAsync(title: "Regional needs assessment");
+        await CreateSubmissionAsync(collectionId);
+        await ConfirmActivitiesAsync(collectionId);
+        await CompleteActivityReportAsync(collectionId, rna.Id);
+        await CompleteFundingSpendSectionAsync(collectionId);
+        await CompleteStrategicFeedbackSectionAsync(collectionId);
+
+        var taskList = await GetTaskListAsync(collectionId);
+        taskList.Sections.Single(s => s.ModuleCode == KeyResultsModuleCode).Status.Should().NotBe("completed");
+        taskList.CanSubmit.Should().BeFalse();
+
+        var response = await SubmitReportAsync(collectionId);
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
     }
 
     [Fact]
@@ -55,20 +111,22 @@ public class SubmitReportTests(IntegrationTestWebFactory factory) : QuarterlyRep
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var result = await response.ToResponseModel<SubmitReportResultDto>();
-        // FY 2026/27, quarter 1 => prefix 2027 + 01; first submission for the collection => 0001.
-        result.ReferenceNumber.Should().Be("202701-0001");
+        // The prefix is the financial year's END year plus the quarter; first submission => 0001. Derived rather
+        // than written out, so the assertion survives the year turning over — SubmissionReferenceTests (unit) is
+        // what pins the format itself against literals.
+        result.ReferenceNumber.Should().Be(TestFinancialYears.Reference(TestFinancialYears.Current, 1, 1));
         Regex.IsMatch(result.ReferenceNumber, "^\\d{6}-\\d{4}$").Should().BeTrue();
 
         var submission = await Context.Submissions.AsNoTracking()
             .SingleAsync(s => s.CollectionId == new CollectionId(collectionId));
         submission.SubmittedAt.Should().NotBeNull();
-        submission.ReferenceNumber.Should().Be("202701-0001");
+        submission.ReferenceNumber.Should().Be(TestFinancialYears.Reference(TestFinancialYears.Current, 1, 1));
 
         // The task list now reports the read-only submitted state.
         var afterTaskList = await GetTaskListAsync(collectionId);
         afterTaskList.Submitted.Should().BeTrue();
         afterTaskList.CanSubmit.Should().BeFalse();
-        afterTaskList.ReferenceNumber.Should().Be("202701-0001");
+        afterTaskList.ReferenceNumber.Should().Be(TestFinancialYears.Reference(TestFinancialYears.Current, 1, 1));
     }
 
     // BLUM-6954: submitting sends a confirmation email to the submitting LA user's registered address. The submitter
@@ -89,7 +147,8 @@ public class SubmitReportTests(IntegrationTestWebFactory factory) : QuarterlyRep
             MainOrgLeadEmail,
             new SubId(Guid.NewGuid()),
             UserStatus.Active,
-            UserRole.Lead);
+            UserRole.Lead,
+            DateTime.UtcNow);
         await Context.Users.AddAsync(user);
         await SaveChangesAsync();
     }
@@ -173,8 +232,8 @@ public class SubmitReportTests(IntegrationTestWebFactory factory) : QuarterlyRep
         await CompleteAllSectionsAsync(collectionId);
         var second = await (await SubmitReportAsync(collectionId)).ToResponseModel<SubmitReportResultDto>();
 
-        first.ReferenceNumber.Should().Be("202701-0001");
-        second.ReferenceNumber.Should().Be("202701-0002");
+        first.ReferenceNumber.Should().Be(TestFinancialYears.Reference(TestFinancialYears.Current, 1, 1));
+        second.ReferenceNumber.Should().Be(TestFinancialYears.Reference(TestFinancialYears.Current, 1, 2));
     }
 
     // The BLUM-6951 regression. An organisation can have two quarterly windows open at once, and submitting one must
@@ -221,12 +280,12 @@ public class SubmitReportTests(IntegrationTestWebFactory factory) : QuarterlyRep
         // The other window is still authorable and submits independently, on its own reference sequence.
         await CompleteAllSectionsAsync(q2Id, activity.Id);
         var q2Result = await (await SubmitReportAsync(q2Id)).ToResponseModel<SubmitReportResultDto>();
-        q2Result.ReferenceNumber.Should().Be("202702-0001");
+        q2Result.ReferenceNumber.Should().Be(TestFinancialYears.Reference(TestFinancialYears.Current, 2, 1));
 
         // …and the first report is untouched by it.
         var q1Submission = await Context.Submissions.AsNoTracking()
             .SingleAsync(s => s.CollectionId == new CollectionId(q1Id));
-        q1Submission.ReferenceNumber.Should().Be("202701-0001");
+        q1Submission.ReferenceNumber.Should().Be(TestFinancialYears.Reference(TestFinancialYears.Current, 1, 1));
         q1Submission.SubmittedAt.Should().Be(q1SubmittedAt);
     }
 
@@ -272,7 +331,7 @@ public class SubmitReportTests(IntegrationTestWebFactory factory) : QuarterlyRep
 
         using var archive = new ZipArchive(new MemoryStream(bytes), ZipArchiveMode.Read);
         archive.Entries.Select(e => e.Name).Should().BeEquivalentTo(
-            "report-summary.csv", "activity-key-results.csv", "funding-spend.csv", "strategic-feedback.csv");
+            "report-summary.csv", "activity-results.csv", "funding-spend.csv", "strategic-feedback.csv");
     }
 
     [Fact]
@@ -286,5 +345,47 @@ public class SubmitReportTests(IntegrationTestWebFactory factory) : QuarterlyRep
         var response = await Client.GetAsync($"quarterly-report/{collectionId}/export");
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // BLUM-8747: submitting the report is the service's core act and must leave exactly one audit row, attributed to
+    // the submitting user and scoped to their LA, so that LA's own audit log can show it and no other LA's can.
+    [Fact]
+    public async Task SubmitReport_WritesOneSubmittedAuditRow_VisibleToItsOwnLaAdminOnly()
+    {
+        var mainOrgAdminUserId = Guid.Parse("b0000000-0000-0000-0000-0000000000a1");
+        var secondOrgAdminUserId = Guid.Parse("b0000000-0000-0000-0000-0000000000a2");
+
+        AuthenticateAsMainOrgLead();
+        var collectionId = await CreateOpenCollectionAsync();
+        await CompleteAllSectionsAsync(collectionId);
+
+        var response = await SubmitReportAsync(collectionId);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = await response.ToResponseModel<SubmitReportResultDto>();
+        var submissionId = await GetSubmissionIdAsync(collectionId);
+
+        var rows = await Context.AuditLogs.AsNoTracking()
+            .Where(a => a.Action == AuditAction.SubmissionSubmitted)
+            .ToListAsync();
+        var row = rows.Should().ContainSingle().Subject;
+        row.TargetType.Should().Be(AuditTargetType.Submission);
+        row.TargetId.Should().Be(submissionId.Value);
+        row.ActorUserId.Should().Be(new UserId(MainOrgLeadUserId));
+        row.OrganisationId.Should().Be(MainOrg.Id);
+        row.After.Should().Contain(result.ReferenceNumber);
+
+        // The LA's own admin sees it in organisation-admin/audit-logs, which scopes by OrganisationId alone.
+        AuthenticateAs(Role.OrganisationAdmin, mainOrgAdminUserId, MainOrg.Id.Value);
+        var ownPage = await (await Client.GetAsync($"organisation-admin/audit-logs?action={AuditAction.SubmissionSubmitted}"))
+            .ToResponseModel<PagedAuditLogs<AuditLogListItemDto>>();
+        ownPage.Items.Should().ContainSingle(item => item.Id == row.Id.Value && item.TargetId == submissionId.Value);
+
+        // Another LA's admin does not, neither in the list nor by id.
+        AuthenticateAs(Role.OrganisationAdmin, secondOrgAdminUserId, SecondOrg.Id.Value);
+        var otherPage = await (await Client.GetAsync($"organisation-admin/audit-logs?action={AuditAction.SubmissionSubmitted}"))
+            .ToResponseModel<PagedAuditLogs<AuditLogListItemDto>>();
+        otherPage.Items.Should().BeEmpty();
+        otherPage.TotalCount.Should().Be(0);
+        (await Client.GetAsync($"organisation-admin/audit-logs/{row.Id.Value}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 }

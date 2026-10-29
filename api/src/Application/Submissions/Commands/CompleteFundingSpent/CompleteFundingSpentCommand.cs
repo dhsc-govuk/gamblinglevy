@@ -1,7 +1,10 @@
 using Application.Collections;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Forms.Answers;
+using Application.Submissions.Audit;
 using Application.Submissions.Exceptions;
+using Domain.AuditLogs;
 using Domain.Submissions;
 using LanguageExt;
 using MediatR;
@@ -18,7 +21,9 @@ public record CompleteFundingSpentCommand : IRequest<Either<SubmissionException,
 
 public class CompleteFundingSpentCommandHandler(
     FundingSpendContextResolver resolver,
-    ISubmissionSpendEntryRepository spendRepository)
+    ISubmissionSpendEntryRepository spendRepository,
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner)
     : IRequestHandler<CompleteFundingSpentCommand, Either<SubmissionException, SubmissionSectionStatus>>
 {
     public async Task<Either<SubmissionException, SubmissionSectionStatus>> Handle(
@@ -36,7 +41,6 @@ public class CompleteFundingSpentCommandHandler(
         CancellationToken cancellationToken)
     {
         var remaining = ReportingPeriod.RemainingQuarters(context.Collection.Quarter!.Value);
-        var reportableIds = context.ReportableActivities.Select(a => a.Id).ToList();
 
         var entries = await spendRepository.GetForSubmissionAsync(context.Submission.Id, cancellationToken);
 
@@ -73,22 +77,42 @@ public class CompleteFundingSpentCommandHandler(
             }
         }
 
+        // Each screen is held to its own activity set: a Planned activity owes a forecast but never an actual.
         var errors = new List<AnswerValidationError>();
-        errors.AddRange(FundingSpendValidator.ValidateActuals(reportableIds, actualByActivity, otherActual, enforceRequired: true));
-        errors.AddRange(FundingSpendValidator.ValidateForecast(reportableIds, remaining, forecastByActivityQuarter, otherForecast, enforceRequired: true));
+        errors.AddRange(FundingSpendValidator.ValidateActuals(context.ActualSpendSubjects, actualByActivity, otherActual, enforceRequired: true));
+        errors.AddRange(FundingSpendValidator.ValidateForecast(context.ForecastSpendSubjects, remaining, forecastByActivityQuarter, otherForecast, enforceRequired: true));
         if (errors.Count > 0)
         {
             return new FundingSpendInvalidException(context.Submission.Id, errors);
         }
 
-        try
-        {
-            await resolver.SetSectionStatusAsync(context, SubmissionSectionStatus.Completed, cancellationToken);
-            return SubmissionSectionStatus.Completed;
-        }
-        catch (Exception exception)
-        {
-            return new SubmissionUnknownException(context.Submission.Id, exception);
-        }
+        // The section status and its audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<SubmissionException, SubmissionSectionStatus>(
+            async token =>
+            {
+                try
+                {
+                    var before = SubmissionSnapshot.Serialize(context.Submission);
+                    await resolver.SetSectionStatusAsync(context, SubmissionSectionStatus.Completed, token);
+
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            context.ActorId,
+                            AuditTargetType.Submission,
+                            context.Submission.Id.Value,
+                            AuditAction.SubmissionFundingSpentCompleted,
+                            before,
+                            after: SubmissionSnapshot.Serialize(context.Submission),
+                            organisationId: context.OrganisationId),
+                        token);
+
+                    return SubmissionSectionStatus.Completed;
+                }
+                catch (Exception exception)
+                {
+                    return new SubmissionUnknownException(context.Submission.Id, exception);
+                }
+            },
+            cancellationToken);
     }
 }

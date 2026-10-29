@@ -22,8 +22,8 @@ public abstract class ActivityTestBase(IntegrationTestWebFactory factory)
     protected static readonly Guid MainOrgLeadUserId = Guid.Parse("a0000000-0000-0000-0000-000000000001");
     protected static readonly Guid SecondOrgLeadUserId = Guid.Parse("a0000000-0000-0000-0000-000000000003");
 
-    // Two custom key results satisfy every category's completion minimum (2 for the default Needs assessment
-    // category, 1 elsewhere — BLUM-6933) without depending on the seeded standard definitions.
+    // Custom key results satisfy every category's completion minimum (one everywhere since the 13 August
+    // protocol — BLUM-7620) without depending on the seeded standard definitions.
     protected static readonly IReadOnlyList<ExpectedResultInputDto> DefaultExpectedResults =
     [
         new(null, "Key result one"),

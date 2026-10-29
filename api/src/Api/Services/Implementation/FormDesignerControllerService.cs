@@ -29,7 +29,13 @@ public class FormDesignerControllerService(IFormSchemaQueries formSchemaQueries)
             question.Options
                 .OrderBy(o => o.DisplayOrder)
                 .Select(o => new FormQuestionOptionDto(o.Value, o.Label, o.DisplayOrder))
-                .ToList());
+                .ToList(),
+            question.ErrorMessage,
+            question.MaxLength,
+            question.MaxLengthErrorMessage,
+            question.MinValue,
+            question.ErrorSubject,
+            question.ErrorSubjectInline);
 
     public async Task<FormSchemaDto> GetFullSchemaAsync(CancellationToken cancellationToken)
     {

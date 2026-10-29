@@ -7,10 +7,8 @@ interface SummaryItem {
   // Omit for key + action-only rows (e.g. the deleted-activities list) — no value cell is rendered.
   value?: string | React.ReactNode;
   onAction?: () => void;
-  // Renders the action as a plain link instead of a button (e.g. a mailto: address). Ignored when onAction is set.
-  actionHref?: string;
-  // Renders the action as an internal RouterLink (SPA navigation, optional location state). Ignored when
-  // onAction or actionHref is set.
+  // Renders the action as an internal RouterLink (SPA navigation, optional location state). Ignored when onAction
+  // is set.
   actionTo?: string;
   actionState?: unknown;
   actionLabel?: string;
@@ -24,10 +22,23 @@ interface SummaryListProps {
   noOuterBorder?: boolean;
   equalColumns?: boolean;
   halfWidthColumns?: boolean;
+  // Drops the decorative "— " before a sub-answer's key, keeping the border grouping and lighter key weight. The
+  // maturity assessment's matrix rows are drawn without it (Figma 2744-183718), and they are today the only rows
+  // anywhere that set isSubAnswer — so nothing currently renders the dash. The branch stays because the dash is
+  // the shared default a future sub-answer list would expect; this prop is the opt-out, not the other way round.
+  plainSubAnswers?: boolean;
   testId?: string;
 }
 
-function SummaryList({ items, noBorder = false, noOuterBorder = false, equalColumns = false, halfWidthColumns = false, testId }: SummaryListProps): React.ReactElement {
+function SummaryList({
+  items,
+  noBorder = false,
+  noOuterBorder = false,
+  equalColumns = false,
+  halfWidthColumns = false,
+  plainSubAnswers = false,
+  testId,
+}: SummaryListProps): React.ReactElement {
   const listClassName = ['govuk-summary-list', noBorder ? 'govuk-summary-list--no-border' : ''].filter(Boolean).join(' ');
 
   const getRowStyle = (index: number, item: SummaryItem): React.CSSProperties => {
@@ -93,15 +104,13 @@ function SummaryList({ items, noBorder = false, noOuterBorder = false, equalColu
 
   // Per the GOV.UK summary-list spec: when any row in the list has an action, actionless rows need
   // govuk-summary-list__row--no-actions so their borders and column widths stay aligned.
-  const hasAnyAction = items.some((item) => item.onAction || item.actionHref || item.actionTo);
+  const hasAnyAction = items.some((item) => item.onAction || item.actionTo);
 
   return (
     <dl className={listClassName} style={noOuterBorder ? { border: 'none', marginTop: 0 } : {}} data-testid={testId}>
       {items.map((item, index) => {
         const rowTestId = item.testId ?? composeTestId(testId, 'row', slugifyTestId(item.label) || String(index));
-        const rowClassName = ['govuk-summary-list__row', hasAnyAction && !item.onAction && !item.actionHref && !item.actionTo ? 'govuk-summary-list__row--no-actions' : '']
-          .filter(Boolean)
-          .join(' ');
+        const rowClassName = ['govuk-summary-list__row', hasAnyAction && !item.onAction && !item.actionTo ? 'govuk-summary-list__row--no-actions' : ''].filter(Boolean).join(' ');
         return (
           <div className={rowClassName} key={index} style={{ ...getRowStyle(index, item), paddingLeft: 0, paddingRight: 0 }} data-testid={rowTestId}>
             <dt
@@ -111,7 +120,7 @@ function SummaryList({ items, noBorder = false, noOuterBorder = false, equalColu
                 fontWeight: item.isSubAnswer ? 400 : 700,
               }}
               data-testid={composeTestId(rowTestId, 'key')}>
-              {item.isSubAnswer ? (
+              {item.isSubAnswer && !plainSubAnswers ? (
                 <>
                   <span aria-hidden="true">— </span>
                   {item.label}
@@ -125,7 +134,7 @@ function SummaryList({ items, noBorder = false, noOuterBorder = false, equalColu
                 {item.value}
               </dd>
             )}
-            {!item.onAction && !item.actionHref && item.actionTo && (
+            {!item.onAction && item.actionTo && (
               <dd className="govuk-summary-list__actions">
                 <RouterLink className="govuk-link" to={item.actionTo} state={item.actionState} data-testid={composeTestId(rowTestId, 'action')}>
                   {item.actionLabel}
@@ -133,31 +142,9 @@ function SummaryList({ items, noBorder = false, noOuterBorder = false, equalColu
                 </RouterLink>
               </dd>
             )}
-            {!item.onAction && item.actionHref && (
-              <dd className="govuk-summary-list__actions">
-                {/* No visually-hidden label suffix: unlike the "Change" button, the link text (e.g. an email
-                    address) is already self-describing, and "{email} submitted by" reads as nonsense. */}
-                <a className="govuk-link" href={item.actionHref} data-testid={composeTestId(rowTestId, 'action')}>
-                  {item.actionLabel}
-                </a>
-              </dd>
-            )}
             {item.onAction && (
               <dd className="govuk-summary-list__actions">
-                <button
-                  type="button"
-                  className="govuk-link"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    cursor: 'pointer',
-                    font: 'inherit',
-                    color: 'inherit',
-                    textDecoration: 'underline',
-                  }}
-                  data-testid={composeTestId(rowTestId, 'action')}
-                  onClick={() => item.onAction?.()}>
+                <button type="button" className="govuk-link" style={{ font: 'inherit' }} data-testid={composeTestId(rowTestId, 'action')} onClick={() => item.onAction?.()}>
                   {item.actionLabel || 'Change'}
                   <span className="govuk-visually-hidden"> {item.label.toLowerCase()}</span>
                 </button>

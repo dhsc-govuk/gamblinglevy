@@ -51,6 +51,7 @@ public class FormSection : IEntity<FormSectionId>
         string title,
         int displayOrder,
         UserId createdBy,
+        DateTime utcNow,
         string? description = null,
         CategoryId? categoryId = null,
         ActivityTaskId? activityTaskId = null)
@@ -68,7 +69,7 @@ public class FormSection : IEntity<FormSectionId>
             displayOrder,
             isActive: true,
             createdBy,
-            DateTime.UtcNow,
+            utcNow,
             null);
     }
 
@@ -77,37 +78,37 @@ public class FormSection : IEntity<FormSectionId>
     public bool AppliesToTask(ActivityTaskId? taskId) =>
         ActivityTaskId is null || (taskId is not null && ActivityTaskId.Value == taskId.Value);
 
-    public void UpdateDetails(string title, string? description)
+    public void UpdateDetails(string title, string? description, DateTime utcNow)
     {
         Guard.NotNullOrEmptyOrWhiteSpace(title, nameof(title));
 
         Title = title.Trim();
         Description = Normalise(description);
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void SetCategory(CategoryId? categoryId)
+    public void SetCategory(CategoryId? categoryId, DateTime utcNow)
     {
         CategoryId = categoryId;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void SetDisplayOrder(int displayOrder)
+    public void SetDisplayOrder(int displayOrder, DateTime utcNow)
     {
         DisplayOrder = displayOrder;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void Activate()
+    public void Activate(DateTime utcNow)
     {
         IsActive = true;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void Deactivate()
+    public void Deactivate(DateTime utcNow)
     {
         IsActive = false;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
     private static string? Normalise(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

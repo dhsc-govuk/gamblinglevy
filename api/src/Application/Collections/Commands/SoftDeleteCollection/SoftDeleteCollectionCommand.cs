@@ -1,5 +1,6 @@
 using Application.Collections.Audit;
 using Application.Collections.Exceptions;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
@@ -23,7 +24,9 @@ public class SoftDeleteCollectionCommandHandler(
     ICollectionQueries collectionQueries,
     ICollectionRepository collectionRepository,
     IAuditLogRepository auditLogRepository,
-    PermissionsService permissionsService)
+    ITransactionRunner transactionRunner,
+    PermissionsService permissionsService,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<SoftDeleteCollectionCommand, Either<CollectionException, Collection>>
 {
     public async Task<Either<CollectionException, Collection>> Handle(
@@ -50,28 +53,35 @@ public class SoftDeleteCollectionCommandHandler(
 
         var collection = lookup.ValueUnsafe();
 
-        try
-        {
-            var before = CollectionSnapshot.Serialize(collection);
+        // The change and its audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<CollectionException, Collection>(
+            async token =>
+            {
+                try
+                {
+                    var utcNow = dateTimeProvider.GetUtcNow();
+                    var before = CollectionSnapshot.Serialize(collection, utcNow);
 
-            collection.SoftDelete(actorId);
-            await collectionRepository.UpdateAsync(collection, cancellationToken);
+                    collection.SoftDelete(actorId, utcNow);
+                    await collectionRepository.UpdateAsync(collection, token);
 
-            await auditLogRepository.AppendAsync(
-                AuditLog.Create(
-                    actorId,
-                    AuditTargetType.Collection,
-                    collection.Id.Value,
-                    AuditAction.CollectionDeleted,
-                    before: before,
-                    after: CollectionSnapshot.Serialize(collection)),
-                cancellationToken);
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            actorId,
+                            AuditTargetType.Collection,
+                            collection.Id.Value,
+                            AuditAction.CollectionDeleted,
+                            before: before,
+                            after: CollectionSnapshot.Serialize(collection, utcNow)),
+                        token);
 
-            return collection;
-        }
-        catch (Exception exception)
-        {
-            return new CollectionUnknownException(collectionId, exception);
-        }
+                    return collection;
+                }
+                catch (Exception exception)
+                {
+                    return new CollectionUnknownException(collectionId, exception);
+                }
+            },
+            cancellationToken);
     }
 }

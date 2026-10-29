@@ -58,7 +58,17 @@ export const updateFormModule = (moduleId: string, input: UpdateFormModuleInput)
 
 export const deleteFormModule = (moduleId: string) => axios.delete(`${BASE}/modules/${moduleId}`);
 
-export const publishFormModule = (moduleId: string) => axios.post<FormModuleWithChildrenDto>(`${BASE}/modules/${moduleId}/publish`);
+// BLUM-9102: a publish saves a fixed version unless nothing changed since the last one. Both fields are null while
+// BLUM_9087 is off, when no version is saved.
+export interface PublishFormModuleResponseDto extends FormModuleWithChildrenDto {
+  latestVersionNumber: number | null;
+  versionCreated: boolean | null;
+}
+
+export const publishFormModule = (moduleId: string) => axios.post<PublishFormModuleResponseDto>(`${BASE}/modules/${moduleId}/publish`);
+
+// BLUM-9102: reopens a published form as a draft. Its published content is already saved as a version.
+export const startFormModuleDraft = (moduleId: string) => axios.post<FormModuleWithChildrenDto>(`${BASE}/modules/${moduleId}/draft`);
 
 // ---- Section mutations ------------------------------------------------------
 
@@ -84,3 +94,8 @@ export const deleteQuestion = (moduleId: string, questionId: string) => axios.de
 
 export const reorderQuestions = ({ moduleId, orderedIds }: { moduleId: string; orderedIds: string[] }) =>
   axios.post<FormModuleWithChildrenDto>(`${BASE}/modules/${moduleId}/questions/reorder`, { orderedIds });
+
+// BLUM-9102: replaces the form's draft with what a saved version held (a published form is reopened first). Publishing
+// it afterwards saves the next version; the restored version itself never changes.
+export const restoreFormModuleVersion = (input: { moduleId: string; versionNumber: number }) =>
+  axios.post<FormModuleWithChildrenDto>(`${BASE}/modules/${input.moduleId}/versions/${input.versionNumber}/restore`);

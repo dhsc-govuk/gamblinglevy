@@ -1,5 +1,7 @@
 using Application.Activities.Audit;
 using Application.Activities.Exceptions;
+using Application.Common.Features;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
@@ -8,6 +10,7 @@ using Application.Submissions;
 using Domain.Activities;
 using Domain.AuditLogs;
 using Domain.Categories;
+using FluentValidation;
 using LanguageExt;
 using LanguageExt.UnsafeValueAccess;
 using MediatR;
@@ -24,6 +27,7 @@ public record UpdateActivityCommand : IRequest<Either<ActivityException, Activit
     public string? Status { get; init; }
     public int? StartMonth { get; init; }
     public int? StartYear { get; init; }
+    public string? ClosureReason { get; init; }
     public IReadOnlyList<ExpectedResultInput> ExpectedResults { get; init; } = [];
     public IReadOnlyList<ActivityAnswerInput> Answers { get; init; } = [];
     public bool SaveAsDraft { get; init; }
@@ -38,8 +42,12 @@ public class UpdateActivityCommandHandler(
     ICategoryQueries categoryQueries,
     IKeyResultQueries keyResultQueries,
     IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner,
     SubmissionReviewService submissionReviewService,
-    PermissionsService permissionsService)
+    PermissionsService permissionsService,
+    IValidator<UpdateActivityCommand> validator,
+    IDateTimeProvider dateTimeProvider,
+    IFeatureFlags featureFlags)
     : IRequestHandler<UpdateActivityCommand, Either<ActivityException, Activity>>
 {
     public async Task<Either<ActivityException, Activity>> Handle(
@@ -81,6 +89,21 @@ public class UpdateActivityCommandHandler(
 
         // Only a record that is still a draft can be (re)saved as a draft.
         var savingAsDraft = request.SaveAsDraft && !activity.IsComplete;
+
+        // The validator skipped its completion rules because the request claimed SaveAsDraft, but a completed record
+        // is saved for real whatever the flag says — so run them as the save this is. Otherwise a direct PUT with
+        // saveAsDraft: true could close the record without a reason (BLUM-7673), which being read-only it could then
+        // never be given, or store a missing or impossible start date. Thrown, not returned, so the refusal is the
+        // same validation_failed envelope a saveAsDraft: false request gets.
+        if (activity.IsComplete && request.SaveAsDraft)
+        {
+            var completion = await validator.ValidateAsync(request with { SaveAsDraft = false }, cancellationToken);
+            if (!completion.IsValid)
+            {
+                throw new ValidationException(completion.Errors);
+            }
+        }
+
         var completing = !activity.IsComplete && !request.SaveAsDraft;
 
         var requestCategoryId = request.CategoryId.HasValue ? new CategoryId(request.CategoryId.Value) : null;
@@ -88,6 +111,7 @@ public class UpdateActivityCommandHandler(
         var status = string.IsNullOrWhiteSpace(request.Status) ? null : ActivityStatus.From(request.Status);
         var startMonth = status?.IsActive == true ? request.StartMonth : null;
         var startYear = status?.IsActive == true ? request.StartYear : null;
+        var closureReason = status?.IsClosed == true ? request.ClosureReason : null;
 
         // Category and type are locked once setup is complete, so the effective category for schema scoping and
         // completion is the existing category for completed records, or the (possibly changed) one for drafts.
@@ -102,15 +126,19 @@ public class UpdateActivityCommandHandler(
         var applicableQuestions = schema.QuestionsForTask(effectiveTaskId);
         var inapplicableQuestions = schema.Questions.Except(applicableQuestions).ToList();
         var answersMap = BuildAnswersMap(request.Answers);
-        var answerErrors = ActivityAnswerValidator.Validate(applicableQuestions, answersMap, !savingAsDraft)
-            .Concat(ActivityAnswerValidator.Validate(inapplicableQuestions, answersMap, enforceRequired: false))
+
+        // One visibility over the whole schema for both halves and the save, so a rule that points across the split by
+        // activity type is judged the same way by each (BLUM_9087 makes it transitive).
+        var visibility = ActivityAnswerValidator.Visibility(schema.Questions, answersMap, featureFlags.IsEnabled(Feature.BLUM_9087));
+        var answerErrors = ActivityAnswerValidator.Validate(applicableQuestions, answersMap, !savingAsDraft, visibility)
+            .Concat(ActivityAnswerValidator.Validate(inapplicableQuestions, answersMap, enforceRequired: false, visibility))
             .ToList();
         if (answerErrors.Count > 0)
         {
             return new ActivityAnswersInvalidException(activityId, answerErrors);
         }
 
-        var persistableAnswers = ActivityAnswerValidator.CollectPersistable(schema.Questions, answersMap);
+        var persistableAnswers = ActivityAnswerValidator.CollectPersistable(schema.Questions, answersMap, visibility);
 
         // Key results: standard selections must belong to the activity's type; the per-category minimum is
         // enforced for every non-draft save (never for People-and-roles, which has no key results).
@@ -125,8 +153,13 @@ public class UpdateActivityCommandHandler(
 
         if (!savingAsDraft)
         {
-            var minimumError = await ExpectedResultInputs.ValidateMinimumAsync(
-                categoryQueries, effectiveCategoryId, definitions.Count, expectedResultRows.Count, cancellationToken);
+            var (nameError, minimumError) = await ExpectedResultInputs.ValidateCompletionAsync(
+                categoryQueries, effectiveCategoryId, request.Title, definitions.Count, expectedResultRows.Count, cancellationToken);
+            if (nameError is not null)
+            {
+                return new ActivityNameRequiredException(activityId, nameError);
+            }
+
             if (minimumError is not null)
             {
                 return new ActivityExpectedResultsInvalidException(activityId, minimumError);
@@ -136,74 +169,84 @@ public class UpdateActivityCommandHandler(
         var existingExpectedResults = await activityExpectedResultRepository.GetForActivityAsync(activityId, cancellationToken);
         var before = ActivitySnapshot.Serialize(activity, existingExpectedResults);
 
-        try
-        {
-            activity.UpdateDetails(request.Title, null);
-
-            if (!activity.IsComplete)
+        // The activity, its follow-on writes and the audit row commit together (BLUM-8748).
+        var result = await transactionRunner.RunAsync<ActivityException, Activity>(
+            async token =>
             {
-                activity.ChangeCategoryAndType(requestCategoryId, requestTaskId, request.CustomTaskText);
-            }
-
-            if (status is not null)
-            {
-                activity.SetStatus(status, startMonth, startYear);
-            }
-
-            if (completing)
-            {
-                var missing = CollectMissingFields(activity);
-                if (missing.Count > 0)
+                try
                 {
-                    return new ActivityIncompleteException(activityId, missing);
+                    activity.UpdateDetails(request.Title, null, dateTimeProvider.GetUtcNow());
+
+                    if (!activity.IsComplete)
+                    {
+                        activity.ChangeCategoryAndType(requestCategoryId, requestTaskId, request.CustomTaskText, dateTimeProvider.GetUtcNow());
+                    }
+
+                    if (status is not null)
+                    {
+                        activity.SetStatus(status, startMonth, startYear, dateTimeProvider.GetUtcNow(), closureReason);
+                    }
+
+                    if (completing)
+                    {
+                        var missing = CollectMissingFields(activity);
+                        if (missing.Count > 0)
+                        {
+                            return new ActivityIncompleteException(activityId, missing);
+                        }
+
+                        activity.CompleteSetup(dateTimeProvider.GetUtcNow());
+                    }
+
+                    var saved = await activityRepository.UpdateAsync(activity, token);
+
+                    await SyncExpectedResultsAsync(activityId, existingExpectedResults, expectedResultRows, actorId, token);
+
+                    // Replace only the answers this request can legitimately assert about: the applicable questions
+                    // (cleared/hidden ones are pruned) plus whatever it explicitly submitted. Answers for sections
+                    // scoped to a different type — and orphaned answers whose question was since deleted — survive.
+                    var replacedCodes = applicableQuestions.Select(q => q.Code)
+                        .Concat(persistableAnswers.Select(p => p.Question.Code))
+                        .ToHashSet(StringComparer.Ordinal);
+                    await activityAnswerRepository.RemoveByActivityAsync(activityId, replacedCodes, token);
+                    foreach (var (question, value) in persistableAnswers)
+                    {
+                        await activityAnswerRepository.AddAsync(
+                            ActivityAnswer.Record(ActivityAnswerId.New(), activityId, question.Id, question.Code, value, actorId, dateTimeProvider.GetUtcNow()),
+                            token);
+                    }
+
+                    var savedExpectedResults = await activityExpectedResultRepository.GetForActivityAsync(activityId, token);
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            actorId,
+                            AuditTargetType.Activity,
+                            saved.Id.Value,
+                            completing ? AuditAction.ActivityCompleted : AuditAction.ActivityUpdated,
+                            before: before,
+                            after: ActivitySnapshot.Serialize(saved, savedExpectedResults),
+                            organisationId: organisationId),
+                        token);
+
+                    return saved;
                 }
+                catch (Exception exception)
+                {
+                    return new ActivityUnknownException(activityId, exception);
+                }
+            },
+            cancellationToken);
 
-                activity.CompleteSetup();
-            }
-
-            var saved = await activityRepository.UpdateAsync(activity, cancellationToken);
-
-            await SyncExpectedResultsAsync(activityId, existingExpectedResults, expectedResultRows, actorId, cancellationToken);
-
-            // Replace only the answers this request can legitimately assert about: the applicable questions
-            // (cleared/hidden ones are pruned) plus whatever it explicitly submitted. Answers for sections
-            // scoped to a different type — and orphaned answers whose question was since deleted — survive.
-            var replacedCodes = applicableQuestions.Select(q => q.Code)
-                .Concat(persistableAnswers.Select(p => p.Question.Code))
-                .ToHashSet(StringComparer.Ordinal);
-            await activityAnswerRepository.RemoveByActivityAsync(activityId, replacedCodes, cancellationToken);
-            foreach (var (question, value) in persistableAnswers)
-            {
-                await activityAnswerRepository.AddAsync(
-                    ActivityAnswer.Record(ActivityAnswerId.New(), activityId, question.Id, question.Code, value, actorId),
-                    cancellationToken);
-            }
-
-            var savedExpectedResults = await activityExpectedResultRepository.GetForActivityAsync(activityId, cancellationToken);
-            await auditLogRepository.AppendAsync(
-                AuditLog.Create(
-                    actorId,
-                    AuditTargetType.Activity,
-                    saved.Id.Value,
-                    completing ? AuditAction.ActivityCompleted : AuditAction.ActivityUpdated,
-                    before: before,
-                    after: ActivitySnapshot.Serialize(saved, savedExpectedResults),
-                    organisationId: organisationId),
-                cancellationToken);
-
-            // Changes to a completed record (status, key results, completion itself) alter what the quarterly
-            // report asks — in-flight reports must be reviewed (BLUM-6611). Draft edits don't affect the list.
-            if (saved.IsComplete)
-            {
-                await submissionReviewService.FlagOpenSubmissionsAsync(organisationId, cancellationToken);
-            }
-
-            return saved;
-        }
-        catch (Exception exception)
+        // Changes to a completed record (status, key results, completion itself) alter what the quarterly
+        // report asks — in-flight reports must be reviewed (BLUM-6611). Draft edits don't affect the list.
+        // After the commit: it is best-effort and swallows its own failures, which inside the transaction would
+        // abort it and take the change with it.
+        if (result.Match(saved => saved.IsComplete, _ => false))
         {
-            return new ActivityUnknownException(activityId, exception);
+            await submissionReviewService.FlagOpenSubmissionsAsync(organisationId, cancellationToken);
         }
+
+        return result;
     }
 
     private static List<string> CollectMissingFields(Activity activity)
@@ -236,7 +279,7 @@ public class UpdateActivityCommandHandler(
         Domain.Users.UserId actorId,
         CancellationToken cancellationToken)
     {
-        var plan = ExpectedResultSync.Plan(existing, expectedResults, activityId, actorId);
+        var plan = ExpectedResultSync.Plan(existing, expectedResults, activityId, actorId, dateTimeProvider.GetUtcNow());
 
         if (plan.ToRemove.Count > 0)
         {

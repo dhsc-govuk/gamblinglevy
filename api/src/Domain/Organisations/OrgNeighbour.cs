@@ -37,7 +37,8 @@ public class OrgNeighbour : IEntity<OrgNeighbourId>
         OrganisationId neighbourOrgId,
         NeighbourSource source,
         string? referenceTool,
-        UserId importedBy)
+        UserId importedBy,
+        DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(organisationId, nameof(organisationId));
@@ -45,6 +46,6 @@ public class OrgNeighbour : IEntity<OrgNeighbourId>
         Guard.NotNull(source, nameof(source));
         Guard.NotNull(importedBy, nameof(importedBy));
 
-        return new OrgNeighbour(id, organisationId, neighbourOrgId, source, referenceTool, DateTime.UtcNow, importedBy);
+        return new OrgNeighbour(id, organisationId, neighbourOrgId, source, referenceTool, utcNow, importedBy);
     }
 }

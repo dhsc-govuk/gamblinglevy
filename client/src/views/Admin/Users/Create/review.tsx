@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link as RouterLink, useNavigate, useLocation } from 'react-router-dom';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { httpMessageOf, httpStatusOf } from '../../../../helpers/httpErrors';
 import { ManagementLayout } from '../../../../layouts';
 import { GovUKFieldset, GovUKButton, GovUKSummaryCard, SummaryList, ErrorSummary, H1 } from '../../../../components/GovUKComponents';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import { adminUsersListKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
 import { createUser, createOrganisationUser } from '../mutations';
@@ -38,8 +38,6 @@ const UsersCreateReview = (): React.ReactElement => {
   const [errors, setErrors] = useState<ReviewErrors>({});
   const [submitAttempts, setSubmitAttempts] = useState(0);
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
-
   // Redirect to the form if navigated here directly without state.
   useEffect(() => {
     if (!state?.firstName) {
@@ -48,7 +46,7 @@ const UsersCreateReview = (): React.ReactElement => {
   }, [state, navigate]);
 
   const onSuccess = () => {
-    queryClient.invalidateQueries(adminUsersListKey);
+    queryClient.invalidateQueries({ queryKey: adminUsersListKey });
     navigate(ROUTES.admin.users.list, {
       state: {
         banner: {
@@ -59,17 +57,14 @@ const UsersCreateReview = (): React.ReactElement => {
     });
   };
 
-  const onError = (error: any) => {
-    const status = error?.response?.status;
-    const message = error?.response?.data?.toString() ?? 'Could not create the user. Try again.';
+  const onError = (error: unknown) => {
+    const status = httpStatusOf(error);
+    const message = httpMessageOf(error) ?? 'Could not create the user. Try again.';
     setErrors({ submit: status === 409 ? 'A user with this email address already exists.' : message });
   };
 
-  const { mutate: mutateAdmin, isLoading: isLoadingAdmin } = useMutation(createUser, { onSuccess, onError });
-  const { mutate: mutateOrg, isLoading: isLoadingOrg } = useMutation(createOrganisationUser, {
-    onSuccess,
-    onError,
-  });
+  const { mutate: mutateAdmin, isPending: isLoadingAdmin } = useMutation({ mutationFn: createUser, onSuccess, onError });
+  const { mutate: mutateOrg, isPending: isLoadingOrg } = useMutation({ mutationFn: createOrganisationUser, onSuccess, onError });
 
   const isLoading = isLoadingAdmin || isLoadingOrg;
 
@@ -128,7 +123,7 @@ const UsersCreateReview = (): React.ReactElement => {
 
   return (
     <ManagementLayout backLink={{ href: ROUTES.admin.users.create, onClick: () => navigate(ROUTES.admin.users.create, { state }) }}>
-      {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+      <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
       <span className="govuk-caption-l">Add user</span>
       <H1>Check your answers</H1>

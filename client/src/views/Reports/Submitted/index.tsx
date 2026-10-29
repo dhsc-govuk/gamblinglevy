@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { PageLoading } from '../../../components/GovUKComponents';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { useMutation } from 'react-query';
+import { useMutation } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../layouts';
 import { GovUKButton, GovUKPanel, H2, Paragraph } from '../../../components/GovUKComponents';
 import FileDownloadCard from '../../../components/Global/Reports/FileDownloadCard';
@@ -31,7 +31,8 @@ const Submitted = (): React.ReactElement => {
 
   const { collectionId, context, isLoading, isError } = useReportContext();
 
-  const downloadMutation = useMutation(() => downloadReportExport(collectionId), {
+  const downloadMutation = useMutation({
+    mutationFn: () => downloadReportExport(collectionId),
     onError: (error) => setDownloadError(downloadErrorMessage(error)),
     onSuccess: () => setDownloadError(null),
   });
@@ -82,7 +83,7 @@ const Submitted = (): React.ReactElement => {
                 title={`Quarterly report for ${context.localAuthorityName}, ${formatGovUkDate(context.reportingPeriodStart)} to ${formatGovUkDate(context.reportingPeriodEnd)}`}
                 metadata="ZIP"
                 onDownload={() => downloadMutation.mutate()}
-                isLoading={downloadMutation.isLoading}
+                isLoading={downloadMutation.isPending}
                 errorMessage={downloadError}
                 downloadTestId="reports-submitted-download"
                 errorTestId="reports-submitted-download-error"

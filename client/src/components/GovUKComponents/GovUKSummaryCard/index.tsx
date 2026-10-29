@@ -12,19 +12,18 @@ interface GovUKSummaryCardProps {
   title?: React.ReactNode;
   actions?: SummaryCardAction[];
   children: React.ReactNode;
+  // The title's heading level. Defaults to h2 (the Design System example); a card nested under an h3 (the DHSC
+  // maturity-assessment detail lists sections under one) passes 4 so the outline stays a tree.
+  headingLevel?: 2 | 3 | 4;
   testId?: string;
 }
 
-// Native <button> ships browser chrome (border + grey background) *and* its own tiny UA-default font —
-// buttons don't inherit font-family/size/weight from ancestors the way normal elements do, so without
-// `font: inherit` this renders far smaller than the 19px/700 that `.govuk-summary-card__actions`
-// already sets natively on the surrounding <li>/<ul>. Reset the chrome and force the font to inherit so
-// it matches the Design System's actual "Edit"/"Change" link size.
+// Native <button> ships its own tiny UA-default font — buttons don't inherit font-family/size/weight from
+// ancestors the way normal elements do, so without `font: inherit` this renders far smaller than the
+// 19px/700 that `.govuk-summary-card__actions` already sets natively on the surrounding <li>/<ul>.
+// The chrome reset (background, border, padding) is `button.govuk-link` in govuk-refreshed-branding.css,
+// never here: an inline background also hides the yellow focus fill.
 const actionButtonStyle: React.CSSProperties = {
-  background: 'none',
-  border: 0,
-  padding: 0,
-  cursor: 'pointer',
   font: 'inherit',
 };
 
@@ -33,7 +32,9 @@ const actionButtonStyle: React.CSSProperties = {
  * Uses native govuk-frontend classes (.govuk-summary-card) so styling comes
  * directly from the Design System. See https://design-system.service.gov.uk/components/summary-list/#summary-cards
  */
-function GovUKSummaryCard({ title, actions, children, testId }: GovUKSummaryCardProps): React.ReactElement {
+function GovUKSummaryCard({ title, actions, children, headingLevel = 2, testId }: GovUKSummaryCardProps): React.ReactElement {
+  const TitleTag = `h${headingLevel}` as 'h2' | 'h3' | 'h4';
+
   const renderActionButton = (action: SummaryCardAction, index: number) => (
     <button
       type="button"
@@ -50,9 +51,9 @@ function GovUKSummaryCard({ title, actions, children, testId }: GovUKSummaryCard
     <div className="govuk-summary-card" data-testid={testId}>
       <div className="govuk-summary-card__title-wrapper">
         {title !== undefined && (
-          <h2 className="govuk-summary-card__title" data-testid={composeTestId(testId, 'title')}>
+          <TitleTag className="govuk-summary-card__title" data-testid={composeTestId(testId, 'title')}>
             {title}
-          </h2>
+          </TitleTag>
         )}
         {actions &&
           actions.length > 0 &&

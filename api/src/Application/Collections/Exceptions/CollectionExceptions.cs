@@ -43,6 +43,16 @@ public class CollectionLocalAuthorityInvalidException(CollectionId id)
 public class CollectionFormModuleInvalidException(CollectionId id)
     : CollectionException(id, $"Collection {id} references one or more form modules that do not exist or are not available.");
 
+// BLUM-9084: a collection's forms cannot change once a local authority has started a report in it (behind
+// BLUM_9087): the report's questions would change under them, and removing a form and adding it back would record its
+// newest version.
+public class CollectionFormsLockedException(CollectionId id)
+    : CollectionException(id, "The forms cannot be changed because local authorities have already started reports in this collection.")
+{
+    // The 422 body's error (CollectionErrorFactory), for the client to tell this refusal apart.
+    public const string ErrorCode = "COLLECTION_FORMS_LOCKED";
+}
+
 public class CollectionForbiddenException(CollectionId id, string message)
     : CollectionException(id, message);
 

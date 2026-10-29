@@ -28,6 +28,7 @@ public class ActivityConfiguration : IEntityTypeConfiguration<Activity>
         builder.Property(x => x.IsComplete).IsRequired();
         builder.Property(x => x.StartMonth);
         builder.Property(x => x.StartYear);
+        builder.Property(x => x.ClosureReason).HasColumnType("varchar(500)");
         builder.Property(x => x.IsFlaggedForReview).IsRequired();
         builder.Property(x => x.DeletedAt).HasConversion(new DateTimeUtcConverter());
         builder.Property(x => x.DeletedBy)

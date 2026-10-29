@@ -11,7 +11,8 @@ public static class OrganisationsData
         region: Region.NorthEast,
         type: OrgType.LocalAuthority,
         eCode: "E1000001",
-        onboardingStatus: OnboardingStatus.Invited);
+        onboardingStatus: OnboardingStatus.Invited,
+        utcNow: DateTime.UtcNow);
 
     public static readonly Organisation SecondOrganisation = Organisation.New(
         id: OrganisationId.New(),
@@ -20,5 +21,6 @@ public static class OrganisationsData
         region: Region.NorthWest,
         type: OrgType.LocalAuthority,
         eCode: "E1000002",
-        onboardingStatus: OnboardingStatus.Active);
+        onboardingStatus: OnboardingStatus.Active,
+        utcNow: DateTime.UtcNow);
 }

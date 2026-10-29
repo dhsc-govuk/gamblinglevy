@@ -57,6 +57,9 @@ public class ActivityStatus : ValueObject
 
     public bool IsActive => Value == ActivityStatuses.Active;
 
+    // Only a Closed record carries a closure reason (BLUM-7673).
+    public bool IsClosed => Value == ActivityStatuses.Closed;
+
     // "Read-only" records (closed or finished) cannot be edited once setup is complete; the UI shows them
     // without "Change" links.
     public bool IsReadOnly => Value is ActivityStatuses.Closed or ActivityStatuses.Finished;

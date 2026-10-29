@@ -9,7 +9,6 @@ using Domain.Users;
 using Domain.ValueObjects;
 using LanguageExt;
 using MediatR;
-using Microsoft.Extensions.Logging;
 
 namespace Application.Users.Commands.Admins;
 
@@ -25,9 +24,10 @@ public class CreateAdminCommandHandler(
     IUserRepository repository,
     IUsersService usersService,
     IAuditLogRepository auditLogRepository,
-    IInvitationEmailService invitationEmailService,
+    UserInvitations userInvitations,
     PermissionsService permissionsService,
-    ILogger<CreateAdminCommandHandler> logger)
+    IDateTimeProvider dateTimeProvider,
+    ITransactionRunner transactionRunner)
     : IRequestHandler<CreateAdminCommand, Either<UserException, User>>
 {
     public async Task<Either<UserException, User>> Handle(
@@ -45,7 +45,7 @@ public class CreateAdminCommandHandler(
         UserId actorId,
         CancellationToken cancellationToken)
     {
-        var email = request.Email!.Trim();
+        var email = request.Email!.Trim().ToLowerInvariant();
         var name = new Name(request.FirstName!, request.LastName!);
 
         var userWithEmail = await repository.FindByEmailAsync(email, cancellationToken);
@@ -61,7 +61,7 @@ public class CreateAdminCommandHandler(
         bool isActive,
         CancellationToken cancellationToken)
     {
-        var identityResult = await CreateUserIdentityIfDoesNotExist(name, email, isActive, cancellationToken);
+        var identityResult = await CreateUserIdentityIfDoesNotExist(name, email, cancellationToken);
         return await identityResult.MatchAsync<Either<UserException, User>>(
             subId => PersistUser(actorId, name, email, subId, isActive, cancellationToken),
             e => new UserUnknownException(UserId.Empty(), e));
@@ -75,42 +75,58 @@ public class CreateAdminCommandHandler(
         bool isActive,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var user = User.New(
-                UserId.New(),
-                name,
-                email,
-                new SubId(Guid.Parse(subId)),
-                isActive ? UserStatus.Active : UserStatus.Deactivated,
-                UserRole.Admin);
+        // The user and its audit row commit together (BLUM-8748); the invitation goes out only once they have.
+        var result = await transactionRunner.RunAsync<UserException, User>(
+            async token =>
+            {
+                try
+                {
+                    var user = User.New(
+                        UserId.New(),
+                        name,
+                        email,
+                        new SubId(Guid.Parse(subId)),
+                        isActive ? UserStatus.Active : UserStatus.Deactivated,
+                        UserRole.Admin,
+                        dateTimeProvider.GetUtcNow());
+                    userInvitations.HoldIfCannotSignIn(user, organisation: null);
 
-            var saved = await repository.AddAsync(user, cancellationToken);
+                    var saved = await repository.AddAsync(user, token);
 
-            var invitationResult = await invitationEmailService.SendInvitationAsync(email, name, cancellationToken);
-            invitationResult.IfLeft(e => logger.LogWarning(e, "Invitation email failed for {Email}; user creation not rolled back", email));
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(actorId, AuditTargetType.User, saved.Id.Value, AuditAction.UserCreated, before: null, after: UserSnapshot.Serialize(saved)),
+                        token);
 
-            await auditLogRepository.AppendAsync(
-                AuditLog.Create(actorId, AuditTargetType.User, saved.Id.Value, AuditAction.UserCreated, before: null, after: UserSnapshot.Serialize(saved)),
-                cancellationToken);
+                    return saved;
+                }
+                catch (Exception exception)
+                {
+                    return new UserUnknownException(UserId.Empty(), exception);
+                }
+            },
+            cancellationToken);
 
-            return saved;
-        }
-        catch (Exception exception)
-        {
-            return new UserUnknownException(UserId.Empty(), exception);
-        }
+        return await result.MatchAsync<Either<UserException, User>>(
+            async saved =>
+            {
+                await userInvitations.SendUnlessHeldAsync(saved, cancellationToken);
+                return saved;
+            },
+            e => e);
     }
 
     private async Task<Either<Exception, string>> CreateUserIdentityIfDoesNotExist(
         Name userName,
         string email,
-        bool isActive,
         CancellationToken cancellationToken)
     {
-        var existingUserSubId = await usersService.FindByEmail(email, cancellationToken);
-        return await existingUserSubId.MatchAsync(
-            subId => subId,
-            () => usersService.Add(userName, email, isActive, cancellationToken));
+        // A refused lookup is returned, not treated as "no such account": creating one on the strength of
+        // a lookup that never answered is how a second directory object for the same address gets made.
+        var lookup = await usersService.FindByEmail(email, cancellationToken);
+        return await lookup.MatchAsync<Either<Exception, string>>(
+            existingUserSubId => existingUserSubId.MatchAsync(
+                subId => subId,
+                () => usersService.Add(userName, email, cancellationToken)),
+            e => e);
     }
 }

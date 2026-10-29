@@ -30,9 +30,16 @@ const config = JSON.parse(await readFile(path.join(CLIENT_ROOT, 'src', 'config.j
 
 // On Azure the API is a separate App Service host, so connect-src 'self' does not reach it and
 // every request would be blocked. An artifact that cannot name its API is not worth shipping.
-const apiOrigin = originOf(config.api_url);
-if (!apiOrigin) {
-  console.error(`[headers] api_url is not a valid URL (${JSON.stringify(config.api_url)}) — cannot build a working CSP.`);
+//
+// A path is the other supported topology, not a failure: docker-entrypoint.sh documents leaving
+// API_ORIGIN unset "when the API is served from the same origin as this app", and a build
+// configured that way has no second host to name — 'self' already covers it. An empty or
+// malformed value stays fatal, because that is an unset pipeline variable rather than a choice.
+const apiUrl = typeof config.api_url === 'string' ? config.api_url.trim() : '';
+const apiOrigin = originOf(apiUrl);
+const apiIsSameOrigin = apiUrl.startsWith('/');
+if (!apiOrigin && !apiIsSameOrigin) {
+  console.error(`[headers] api_url is neither an absolute URL nor a same-origin path (${JSON.stringify(config.api_url)}) — cannot build a working CSP.`);
   process.exit(1);
 }
 
@@ -42,7 +49,7 @@ const authorityOrigin = originOf(config.ad_authority);
 const authorityNeedsListing = Boolean(authorityOrigin) && !/^https:\/\/[^./]+\.ciamlogin\.com$/.test(authorityOrigin);
 
 const origins = {
-  connectSrc: [apiOrigin, ...(authorityNeedsListing ? [authorityOrigin] : [])],
+  connectSrc: [...(apiOrigin ? [apiOrigin] : []), ...(authorityNeedsListing ? [authorityOrigin] : [])],
   frameSrc: authorityNeedsListing ? [authorityOrigin] : [],
 };
 
@@ -52,4 +59,4 @@ await copyFile(path.join(CLIENT_ROOT, 'security-headers.mjs'), path.join(DIST, '
 
 // Printed into the build log so "which API origin did this artifact get?" is answerable from
 // the pipeline output alone.
-console.log(`[headers] dist/server.mjs written; connect-src extras: ${origins.connectSrc.join(' ')}`);
+console.log(`[headers] dist/server.mjs written; connect-src extras: ${origins.connectSrc.join(' ') || "(none — api_url is same-origin, covered by 'self')"}`);

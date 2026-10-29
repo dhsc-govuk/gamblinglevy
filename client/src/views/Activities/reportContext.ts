@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
-import type { QueryClient } from 'react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import { EnumUserRole } from '../../components/AuthProvider';
 import { ROUTES } from '../../helpers/routes';
 import { reportActivitiesKey, reportActivityFormsKey, reportContextKey, reportFundingSpendKey, reportTaskListKey } from '../../helpers/queriesParams';
@@ -51,13 +51,13 @@ export const invalidateReportCaches = (queryClient: QueryClient, collectionId: s
   if (!collectionId) {
     return;
   }
-  queryClient.invalidateQueries(reportContextKey(collectionId));
-  queryClient.invalidateQueries(reportTaskListKey(collectionId));
-  queryClient.invalidateQueries(reportActivitiesKey(collectionId));
-  queryClient.invalidateQueries(reportFundingSpendKey(collectionId));
+  queryClient.invalidateQueries({ queryKey: reportContextKey(collectionId) });
+  queryClient.invalidateQueries({ queryKey: reportTaskListKey(collectionId) });
+  queryClient.invalidateQueries({ queryKey: reportActivitiesKey(collectionId) });
+  queryClient.invalidateQueries({ queryKey: reportFundingSpendKey(collectionId) });
   // Every activity's key-results form in this collection: they prefill from the activity record (title, status,
   // answers), so they go stale too. Invalidated by prefix — one call covers them all.
-  queryClient.invalidateQueries(reportActivityFormsKey(collectionId));
+  queryClient.invalidateQueries({ queryKey: reportActivityFormsKey(collectionId) });
 };
 
 export const useActivityReportContext = () => {

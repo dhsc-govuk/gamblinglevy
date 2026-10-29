@@ -18,6 +18,7 @@ export interface AccountHistoryEntry {
 export interface AdminUserDetailDto extends AdminUserDto {
   organisationId?: string;
   mfaStatus: 'enabled' | 'not_set_up';
+  passwordLoginEnabled: boolean;
   createdBy?: AccountHistoryEntry;
   lastUpdatedBy?: AccountHistoryEntry;
 }

@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Api.Dtos;
+using Application.Common.Features;
 using FluentAssertions;
 using Tests.Common;
 using Xunit;
@@ -8,11 +9,15 @@ namespace Api.Tests.Integration.FormDesigner;
 
 // Shared setup for Form Designer authoring tests. The activity-record form schema is global (not org-scoped)
 // and is seeded on startup, so each test starts from a cleared schema for deterministic assertions.
+// The designer's endpoints answer only while BLUM_9395 is on, so every test starts with it on.
 public abstract class FormDesignerTestBase(IntegrationTestWebFactory factory)
     : BaseIntegrationTest(factory), IAsyncLifetime
 {
+    protected Task SetFlagAsync(bool enabled) => factory.SetFeatureAsync(Feature.BLUM_9395, enabled);
+
     public async Task InitializeAsync()
     {
+        await SetFlagAsync(true);
         AuthenticateAsAdmin();
         await ClearSchemaAsync();
     }

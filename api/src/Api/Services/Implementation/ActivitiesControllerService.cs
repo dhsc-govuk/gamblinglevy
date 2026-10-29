@@ -41,6 +41,7 @@ public class ActivitiesControllerService(
             !activity.IsComplete,
             activity.StartMonth,
             activity.StartYear,
+            activity.ClosureReason,
             expectedResults.Select(r => new ExpectedResultDto(r.KeyResultCode, r.Text)).ToList(),
             answers.Select(a => new ActivityAnswerDto(a.QuestionCode, a.Value)).ToList(),
             activity.CreatedAt,

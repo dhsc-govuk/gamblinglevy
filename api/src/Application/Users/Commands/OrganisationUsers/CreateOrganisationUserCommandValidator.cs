@@ -12,7 +12,7 @@ public class CreateOrganisationUserCommandValidator : AbstractValidator<CreateOr
         RuleFor(x => x.Email).MaximumLength(FieldLimits.Email);
 
         // A bounded but unvalidated email address is textbook CWE-20, and the admin equivalents
-        // (Create/UpdateAdminCommandValidator) have carried exactly this rule all along — the asymmetry was
+        // (CreateAdminCommandValidator, AdminEditUserCommandValidator) have carried exactly this rule all along — the asymmetry was
         // the bug. Note this is a behaviour change: an organisation user can no longer be created with a
         // malformed address, which the invitation email would have silently failed to reach anyway.
         RuleFor(x => x.Email).EmailAddress().When(x => !string.IsNullOrEmpty(x.Email));

@@ -1,0 +1,38 @@
+/* The search, Sort by and Filter by row per the design (Figma 1451-218819, BLUM-9088): one line, the search taking
+   what the two dropdowns leave. Flex with wrapping rather than a grid like the DHSC reports list's: with
+   minmax(0, 1fr) for the search, the dropdowns kept their full width as the page narrowed and the search input
+   shrank to 109px at 800px and 14px at 641px. Here the Filter drops to a second line once the search would fall
+   below 191px. */
+.la-report-history .govuk-table-filter {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px 30px;
+  margin-bottom: 30px;
+}
+
+.la-report-history .govuk-table-filter > * {
+  flex: 1 1 191px;
+}
+
+/* Sized to their longest option with a 191px floor (the design's width) rather than pinned at 191px, so neither
+   select clips the chosen option, at default text spacing or a user's wider one (WCAG 1.4.12). This page's sort
+   labels are long, so at default spacing both are wider than the design. */
+.la-report-history .govuk-table-filter > .govuk-table-filter__sort,
+.la-report-history .govuk-table-filter > .govuk-table-filter__filter {
+  flex: 0 0 auto;
+  min-width: 191px;
+}
+
+@media (max-width: 40.0525em) {
+  .la-report-history .govuk-table-filter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .la-report-history .govuk-table-filter > * {
+    flex-basis: auto;
+    width: 100%;
+  }
+}

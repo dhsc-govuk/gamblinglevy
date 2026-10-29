@@ -30,6 +30,8 @@ export interface ActivityDto {
   isDraft: boolean;
   startMonth: number | null;
   startYear: number | null;
+  // Why a Closed activity was closed (BLUM-7673); null for any other status and for records closed before then.
+  closureReason: string | null;
   expectedResults: ExpectedResultDto[];
   answers: ActivityAnswerDto[];
   createdAt: string;

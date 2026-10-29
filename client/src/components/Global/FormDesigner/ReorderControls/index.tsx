@@ -9,15 +9,7 @@ interface Props {
   testId?: string;
 }
 
-const linkButtonStyle: React.CSSProperties = {
-  background: 'none',
-  border: 0,
-  padding: 0,
-  cursor: 'pointer',
-};
-
 const disabledStyle: React.CSSProperties = {
-  ...linkButtonStyle,
   color: '#b1b4b6',
   cursor: 'not-allowed',
   textDecoration: 'none',
@@ -30,22 +22,20 @@ const ReorderControls = ({ onMoveUp, onMoveDown, isFirst, isLast, label, testId 
     <button
       type="button"
       className="govuk-link"
-      style={isFirst ? disabledStyle : linkButtonStyle}
+      style={isFirst ? disabledStyle : undefined}
       disabled={isFirst}
       onClick={onMoveUp}
-      data-testid={testId ? `${testId}-move-up` : undefined}
-    >
+      data-testid={testId ? `${testId}-move-up` : undefined}>
       Up<span className="govuk-visually-hidden"> — move {label} up</span>
     </button>
     <span aria-hidden="true"> · </span>
     <button
       type="button"
       className="govuk-link"
-      style={isLast ? disabledStyle : linkButtonStyle}
+      style={isLast ? disabledStyle : undefined}
       disabled={isLast}
       onClick={onMoveDown}
-      data-testid={testId ? `${testId}-move-down` : undefined}
-    >
+      data-testid={testId ? `${testId}-move-down` : undefined}>
       Down<span className="govuk-visually-hidden"> — move {label} down</span>
     </button>
   </span>

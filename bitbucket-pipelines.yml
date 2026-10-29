@@ -1,0 +1,290 @@
+image: atlassian/default-image:3
+
+definitions:
+  services:
+    # The one PostgreSQL server the backend test run shares. Every test class creates its own uniquely named
+    # database on it and drops it when the class finishes (api/tests/Tests.Common/TestPostgres.cs), so classes
+    # are isolated by database name. They used to be isolated by Docker port — one Testcontainer per class on
+    # the docker service — and on Bitbucket two parallel classes intermittently landed on the same Postgres
+    # and wiped each other's rows. A native service needs no Docker-in-Docker, no Testcontainers and no Ryuk.
+    # Keep the image in step with the local Testcontainers pin in TestPostgres.cs.
+    postgres-tests:
+      image: postgres:15.1-alpine
+      memory: 2048
+      variables:
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: postgres
+  steps:
+    - step: &build-client
+        name: "Build client"
+        # condition:
+        #   changesets:
+        #     includePaths:
+        #       - "bitbucket-pipelines.yml"
+        #       - "client/**"
+        image: node:24
+        caches:
+          - node
+        script:
+          - cd client
+          # Pull-request builds run outside any deployment, so the deployment variables below are empty there and an
+          # empty config fails the build's own checks (tenantIdGuard in vite.config.mts, the CSP in build-runtime.mjs).
+          # They build the committed dev config.json instead: nothing a pull-request build makes is deployed.
+          # BITBUCKET_PR_ID is set only in pull-request pipelines, so every deployment stage still writes its own.
+          - if [ -z "$BITBUCKET_PR_ID" ]; then echo "{ \"api_url\":\"$API_URL\", \"ad_tenant_id\":\"$AD_TENANT_ID\", \"ad_client_id\":\"$AD_CLIENT_ID\", \"ad_authority\":\"$AD_AUTHORITY\", \"ad_scope\":\"$AD_SCOPE\", \"ad_redirect_uri\":\"$AD_REDIRECT_URI\", \"ad_domain_hint\":\"${AD_DOMAIN_HINT:-}\", \"accessibility_testing_enabled\":\"${ACCESSIBILITY_TESTING_ENABLED:-false}\", \"sentry_dsn\":\"${SENTRY_DSN:-}\", \"app_insights_connection_string\":\"${APP_INSIGHTS_CONNECTION_STRING:-}\" }" > ./src/config.json; fi
+          - npm ci
+          # Unit tests (Vitest, BLUM-8754). A line of its own rather than part of `npm run build`, which DAC's
+          # Dockerfile also runs. CI=true adds a JUnit report under test-results/, which Bitbucket picks up.
+          - npm test
+          - npm run build
+          - apt update && apt install zip
+          - cd dist
+          - zip -r ../../client.zip .
+        artifacts:
+          - "client.zip"
+    - step: &build-api
+        name: "Build api"
+        # condition:
+        #   changesets:
+        #     includePaths:
+        #       - "bitbucket-pipelines.yml"
+        #       - "api/**"
+        image: mcr.microsoft.com/dotnet/sdk:10.0
+        caches:
+          - dotnetcore
+        script:
+          - cd api
+          - dotnet restore ./src/Api/Api.csproj
+          - dotnet build ./src/Api/Api.csproj -c Release --no-restore
+          - dotnet publish ./src/Api/Api.csproj -c Release --no-restore --no-build -o publish
+          - apt update && apt install zip -y
+          - cd publish
+          - zip -r ../../api.zip .
+        artifacts:
+          - "api.zip"
+    - step: &run-backend-tests
+        name: "Run backend tests"
+        image: mcr.microsoft.com/dotnet/sdk:10.0
+        size: 2x
+        caches:
+          - dotnetcore
+        script:
+          # Points the test run at the postgres-tests service instead of starting a Testcontainer.
+          - export TEST_POSTGRES_CONNECTION="Host=127.0.0.1;Port=5432;Username=postgres;Password=postgres;Database=postgres"
+          - cd api
+          - dotnet tool install -g trx2junit
+          # The conservative scheduler does not start more test classes than the thread cap. Two at a time is
+          # what the suite's static in-memory email recorders are written against, and it keeps two classes'
+          # connection pools well inside the service's default max_connections (100).
+          #
+          # --collect measures coverage with the coverlet.collector package the test projects already reference;
+          # coverlet.runsettings limits it to the four shipped assemblies. Each test project writes its own
+          # tests/<project>/TestResults/<guid>/coverage.cobertura.xml.
+          - dotnet test --collect:"XPlat Code Coverage" --settings coverlet.runsettings --logger 'trx;LogFileName=log.trx' -- xUnit.MaxParallelThreads=2 xUnit.ParallelAlgorithm=conservative
+        after-script:
+          - export PATH="$PATH:/root/.dotnet/tools"
+          # Coverage is reported, not gated (BLUM-8761). All of it lives here rather than in `script`, the
+          # tool install included, so that neither a ReportGenerator failure nor a NuGet outage can turn a
+          # green test run red, and so a red run still gets a report.
+          # The totals and one line per assembly are printed to this log (Summary.txt also lists all ~900
+          # classes, which is what the sed and grep cut away); the full report is the step's artifact.
+          #
+          # The report is written to the clone root and NOT under api/. Artifacts are handed to every later
+          # step, and "Upload to client github" and "Publish to open source repo" rsync api/ wholesale into
+          # DHSC's repo and the public one — a report under api/ would be published with it.
+          #
+          # One command, in a subshell, ending in `||`: an after-script stops at its first failing command,
+          # so this must neither change the directory the next line runs in nor be able to stop it running.
+          - >-
+            (cd "$BITBUCKET_CLONE_DIR"
+            && dotnet tool install -g dotnet-reportgenerator-globaltool --version 5.5.11
+            && reportgenerator "-reports:api/tests/*/TestResults/*/coverage.cobertura.xml" "-targetdir:coverage-report" "-reporttypes:TextSummary;Cobertura;Html"
+            && sed -n '1,/^$/p' coverage-report/Summary.txt
+            && grep -E '^[A-Za-z]+ +[0-9.]+%$' coverage-report/Summary.txt)
+            || echo "No coverage report was produced"
+          - trx2junit ./TestResults/*.trx
+        artifacts:
+          - coverage-report/**
+        services:
+          - postgres-tests
+    - step: &sonar-qube
+        name: "SonarQube analysis"
+        image: mcr.microsoft.com/dotnet/sdk:10.0
+        size: 2x
+        caches:
+          - dotnetcore
+          - sonar
+        script:
+          - cd api
+          - export TEST_POSTGRES_CONNECTION="Host=127.0.0.1;Port=5432;Username=postgres;Password=postgres;Database=postgres"
+          - apt-get update
+          - apt-get install --yes default-jre
+          - dotnet tool install --global dotnet-sonarscanner
+          - dotnet tool install --global JetBrains.dotCover.GlobalTool
+          - export PATH="$PATH:/root/.dotnet/tools"
+          - dotnet sonarscanner begin /k:"$SONAR_PROJECT_KEY" /d:sonar.host.url="$SONAR_HOST_URL"  /d:sonar.login="$SONAR_LOGIN" /d:sonar.cs.dotcover.reportsPaths=dotCover.Output.html
+          - dotnet build ./src/Api/Api.csproj
+          - dotnet dotcover test --dcReportType=HTML
+          - dotnet sonarscanner end /d:sonar.login="$SONAR_LOGIN"
+        services:
+          - postgres-tests
+    - step: &deploy-client
+        name: "Deploy client"
+        # trigger: "manual"
+        # condition:
+        #   changesets:
+        #     includePaths:
+        #       - "bitbucket-pipelines.yml"
+        #       - "client/**"
+        script:
+          - pipe: atlassian/azure-web-apps-deploy:1.1.0
+            variables:
+              AZURE_APP_ID: $AZURE_APP_ID
+              AZURE_PASSWORD: $AZURE_PASSWORD
+              AZURE_TENANT_ID: $AZURE_TENANT_ID
+              AZURE_RESOURCE_GROUP: $AZURE_RESOURCE_GROUP
+              AZURE_APP_NAME: $AZURE_HUB_APP_NAME
+              ZIP_FILE: client.zip
+    - step: &deploy-api
+        name: "Deploy api"
+        # trigger: "manual"
+        # condition:
+        #   changesets:
+        #     includePaths:
+        #       - "bitbucket-pipelines.yml"
+        #       - "api/**"
+        script:
+          - pipe: atlassian/azure-web-apps-deploy:1.1.0
+            variables:
+              AZURE_APP_ID: $AZURE_APP_ID
+              AZURE_PASSWORD: $AZURE_PASSWORD
+              AZURE_TENANT_ID: $AZURE_TENANT_ID
+              AZURE_RESOURCE_GROUP: $AZURE_RESOURCE_GROUP
+              AZURE_APP_NAME: $AZURE_API_APP_NAME
+              ZIP_FILE: api.zip
+    - step: &upload-to-client-github
+        name: "Upload to client github"
+        image: atlassian/default-image:3
+        script:
+          # Required repository variables:
+          #   GITHUB_REPO   - target repo in "owner/name" form (e.g. "my-org/gambling-levy-client")
+          #   GITHUB_TOKEN  - PAT (or fine-grained token) with contents:write on the target repo
+          #   GIT_AUTHOR_NAME / GIT_AUTHOR_EMAIL - identity for the commit
+          - apt-get update && apt-get install -y rsync
+          - git config --global user.name "${GIT_AUTHOR_NAME:-Bitbucket Pipeline}"
+          - git config --global user.email "${GIT_AUTHOR_EMAIL:-pipeline@noreply.bitbucket.org}"
+          # Clone the target GitHub repo's develop branch into a sibling directory
+          - git clone --branch develop --single-branch "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git" target-repo
+          # Drop the existing client and api directories and replace them with the current ones,
+          # excluding build artifacts and local-only files
+          - rm -rf target-repo/client target-repo/api
+          - mkdir -p target-repo/client target-repo/api
+          - >-
+            rsync -a
+            --exclude='node_modules/'
+            --exclude='dist/'
+            --exclude='build/'
+            --exclude='.vite/'
+            client/ target-repo/client/
+          - >-
+            rsync -a
+            --exclude='bin/'
+            --exclude='obj/'
+            --exclude='publish/'
+            --exclude='TestResults/'
+            --exclude='.vs/'
+            api/ target-repo/api/
+          - cd target-repo
+          - git add -A
+          - 'git commit -m "changes as at $(TZ=''Europe/London'' date +%d-%m-%Y) @ $(TZ=''Europe/London'' date +%H:%M)" || { echo "No changes to commit"; exit 0; }'
+          - git push origin develop
+    - step: &publish-open-source
+        name: "Publish to open source repo"
+        image: atlassian/default-image:3
+        script:
+          # Publishes this commit to the public dhsc-govuk/gamblinglevy repo's main branch. Runs
+          # automatically after every successful MVP deploy, so the public repo is never more than one
+          # merge behind and only ever holds code that has passed the build and the backend tests.
+          # What is published is defined in scripts/open-source/stage.sh, nowhere else.
+          # Required repository variables:
+          #   GITHUB_TOKEN  - same PAT used by "Upload to client github" (contents:write on the target repo)
+          #   GIT_AUTHOR_NAME / GIT_AUTHOR_EMAIL - identity for the commit
+          - apt-get update && apt-get install -y rsync
+          - git config --global user.name "${GIT_AUTHOR_NAME:-Bitbucket Pipeline}"
+          - git config --global user.email "${GIT_AUTHOR_EMAIL:-pipeline@noreply.bitbucket.org}"
+          # gitleaks, pinned and checked against the release's own checksum list
+          - export GITLEAKS_VERSION=8.21.2
+          - curl -fsSLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          - curl -fsSLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          - grep " gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum -c -
+          - tar -xzf "gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -C /usr/local/bin gitleaks
+          # The clone is already at the commit that was just built, tested and deployed to MVP
+          - git clone --branch main --single-branch "https://x-access-token:${GITHUB_TOKEN}@github.com/dhsc-govuk/gamblinglevy.git" "$BITBUCKET_CLONE_DIR/target-repo"
+          - scripts/open-source/stage.sh "$BITBUCKET_CLONE_DIR/target-repo"
+          # Fail before anything is pushed if the README or a design doc links to a file that is not
+          # published, or if the published tree contains anything that looks like a secret
+          - scripts/open-source/check-links.sh "$BITBUCKET_CLONE_DIR/target-repo"
+          - gitleaks dir "$BITBUCKET_CLONE_DIR/target-repo" --no-banner --redact --verbose
+          - export SOURCE_SUBJECT="$(git log -1 --format=%s "$BITBUCKET_COMMIT")"
+          - cd "$BITBUCKET_CLONE_DIR/target-repo"
+          - git add -A
+          - 'git commit -m "${SOURCE_SUBJECT}" -m "Published from commit ${BITBUCKET_COMMIT} on the mvp branch." || { echo "No changes to commit"; exit 0; }'
+          - git push origin main
+  caches:
+    sonar: ~/.sonar
+
+pipelines:
+  pull-requests:
+    "**":
+      - parallel:
+          - step: *build-client
+          - step: *build-api
+      - step: *run-backend-tests
+
+  branches:
+    mvp:
+      - stage:
+          name: Deploy to MVP
+          deployment: MVP
+          steps:
+            - step: *build-client
+            - step: *build-api
+            - step: *run-backend-tests
+            # - step: *sonar-qube
+            - step: *deploy-client
+            - step: *deploy-api
+
+      # Automatic, and before the manual stages below: a stage that follows a manual one waits for it,
+      # so placed after UAT this would only run when someone promoted to UAT.
+      - stage:
+          name: Publish to open source repo
+          steps:
+            - step: *publish-open-source
+
+      - stage:
+          name: Deploy to UAT
+          deployment: UAT
+          trigger: "manual"
+          steps:
+            - step: *build-client
+            - step: *build-api
+            - step: *deploy-client
+            - step: *deploy-api
+
+      - stage:
+          name: Upload to client github
+          trigger: "manual"
+          steps:
+            - step: *upload-to-client-github
+
+      # - stage:
+      #     name: Deploy to PROD
+      #     deployment: PROD
+      #     trigger: "manual"
+      #     steps:
+      #       - step: *build-client
+      #       - step: *build-api
+      #       - step: *run-backend-tests
+      #       - step: *deploy-client
+      #       - step: *deploy-api

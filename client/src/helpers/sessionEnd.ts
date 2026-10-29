@@ -52,9 +52,10 @@ const maxMarkerAgeMs = 24 * 60 * 60 * 1000;
 
 // How long clicking "Continue to Microsoft sign in" holds the guard down. Clicking Continue is the app's only
 // reliable "the user is deliberately re-authenticating" signal — a gesture in our own code, on the only button
-// on the page — but it fires before we can know whether it worked, and an *abandoned* redirect never tells us:
-// loginRedirect rejects when it fails to start, not when the user presses Back at the CIAM screen, closes the
-// account picker, or is bounced by the IdP. So the release is bounded rather than permanent. Long enough for a
+// on the page — but it fires before we can know whether it worked, and an *abandoned* redirect does not reliably
+// tell us: loginRedirect rejects when it fails to start, and when Back restores this page from the bfcache, but
+// not when Back reloads it, the account picker is closed, or the IdP bounces the user. So the release is bounded
+// rather than permanent, and the rejection only re-arms the guard sooner where it happens. Long enough for a
 // CIAM round trip that may include an email, a password and the IdP's own MFA; short enough that an abandoned
 // one re-arms the guard by itself instead of disabling it for this account indefinitely.
 //

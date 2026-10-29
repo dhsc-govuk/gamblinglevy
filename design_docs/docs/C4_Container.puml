@@ -1,0 +1,52 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title C2 - Container Diagram - Gambling Levy Portal
+
+Person(reportingOrgUser, "Reporting Organisation User", "LA or VCSE (lead / contributor / finance / read-only per UserOrgMembership).")
+Person(superAdmin, "DHSC Super Admin")
+Person(dataVerifier, "DHSC Data Verifier")
+Person(dataAnalyst, "DHSC Data Analyst")
+
+System_Boundary(gamblingLevyBoundary, "Gambling Levy Portal") {
+
+    Container(webBrowser, "Web Browser", "ReactJS SPA client", "Used by all roles to access the portal.")
+
+    Container(webApp, "Gambling Levy Web App", "ReactJS (Docker)", "Single Page Application for all user roles.")
+    Container(api, "Gambling Levy API", ".NET 10 (ASP.NET Core, Docker)", "REST/JSON API. Validates Entra JWTs, enforces custom TOTP MFA via middleware, and enforces RBAC (DHSC role claim + UserOrgMembership.role) scoped by org_id.")
+    ContainerDb(db, "Portal Database", "PostgreSQL", "35 entities across 5 domains: master data, collection configuration, activities & key results, transactional submissions, longitudinal & audit.")
+    Container(worker, "Background Worker", ".NET 10 Worker Service", "Processes async jobs: collection lifecycle transitions, CollectionReminder rules, maturity rollovers, export generation, notifications.")
+    ContainerDb(reportingDb, "Reporting Schema / Views", "PostgreSQL Views", "Read-optimised views for cross-org benchmarking, regional aggregation, maturity year-on-year, and PowerBI exports.")
+    ContainerDb(blobStorage, "Azure Blob Storage", "Storage Account", "File-upload answers and generated export documents (quarterly PDFs, yearly summary PDFs/CSVs).")
+
+}
+
+System_Ext(authSystem, "Azure Entra External ID", "Federated email-OTP authentication (MFA handled in-platform).")
+System_Ext(govNotify, "GOV.UK Notify", "Email delivery service.")
+System_Ext(appInsights, "Application Insights", "Monitoring — metrics, exceptions, performance tracing.")
+System_Ext(analyticsTool, "External Analytics Tool", "PowerBI or internal BI tool.")
+
+Rel(reportingOrgUser, webBrowser, "Uses", "HTTPS")
+Rel(superAdmin, webBrowser, "Uses", "HTTPS")
+Rel(dataVerifier, webBrowser, "Uses", "HTTPS")
+Rel(dataAnalyst, webBrowser, "Uses", "HTTPS")
+
+Rel(webBrowser, webApp, "Loads SPA", "HTTPS")
+Rel(webApp, api, "Calls APIs with Bearer JWT + custom MFA session cookie", "HTTPS/JSON")
+Rel(webApp, appInsights, "Sends client-side errors", "HTTPS")
+
+Rel(api, db, "Reads/writes domain data", "EF Core / SQL")
+Rel(api, reportingDb, "Populates reporting views", "SQL")
+Rel(api, blobStorage, "Stores/retrieves documents", "HTTPS")
+Rel(api, appInsights, "Sends metrics, exceptions, traces", "HTTPS")
+Rel(worker, db, "Reads/writes for background jobs", "SQL")
+Rel(worker, blobStorage, "Generates export documents", "HTTPS")
+Rel(worker, govNotify, "Sends notifications", "HTTPS API")
+
+Rel(webBrowser, authSystem, "Redirects for sign-in (federated email OTP)", "OIDC/OAuth2")
+Rel(authSystem, webBrowser, "Issues ID/Access tokens", "OIDC/OAuth2")
+Rel(api, authSystem, "Validates tokens / introspects claims", "JWT/OAuth2")
+
+Rel(reportingDb, analyticsTool, "Exposes reporting datasets", "SQL / Direct Query / Extracts")
+
+@enduml

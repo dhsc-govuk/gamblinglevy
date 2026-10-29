@@ -15,10 +15,14 @@ public interface ISubmissionConfirmationEmailService
 
 // Everything the confirmation email needs, already composed by the handler. The service owns only presentation
 // (ClientUrl + the confirmation-page route, date formatting, template substitution).
+//
+// RecipientName is the submitting user's own name (BLUM-7575): the Notify template greets them by name and does
+// not use any of the other fields below — those remain for the SendGrid twin's richer HTML template.
 public record SubmissionConfirmation(
     Guid CollectionId,
     string ReferenceNumber,
     DateTime SubmittedAt,
     string QuarterLabel,
     string CollectionName,
-    string LocalAuthorityName);
+    string LocalAuthorityName,
+    string RecipientName);

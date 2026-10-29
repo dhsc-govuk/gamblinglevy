@@ -1,6 +1,7 @@
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Submissions.Exceptions;
+using Domain.Activities;
 using Domain.Collections;
 using Domain.Organisations;
 using Domain.Submissions;
@@ -75,14 +76,176 @@ public class SubmissionRepository(ApplicationDbContext dbContext)
         string financialYear,
         CancellationToken cancellationToken = default)
     {
+        // collection.DeletedAt == null matters here: an org can otherwise end up with two submissions sharing the
+        // same quarter — a mistaken/duplicate collection that was later soft-deleted, with the org's real report
+        // living against a recreated one for the same quarter — and every caller of this query (the prior-quarter
+        // accumulation above, and SpendReportTotals' quarter-bounded total) sums by quarter number, not by
+        // submission identity, so the deleted collection's spend would otherwise double-count on top of the real
+        // submission for that same quarter.
         var rows = await (
             from submission in Context.Submissions.AsNoTracking()
             join collection in Context.Collections.AsNoTracking() on submission.CollectionId equals collection.Id
-            where submission.OrganisationId == organisationId && collection.FinancialYear == financialYear
+            where submission.OrganisationId == organisationId
+                && collection.FinancialYear == financialYear
+                && collection.DeletedAt == null
             select new { submission.Id, collection.Quarter })
             .ToListAsync(cancellationToken);
 
         return rows.Select(r => (r.Id, r.Quarter)).ToList();
+    }
+
+    public async Task<IReadOnlyList<PriorActivityAnswerRow>> GetPriorSubmittedActivityAnswersAsync(
+        OrganisationId organisationId,
+        ActivityId activityId,
+        DateOnly beforeReportingPeriodEnd,
+        CancellationToken cancellationToken = default)
+    {
+        // "Earlier reporting period" is the whole filter: it excludes the current collection and any re-issue
+        // covering the same period, so no separate collection-id exclusion is needed. ReportingPeriodEnd is
+        // derived from FinancialYear + Quarter for every published collection (ReportingPeriod.Derive), so it is
+        // always present here; a draft has no submissions to find anyway.
+        //
+        // collection.DeletedAt == null for the reason the financial-year query above spells out: a mistaken
+        // duplicate window that was later soft-deleted must not outrank the org's real report for that period.
+        //
+        // No collection-type filter: Type is a value object mapped through HasConversion and no repository
+        // compares one in SQL, and the join to submission_activity_answers already excludes every non-quarterly
+        // submission — only the quarterly report records activity answers.
+        var rows = await (
+            from answer in Context.SubmissionActivityAnswers.AsNoTracking()
+            join submission in Context.Submissions.AsNoTracking() on answer.SubmissionId equals submission.Id
+            join collection in Context.Collections.AsNoTracking() on submission.CollectionId equals collection.Id
+            where answer.ActivityId == activityId
+                && submission.OrganisationId == organisationId
+                && submission.SubmittedAt != null
+                && collection.DeletedAt == null
+                && collection.ReportingPeriodEnd != null
+                && collection.ReportingPeriodEnd < beforeReportingPeriodEnd
+            orderby collection.ReportingPeriodEnd descending, submission.SubmittedAt descending
+            select new { submission.Id, answer.QuestionCode, answer.Value })
+            .ToListAsync(cancellationToken);
+
+        // Project the value-object id whole and unwrap .Value in memory (the GetSubmissionsForCollectionAsync
+        // precedent). The id rides along so the caller can take one report's answer set whole.
+        return rows.Select(r => new PriorActivityAnswerRow(r.Id.Value, r.QuestionCode, r.Value)).ToList();
+    }
+
+    public async Task<IReadOnlyList<OrganisationActivityAnswerRow>> GetLatestSubmittedActivityAnswersForOrganisationAsync(
+        OrganisationId organisationId,
+        DateOnly onOrBeforeReportingPeriodEnd,
+        CancellationToken cancellationToken = default)
+    {
+        // The organisation-wide twin of GetPriorSubmittedActivityAnswersAsync above, for the maturity-assessment
+        // pre-fill: every activity at once, periods ending on or before the assessment's own period end (the
+        // assessment covers the year the reports were filed in). Same finalised-only / non-deleted / no-type
+        // reasoning as its sibling.
+        var rows = await (
+            from answer in Context.SubmissionActivityAnswers.AsNoTracking()
+            join submission in Context.Submissions.AsNoTracking() on answer.SubmissionId equals submission.Id
+            join collection in Context.Collections.AsNoTracking() on submission.CollectionId equals collection.Id
+            where submission.OrganisationId == organisationId
+                && submission.SubmittedAt != null
+                && collection.DeletedAt == null
+                && collection.ReportingPeriodEnd != null
+                && collection.ReportingPeriodEnd <= onOrBeforeReportingPeriodEnd
+            orderby answer.ActivityId, collection.ReportingPeriodEnd descending, submission.SubmittedAt descending
+            select new { answer.ActivityId, submission.Id, collection.ReportingPeriodEnd, submission.SubmittedAt, answer.QuestionCode, answer.Value })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(r => new OrganisationActivityAnswerRow(r.ActivityId.Value, r.Id.Value, r.ReportingPeriodEnd!.Value, r.SubmittedAt!.Value, r.QuestionCode, r.Value))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<SubmittedActivityAnswerRow>> GetSubmittedAnswersForActivityAsync(
+        OrganisationId organisationId,
+        ActivityId activityId,
+        CancellationToken cancellationToken = default)
+    {
+        // Same finalised-only / non-deleted / no-type reasoning as GetPriorSubmittedActivityAnswersAsync above.
+        var rows = await (
+            from answer in Context.SubmissionActivityAnswers.AsNoTracking()
+            join submission in Context.Submissions.AsNoTracking() on answer.SubmissionId equals submission.Id
+            join collection in Context.Collections.AsNoTracking() on submission.CollectionId equals collection.Id
+            where answer.ActivityId == activityId
+                && submission.OrganisationId == organisationId
+                && submission.SubmittedAt != null
+                && collection.DeletedAt == null
+            orderby collection.ReportingPeriodEnd, submission.SubmittedAt
+            select new
+            {
+                submission.Id,
+                collection.Name,
+                collection.FinancialYear,
+                collection.Quarter,
+                collection.ReportingPeriodEnd,
+                submission.SubmittedAt,
+                submission.ReferenceNumber,
+                answer.QuestionCode,
+                answer.Value,
+            })
+            .ToListAsync(cancellationToken);
+
+        if (rows.Count == 0)
+        {
+            return [];
+        }
+
+        // Status is a value object mapped through HasConversion, so "was this activity's report Completed" is decided
+        // in memory — one row per report the activity took part in, so the read stays small.
+        var reports = await Context.SubmissionActivityReports
+            .AsNoTracking()
+            .Where(r => r.ActivityId == activityId)
+            .Select(r => new { r.SubmissionId, r.Status })
+            .ToListAsync(cancellationToken);
+        var completed = reports.Where(r => r.Status.IsCompleted).Select(r => r.SubmissionId.Value).ToHashSet();
+
+        return rows
+            .Where(r => completed.Contains(r.Id.Value))
+            .Select(r => new SubmittedActivityAnswerRow(
+                new SubmittedReportRef(r.Id.Value, r.Name, r.FinancialYear, r.Quarter, r.ReportingPeriodEnd, r.SubmittedAt!.Value, r.ReferenceNumber),
+                r.QuestionCode,
+                r.Value))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<SubmittedActivitySpendRow>> GetSubmittedSpendForActivityAsync(
+        OrganisationId organisationId,
+        ActivityId activityId,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await (
+            from entry in Context.SubmissionSpendEntries.AsNoTracking()
+            join submission in Context.Submissions.AsNoTracking() on entry.SubmissionId equals submission.Id
+            join collection in Context.Collections.AsNoTracking() on submission.CollectionId equals collection.Id
+            where entry.ActivityId == activityId
+                && submission.OrganisationId == organisationId
+                && submission.SubmittedAt != null
+                && collection.DeletedAt == null
+            orderby collection.ReportingPeriodEnd, submission.SubmittedAt, entry.Quarter
+            select new
+            {
+                submission.Id,
+                collection.Name,
+                collection.FinancialYear,
+                collection.Quarter,
+                collection.ReportingPeriodEnd,
+                submission.SubmittedAt,
+                submission.ReferenceNumber,
+                entry.Kind,
+                EntryQuarter = entry.Quarter,
+                entry.Amount,
+            })
+            .ToListAsync(cancellationToken);
+
+        // Kind is a value object mapped through HasConversion; every spend repository reads it in memory.
+        return rows
+            .Select(r => new SubmittedActivitySpendRow(
+                new SubmittedReportRef(r.Id.Value, r.Name, r.FinancialYear, r.Quarter, r.ReportingPeriodEnd, r.SubmittedAt!.Value, r.ReferenceNumber),
+                r.Kind.IsForecast,
+                r.EntryQuarter,
+                r.Amount))
+            .ToList();
     }
 
     public async Task<int> CountSubmittedForPeriodAsync(
@@ -101,6 +264,9 @@ public class SubmissionRepository(ApplicationDbContext dbContext)
             select submission.Id)
             .CountAsync(cancellationToken);
     }
+
+    public Task<bool> AnyForCollectionAsync(CollectionId collectionId, CancellationToken cancellationToken = default) =>
+        Context.Submissions.AsNoTracking().AnyAsync(s => s.CollectionId == collectionId, cancellationToken);
 
     public async Task<IReadOnlyList<CollectionSubmissionRow>> GetSubmissionsForCollectionAsync(
         CollectionId collectionId,

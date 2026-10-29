@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { composeTestId } from '../../../../helpers/testIds';
 import { PageLoading } from '../../../../components/GovUKComponents';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { OrganisationManagementLayout } from '../../../../layouts';
 import { GovUKTable, GovUKNotificationBanner, NameLink, GovUKTag, H1, Paragraph, type Column, type FilterOption } from '../../../../components/GovUKComponents';
 import { ROLE_LABELS, useAuthProvider } from '../../../../components/AuthProvider';
@@ -9,9 +10,10 @@ import { canManageUsers } from '../../navigation';
 import usePageTitle from '../../../../hooks/usePageTitle';
 import { organisationUsersListKey } from '../../../../helpers/queriesParams';
 import { getOrganisationUserList, OrganisationUserDto } from '../../../../components/Global/OrganisationUsers/api';
-import { AccessLevelGuidance } from '../../../../components/Global/OrganisationUsers';
+import { AccessLevelGuidance, laAccessLevelFilterOptions } from '../../../../components/Global/OrganisationUsers';
+import './styles.css';
 
-type EnrichedOrgUser = OrganisationUserDto & { isActive: number };
+type EnrichedOrgUser = OrganisationUserDto & { isActive: boolean; searchText: string };
 
 interface BannerState {
   banner?: { title: string; body: string };
@@ -28,7 +30,13 @@ const columns: Column<EnrichedOrgUser>[] = [
   {
     key: 'firstName',
     header: 'Name',
-    render: (u) => <NameLink name={`${u.firstName} ${u.lastName}`} href={`/organisation-admin/users/${u.id}`} />,
+    render: (u) => (
+      <NameLink
+        name={`${u.firstName} ${u.lastName}`}
+        href={`/organisation-admin/users/${u.id}`}
+        testId={composeTestId('organisation-admin-users-table', 'row', u.id, 'name-link')}
+      />
+    ),
   },
   {
     key: 'role',
@@ -49,12 +57,29 @@ const UsersList = (): React.ReactElement => {
   const location = useLocation();
   const banner = ((location.state as BannerState | null) ?? {}).banner;
 
-  const { data, isLoading } = useQuery(organisationUsersListKey(organisationId ?? ''), () => getOrganisationUserList(organisationId!), { enabled: !!organisationId });
+  const { data, isLoading } = useQuery({
+    queryKey: organisationUsersListKey(organisationId ?? ''),
+    queryFn: () => getOrganisationUserList(organisationId!),
+    enabled: !!organisationId,
+  });
 
-  const users: EnrichedOrgUser[] = (data?.data ?? []).map((u) => ({
-    ...u,
-    isActive: u.status === 'active' ? 1 : 0,
-  }));
+  // Memoised so the array identity is stable: GovUKTable's search/filter/sort useMemo keys on `data`, and
+  // an inline .map() hands it a fresh array on every render.
+  const users: EnrichedOrgUser[] = useMemo(
+    () =>
+      (data?.data ?? []).map((u) => ({
+        ...u,
+        // Boolean, not 0/1: GovUKTable's comparator has string, boolean and Date branches and no number
+        // branch, so a numeric isActive fell through to `return 0` and the "By status" sort silently did
+        // nothing while the live region still announced it. The boolean branch sorts active-first for asc.
+        isActive: u.status === 'active',
+        // Name and email only. This list previously set no searchField at all, so GovUKTable fell back to
+        // scanning every string property: email matched only by accident, alongside the id GUID, role,
+        // status and mfaStatus. Narrowing it is the point — the label never promised those.
+        searchText: `${u.firstName} ${u.lastName} ${u.email}`,
+      })),
+    [data]
+  );
 
   if (!organisationId) {
     return <PageLoading />;
@@ -89,17 +114,26 @@ const UsersList = (): React.ReactElement => {
       {isLoading ? (
         <PageLoading />
       ) : (
-        <GovUKTable<EnrichedOrgUser>
-          testId="organisation-admin-users-table"
-          data={users}
-          columns={columns}
-          keyExtractor={(u) => u.id}
-          searchPlaceholder="Search by name"
-          sortOptions={sortOptions}
-          sortLabel="Sort by"
-          getRowHref={(u) => `/organisation-admin/users/${u.id}`}
-          emptyMessage="No users yet."
-        />
+        <div className="organisation-admin-users-list">
+          <GovUKTable<EnrichedOrgUser>
+            label="Users"
+            testId="organisation-admin-users-table"
+            data={users}
+            columns={columns}
+            keyExtractor={(u) => u.id}
+            searchPlaceholder="Search by name or email"
+            searchField="searchText"
+            sortOptions={sortOptions}
+            sortLabel="Sort by"
+            filterOptions={laAccessLevelFilterOptions}
+            filterLabel="Filter by access level"
+            filterPlaceholder="All access levels"
+            filterField="role"
+            getRowHref={(u) => `/organisation-admin/users/${u.id}`}
+            emptyMessage="No users yet."
+            noResultsMessage="No users match your search or filters."
+          />
+        </div>
       )}
 
       {canManage && (

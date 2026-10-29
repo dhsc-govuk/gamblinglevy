@@ -10,6 +10,8 @@ export interface LocalAuthorityDto {
   onboardingStatus: 'invited' | 'active' | 'suspended' | 'deactivated';
   allocatedAmount: number | null;
   fundingFinancialYear: string | null;
+  nextYearAllocatedAmount: number | null;
+  nextYearFinancialYear: string | null;
   createdAt: string;
   updatedAt: string | null;
 }
@@ -25,6 +27,11 @@ export const getLocalAuthority = (organisationId: string) => axios.get<LocalAuth
 // over-long code is caught on the details step next to the field, rather than surviving to the final submit and
 // coming back as a server error the review page can only attach to the Save button.
 export const E_CODE_MAX_LENGTH = 64;
+
+// Mirrors OnsCodeFormat on the API (BLUM-7663): a country-prefix letter (E, W, S or N) followed by 8 digits,
+// e.g. E06000001. Checked client-side so a malformed code is caught next to the field rather than surviving
+// to a server round trip.
+export const ONS_CODE_PATTERN = /^[EWSN][0-9]{8}$/i;
 
 export const REGIONS: string[] = [
   'East Midlands',

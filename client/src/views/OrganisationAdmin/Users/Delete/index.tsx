@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
 import { ConfirmActionPanel, GovUKButton, GovUKNotificationBanner, NotAuthorised, PageLoading, H1, Paragraph } from '../../../../components/GovUKComponents';
 import usePageTitle from '../../../../hooks/usePageTitle';
@@ -22,10 +22,11 @@ const UsersDelete = (): React.ReactElement => {
 
   usePageTitle(organisationUserPageTitle(userQuery, 'Delete user account'));
 
-  const { mutate, isLoading } = useMutation(() => deleteOrganisationUser(organisationId!, userId), {
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => deleteOrganisationUser(organisationId!, userId),
     onSuccess: () => {
-      queryClient.invalidateQueries(organisationUsersListKey(organisationId ?? ''));
-      queryClient.removeQueries(organisationUserKey(organisationId ?? '', userId));
+      queryClient.invalidateQueries({ queryKey: organisationUsersListKey(organisationId ?? '') });
+      queryClient.removeQueries({ queryKey: organisationUserKey(organisationId ?? '', userId) });
       navigate('/organisation-admin/users', {
         state: {
           banner: {
@@ -69,8 +70,8 @@ const UsersDelete = (): React.ReactElement => {
           <GovUKButton
             className="govuk-button govuk-button--inverse"
             onClick={() => mutate()}
-            isLoading={isLoading}
-            disabled={isLoading}
+            isLoading={isPending}
+            disabled={isPending}
             data-testid="organisation-admin-users-delete-confirm">
             Delete account
           </GovUKButton>

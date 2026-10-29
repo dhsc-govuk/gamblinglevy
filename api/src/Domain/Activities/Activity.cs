@@ -22,6 +22,10 @@ public class Activity : IEntity<ActivityId>
     public bool IsComplete { get; private set; }
     public int? StartMonth { get; private set; }
     public int? StartYear { get; private set; }
+
+    // Why a Closed record was closed (BLUM-7673). Null for every other status, like the start date is for every
+    // status but Active; records closed before the field existed have none.
+    public string? ClosureReason { get; private set; }
     public bool IsFlaggedForReview { get; private set; }
     public DateTime? DeletedAt { get; private set; }
     public UserId? DeletedBy { get; private set; }
@@ -41,6 +45,7 @@ public class Activity : IEntity<ActivityId>
         bool isComplete,
         int? startMonth,
         int? startYear,
+        string? closureReason,
         bool isFlaggedForReview,
         UserId createdBy,
         DateTime createdAt,
@@ -57,6 +62,7 @@ public class Activity : IEntity<ActivityId>
         IsComplete = isComplete;
         StartMonth = startMonth;
         StartYear = startYear;
+        ClosureReason = closureReason;
         IsFlaggedForReview = isFlaggedForReview;
         DeletedAt = null;
         DeletedBy = null;
@@ -71,13 +77,15 @@ public class Activity : IEntity<ActivityId>
         ActivityId id,
         OrganisationId organisationId,
         UserId createdBy,
+        DateTime utcNow,
         string? title = null,
         CategoryId? categoryId = null,
         ActivityTaskId? taskId = null,
         string? customTaskText = null,
         ActivityStatus? status = null,
         int? startMonth = null,
-        int? startYear = null)
+        int? startYear = null,
+        string? closureReason = null)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(organisationId, nameof(organisationId));
@@ -95,9 +103,10 @@ public class Activity : IEntity<ActivityId>
             isComplete: false,
             startMonth,
             startYear,
+            ClosureReasonFor(status, closureReason),
             isFlaggedForReview: HasCustomText(customTaskText),
             createdBy,
-            DateTime.UtcNow,
+            utcNow,
             null);
     }
 
@@ -109,10 +118,12 @@ public class Activity : IEntity<ActivityId>
         CategoryId categoryId,
         ActivityTaskId taskId,
         ActivityStatus status,
+        DateTime utcNow,
         string? title = null,
         string? customTaskText = null,
         int? startMonth = null,
-        int? startYear = null)
+        int? startYear = null,
+        string? closureReason = null)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(organisationId, nameof(organisationId));
@@ -133,24 +144,25 @@ public class Activity : IEntity<ActivityId>
             isComplete: true,
             startMonth,
             startYear,
+            ClosureReasonFor(status, closureReason),
             isFlaggedForReview: HasCustomText(customTaskText),
             createdBy,
-            DateTime.UtcNow,
+            utcNow,
             null);
     }
 
     // Update the activity name / free-text detail. Blocked once the record is read-only (Closed/Finished).
-    public void UpdateDetails(string? title, string? description)
+    public void UpdateDetails(string? title, string? description, DateTime utcNow)
     {
         EnsureEditable();
 
         Title = Normalise(title);
         Description = Normalise(description);
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
     // Category and type can only be changed while the record is still a Draft (BLUM redesign).
-    public void ChangeCategoryAndType(CategoryId? categoryId, ActivityTaskId? taskId, string? customTaskText)
+    public void ChangeCategoryAndType(CategoryId? categoryId, ActivityTaskId? taskId, string? customTaskText, DateTime utcNow)
     {
         if (IsComplete)
         {
@@ -161,11 +173,12 @@ public class Activity : IEntity<ActivityId>
         TaskId = taskId;
         CustomTaskText = Normalise(customTaskText);
         IsFlaggedForReview = HasCustomText(customTaskText);
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    // Set / change the lifecycle status. A start month/year is only meaningful when the status is Active.
-    public void SetStatus(ActivityStatus status, int? startMonth, int? startYear)
+    // Set / change the lifecycle status. A start month/year is only meaningful when the status is Active, and a
+    // closure reason only when it is Closed.
+    public void SetStatus(ActivityStatus status, int? startMonth, int? startYear, DateTime utcNow, string? closureReason = null)
     {
         EnsureEditable();
         Guard.NotNull(status, nameof(status));
@@ -173,11 +186,12 @@ public class Activity : IEntity<ActivityId>
         Status = status;
         StartMonth = status.IsActive ? startMonth : null;
         StartYear = status.IsActive ? startYear : null;
-        UpdatedAt = DateTime.UtcNow;
+        ClosureReason = ClosureReasonFor(status, closureReason);
+        UpdatedAt = utcNow;
     }
 
     // Draft -> completed setup. The mandatory-for-completion field set is enforced here.
-    public void CompleteSetup()
+    public void CompleteSetup(DateTime utcNow)
     {
         Guard.IsTrue(!IsComplete, "Setup is already complete.");
         Guard.NotNull(CategoryId!, nameof(CategoryId));
@@ -185,10 +199,10 @@ public class Activity : IEntity<ActivityId>
         Guard.NotNull(Status!, nameof(Status));
 
         IsComplete = true;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void SoftDelete(UserId actor)
+    public void SoftDelete(UserId actor, DateTime utcNow)
     {
         Guard.NotNull(actor, nameof(actor));
         if (IsDeleted)
@@ -196,12 +210,12 @@ public class Activity : IEntity<ActivityId>
             throw new ActivityAlreadyDeletedException(Id);
         }
 
-        DeletedAt = DateTime.UtcNow;
+        DeletedAt = utcNow;
         DeletedBy = actor;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
-    public void Restore(UserId actor)
+    public void Restore(UserId actor, DateTime utcNow)
     {
         Guard.NotNull(actor, nameof(actor));
         if (!IsDeleted)
@@ -211,7 +225,7 @@ public class Activity : IEntity<ActivityId>
 
         DeletedAt = null;
         DeletedBy = null;
-        UpdatedAt = DateTime.UtcNow;
+        UpdatedAt = utcNow;
     }
 
     public bool IsDeleted => DeletedAt is not null;
@@ -225,6 +239,8 @@ public class Activity : IEntity<ActivityId>
     }
 
     private static string? Normalise(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? ClosureReasonFor(ActivityStatus? status, string? closureReason) => status?.IsClosed == true ? Normalise(closureReason) : null;
 
     private static bool HasCustomText(string? customTaskText) => !string.IsNullOrWhiteSpace(customTaskText);
 }

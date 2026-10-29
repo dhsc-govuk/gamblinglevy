@@ -1,5 +1,6 @@
+/* No top padding: the layout's breadcrumb already carries the Figma 60px gap to the page content
+   (General/Content/styles.css), so padding here added to it (BLUM-9017). */
 .reports-orgs-page {
-  padding-top: 30px;
   color: #0b0c0c;
 }
 
@@ -95,6 +96,18 @@
   margin: 0 0 30px;
   padding-top: 15px;
   box-sizing: border-box;
+}
+
+/* Scopes the consolidated download (BLUM-7682). Matches the 630px column the rest of the Files section uses; the
+   select itself takes govuk-!-width-two-thirds of that (420px), comfortably clear of the 11.5em min-width
+   govuk-frontend puts on .govuk-select, so no min-width override is needed.
+
+   No bottom margin: this wrapper has no padding or border, so the child .govuk-form-group's own bottom margin
+   collapses straight through it — 20px at mobile, 30px above the breakpoint, which is already the rhythm the rest
+   of the page uses between blocks. A margin declared here would collapse against it rather than add to it, so it
+   would change nothing at any viewport. */
+.reports-orgs-file-region {
+  width: 630px;
 }
 
 .reports-orgs-file {
@@ -200,52 +213,10 @@
   line-height: 25px;
 }
 
-/* Floors rather than fixed heights so a user-defined line height grows these controls instead of clipping
-   their text (WCAG 1.4.12); they still render at 40px at default spacing. */
-.reports-orgs-filter__search-control {
-  display: flex;
-  width: 100%;
-  min-height: 40px;
-  height: auto;
-}
-
-.reports-orgs-filter__input {
-  flex: 1 1 auto;
-  min-height: 40px;
-  height: auto;
-  min-width: 0;
-  margin: 0;
-  box-sizing: border-box;
-}
-
-.reports-orgs-filter__search-button {
-  display: flex;
-  flex: 0 0 40px;
-  align-items: center;
-  justify-content: center;
-  align-self: stretch;
-  width: 40px;
-  min-height: 40px;
-  height: auto;
-  padding: 8px;
-  border: 0;
-  background: #1d70b8;
-  cursor: pointer;
-}
-
-.reports-orgs-filter__search-button:hover {
-  background: #003078;
-}
-
-.reports-orgs-filter__search-button:focus {
-  outline: 3px solid #ffdd00;
-  outline-offset: 0;
-  background: #ffdd00;
-}
-
-.reports-orgs-filter__search-button:focus svg circle,
-.reports-orgs-filter__search-button:focus svg line {
-  stroke: #0b0c0c;
+/* GovUKFieldset.Select wraps each select in a form group, whose 30px bottom margin would lift the selects above the
+   search box in this bottom-aligned row. */
+.reports-orgs-filter__select > .govuk-form-group {
+  margin-bottom: 0;
 }
 
 /* No !important: the mobile block below has to be able to take these to 100%. */
@@ -359,16 +330,13 @@
 }
 
 @media (max-width: 48.0525em) {
-  .reports-orgs-page {
-    padding-top: 30px;
-  }
-
   .reports-orgs-page__overview,
   .reports-orgs-page .reports-orgs-page__title,
   .reports-orgs-page .reports-orgs-page__intro,
   .reports-orgs-page__summary,
   .reports-orgs-page__heading-band,
   .reports-orgs-file,
+  .reports-orgs-file-region,
   .reports-orgs-list {
     width: 100%;
   }
@@ -390,7 +358,7 @@
   .reports-orgs-file__body,
   .reports-orgs-file__title,
   .reports-orgs-file .reports-orgs-file__warning,
-  .reports-orgs-filter__search-control,
+  .reports-orgs-filter__search .app-search-input__control,
   .reports-orgs-filter__select,
   .reports-orgs-filter__select .govuk-select {
     width: 100%;

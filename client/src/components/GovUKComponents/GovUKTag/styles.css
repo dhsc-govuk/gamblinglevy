@@ -53,6 +53,17 @@
   overflow-wrap: normal !important;
 }
 
+/*
+ * Lifts the same 160px cap, but still wraps once the label is wider than its container, so a long label cannot push
+ * a narrow page into horizontal scrolling (WCAG 1.4.10, BLUM-9350) — a form designer category such as "Education,
+ * campaigns and outreach" did at 320px. Keep --nowrap where a table cell must size itself to the whole label
+ * (GovUKTaskList), or the column shrinks and the tag breaks onto two lines.
+ */
+.govuk-tag--uncapped {
+  display: inline-block !important;
+  max-width: 100% !important;
+}
+
 /* ── Colour variants — all values from the official GOV.UK Design System ── */
 
 .govuk-tag--grey {

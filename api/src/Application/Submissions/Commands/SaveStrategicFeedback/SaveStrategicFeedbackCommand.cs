@@ -1,5 +1,8 @@
+using System.Text.Json;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Submissions.Exceptions;
+using Domain.AuditLogs;
 using Domain.Submissions;
 using LanguageExt;
 using MediatR;
@@ -22,7 +25,10 @@ public record SaveStrategicFeedbackCommand : IRequest<Either<SubmissionException
 
 public class SaveStrategicFeedbackCommandHandler(
     StrategicFeedbackContextResolver resolver,
-    ISubmissionFeedbackAnswerRepository feedbackRepository)
+    ISubmissionFeedbackAnswerRepository feedbackRepository,
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<SaveStrategicFeedbackCommand, Either<SubmissionException, SubmissionSectionStatus>>
 {
     public async Task<Either<SubmissionException, SubmissionSectionStatus>> Handle(
@@ -40,7 +46,7 @@ public class SaveStrategicFeedbackCommandHandler(
         StrategicFeedbackContext context,
         CancellationToken cancellationToken)
     {
-        var questions = await resolver.GetQuestionsAsync(cancellationToken);
+        var questions = await resolver.GetQuestionsAsync(context.Collection, cancellationToken);
         var answersMap = BuildAnswersMap(request.Answers);
 
         var errors = StrategicFeedbackAnswerValidator.Validate(questions, answersMap, enforceRequired: !request.SaveAsDraft);
@@ -49,24 +55,51 @@ public class SaveStrategicFeedbackCommandHandler(
             return new StrategicFeedbackInvalidException(context.Submission.Id, errors);
         }
 
-        try
-        {
-            // Replace only the answers for the questions submitted on this page; other pages' answers are untouched,
-            // so saving one page never wipes another's (the pages save independently).
-            var submittedCodes = answersMap.Keys.ToList();
-            var answers = StrategicFeedbackAnswerValidator.CollectPersistable(questions, answersMap)
-                .Select(p => SubmissionFeedbackAnswer.Record(
-                    SubmissionFeedbackAnswerId.New(), context.Submission.Id, p.Question.Code, p.Value, context.ActorId))
-                .ToList();
+        // The write, the section status and the audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<SubmissionException, SubmissionSectionStatus>(
+            async token =>
+            {
+                try
+                {
+                    // Replace only the answers for the questions submitted on this page; other pages' answers are
+                    // untouched, so saving one page never wipes another's (the pages save independently).
+                    var submittedCodes = answersMap.Keys.ToList();
+                    var answers = StrategicFeedbackAnswerValidator.CollectPersistable(questions, answersMap)
+                        .Select(p => SubmissionFeedbackAnswer.Record(
+                            SubmissionFeedbackAnswerId.New(), context.Submission.Id, p.Question.Code, p.Value, context.ActorId, dateTimeProvider.GetUtcNow()))
+                        .ToList();
 
-            await feedbackRepository.ReplaceForQuestionsAsync(context.Submission.Id, submittedCodes, answers, cancellationToken);
+                    await feedbackRepository.ReplaceForQuestionsAsync(context.Submission.Id, submittedCodes, answers, token);
 
-            return await resolver.RecomputeDraftStatusAsync(context, cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            return new SubmissionUnknownException(context.Submission.Id, exception);
-        }
+                    var status = await resolver.RecomputeDraftStatusAsync(context, token);
+
+                    // Counts only — never the feedback text.
+                    var after = JsonSerializer.Serialize(new
+                    {
+                        module = SubmissionModules.StrategicFeedback,
+                        questionCount = submittedCodes.Count,
+                        answerCount = answers.Count,
+                        saveAsDraft = request.SaveAsDraft,
+                    });
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            context.ActorId,
+                            AuditTargetType.Submission,
+                            context.Submission.Id.Value,
+                            AuditAction.SubmissionStrategicFeedbackSaved,
+                            before: null,
+                            after,
+                            organisationId: context.OrganisationId),
+                        token);
+
+                    return status;
+                }
+                catch (Exception exception)
+                {
+                    return new SubmissionUnknownException(context.Submission.Id, exception);
+                }
+            },
+            cancellationToken);
     }
 
     // Last value wins for a repeated code; blank codes are ignored. Ordinal to match the stable question codes.

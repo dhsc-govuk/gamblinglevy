@@ -1,15 +1,8 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from 'react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useIsAuthenticated } from '@azure/msal-react';
-import {
-  getMfaStatus,
-  setupMfa,
-  verifyMfaSetup,
-  verifyMfa,
-  verifyMfaRecovery,
-  regenerateRecoveryCodes
-} from './queries';
-import { defaultStaleTime } from '../../helpers/queriesParams';
+import { getMfaStatus, setupMfa, verifyMfaSetup, verifyMfa, verifyMfaRecovery, regenerateRecoveryCodes } from './queries';
+import { defaultStaleTime, mfaStatusKey, profileDateCacheKey } from '../../helpers/queriesParams';
 import { MfaContextValue, MfaRecoveryCodesResponse, MfaSetupCompleteResponse, MfaSetupResponse, MfaVerifyResponse } from './types';
 
 const MfaContext = createContext<MfaContextValue | null>(null);
@@ -30,7 +23,7 @@ export const MfaProvider = ({ children }: MfaProviderProps): React.ReactElement 
     isLoading,
     refetch: refetchStatus,
   } = useQuery({
-    queryKey: 'mfa-status',
+    queryKey: mfaStatusKey,
     queryFn: getMfaStatus,
     staleTime: defaultStaleTime,
     retry: false,
@@ -40,47 +33,52 @@ export const MfaProvider = ({ children }: MfaProviderProps): React.ReactElement 
   const status = statusData?.data ?? null;
   const isEnabled = status?.isEnabled ?? false;
 
-  const setupMutation = useMutation(setupMfa, {
+  const setupMutation = useMutation({
+    mutationFn: setupMfa,
     onSuccess: (response) => {
       setSetupData(response.data);
     },
   });
 
-  const verifySetupMutation = useMutation(verifyMfaSetup, {
+  const verifySetupMutation = useMutation({
+    mutationFn: verifyMfaSetup,
     onSuccess: (response) => {
       sessionStorage.setItem('mfa_verified_at', Date.now().toString());
       setRecoveryCodes(response.data.recoveryCodes);
       setSetupData(null);
       // Invalidate to refetch profile data now that MFA session is set
-      queryClient.invalidateQueries('profile-data');
-      queryClient.invalidateQueries('mfa-status');
+      queryClient.invalidateQueries({ queryKey: profileDateCacheKey });
+      queryClient.invalidateQueries({ queryKey: mfaStatusKey });
     },
   });
 
-  const verifyMutation = useMutation(verifyMfa, {
+  const verifyMutation = useMutation({
+    mutationFn: verifyMfa,
     onSuccess: () => {
       sessionStorage.setItem('mfa_verified_at', Date.now().toString());
       setRequiresVerification(false);
       // Invalidate to refetch profile data now that MFA session is set
-      queryClient.invalidateQueries('profile-data');
-      queryClient.invalidateQueries('mfa-status');
+      queryClient.invalidateQueries({ queryKey: profileDateCacheKey });
+      queryClient.invalidateQueries({ queryKey: mfaStatusKey });
     },
   });
 
-  const verifyRecoveryMutation = useMutation(verifyMfaRecovery, {
+  const verifyRecoveryMutation = useMutation({
+    mutationFn: verifyMfaRecovery,
     onSuccess: () => {
       sessionStorage.setItem('mfa_verified_at', Date.now().toString());
       setRequiresVerification(false);
       // Invalidate to refetch profile data now that MFA session is set
-      queryClient.invalidateQueries('profile-data');
-      queryClient.invalidateQueries('mfa-status');
+      queryClient.invalidateQueries({ queryKey: profileDateCacheKey });
+      queryClient.invalidateQueries({ queryKey: mfaStatusKey });
     },
   });
 
-  const regenerateMutation = useMutation(regenerateRecoveryCodes, {
+  const regenerateMutation = useMutation({
+    mutationFn: regenerateRecoveryCodes,
     onSuccess: (response) => {
       setRecoveryCodes(response.data.codes);
-      queryClient.invalidateQueries('mfa-status');
+      queryClient.invalidateQueries({ queryKey: mfaStatusKey });
     },
   });
 
@@ -148,7 +146,7 @@ export const MfaProvider = ({ children }: MfaProviderProps): React.ReactElement 
   };
 
   return <MfaContext.Provider value={contextValue}>{children}</MfaContext.Provider>;
-}
+};
 
 export const useMfa = (): MfaContextValue => {
   const context = useContext(MfaContext);
@@ -156,6 +154,6 @@ export const useMfa = (): MfaContextValue => {
     throw new Error('useMfa must be used within a MfaProvider');
   }
   return context;
-}
+};
 
 export default MfaProvider;

@@ -1,0 +1,12 @@
+.govuk-inset-text.report-funding-page-header__details {
+  box-sizing: border-box;
+  width: 630px;
+  max-width: 100%;
+  /* Sits tight under the H1's own 30px margin. The gap *below* is the page's to set (the three
+     screens disagree), via its own `__header > .govuk-inset-text` rule. */
+  margin-top: 0;
+}
+
+.report-funding-page-header__details .govuk-summary-list {
+  margin-bottom: 0;
+}

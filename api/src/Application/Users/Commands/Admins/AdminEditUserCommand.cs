@@ -33,7 +33,10 @@ public class AdminEditUserCommandHandler(
     IUsersService usersService,
     IAuditLogRepository auditLogRepository,
     IUserClaimsCache userClaimsCache,
-    PermissionsService permissionsService)
+    PermissionsService permissionsService,
+    LastActiveAdminGuard lastActiveAdminGuard,
+    IDateTimeProvider dateTimeProvider,
+    ITransactionRunner transactionRunner)
     : IRequestHandler<AdminEditUserCommand, Either<UserException, User>>
 {
     public async Task<Either<UserException, User>> Handle(
@@ -64,7 +67,7 @@ public class AdminEditUserCommandHandler(
         User user,
         CancellationToken cancellationToken)
     {
-        var email = request.Email!.Trim();
+        var email = request.Email!.Trim().ToLowerInvariant();
         var duplicate = await repository.FindDuplicateAsync(email, user.Id, cancellationToken);
         if (duplicate.IsSome)
         {
@@ -100,53 +103,45 @@ public class AdminEditUserCommandHandler(
             newOrg = orgResult.ValueUnsafe();
         }
 
-        var lastAdminViolation = await FindLastActiveOrgAdminViolation(user, newRole, newOrg, cancellationToken);
+        var lastAdminViolation = await RefuseLastActiveAdminRemoval(user, newRole, newOrg, cancellationToken);
         if (lastAdminViolation is not null)
         {
             return lastAdminViolation;
         }
 
-        return await ApplyUpdate(request, actorId, user, newRole, newOrg, cancellationToken);
+        return await ApplyUpdate(request, actorId, user, newRole, newOrg, email, cancellationToken);
     }
 
-    // Mirrors the guard in UpdateOrganisationUserCommand.UpdateUserDetails, but must also cover a vector the
-    // org-scoped command cannot express: a DHSC admin can *move* a user to another organisation. Any edit
-    // that stops the target being their current organisation's active org admin — demotion (incl. promotion
-    // to DHSC Admin, which strips membership) or a move to a different org — is blocked when they are that
-    // organisation's last one, so an LA can never be left with zero users on Role.UserManagers (BLUM-7038).
-    private async Task<UserException?> FindLastActiveOrgAdminViolation(
+    // Any edit that stops the target being what they are now is a removal for LastActiveAdminGuard: a DHSC admin
+    // losing the Admin role, or an LA Admin being demoted (incl. promoted to DHSC Admin, which strips membership)
+    // or moved to another organisation — the vector only this command has, because only DHSC can move a user.
+    // So neither DHSC nor an LA is ever left with nobody on Role.UserManagers (BLUM-7038, BLUM-8751).
+    private async Task<UserException?> RefuseLastActiveAdminRemoval(
         User user,
         UserRole newRole,
         Organisation? newOrg,
         CancellationToken cancellationToken)
     {
-        if (!user.Role.Equals(UserRole.OrganisationAdmin) || !user.Status.Equals(UserStatus.Active))
+        if (user.Role.Equals(UserRole.Admin))
+        {
+            return newRole.Equals(UserRole.Admin)
+                ? null
+                : await lastActiveAdminGuard.RefuseRemovalAsync(user, organisationId: null, cancellationToken);
+        }
+
+        if (!user.Role.Equals(UserRole.OrganisationAdmin))
         {
             return null;
         }
 
-        var membership = await organisationUserRepository.FindByUserIdAsync(user.Id, cancellationToken);
-        if (membership.IsNone)
-        {
-            return null;
-        }
-
-        var currentOrgId = membership.ValueUnsafe().OrganisationId;
+        var membership = await organisationUserRepository.FindOrganisationIdForUser(user.Id, cancellationToken);
+        var currentOrgId = membership.IsSome ? membership.ValueUnsafe() : null;
 
         // Nothing is stranded only if the target stays an org admin of the very same organisation.
         var staysSameOrgAdmin = newRole.Equals(UserRole.OrganisationAdmin) && newOrg is not null && newOrg.Id == currentOrgId;
-        if (staysSameOrgAdmin)
-        {
-            return null;
-        }
-
-        var activeAdmins = await organisationUserRepository.GetActiveOrgAdminsAsync(currentOrgId, cancellationToken);
-        if (activeAdmins.Count <= 1 && activeAdmins.Any(a => a.Id == user.Id))
-        {
-            return new CannotDeactivateOnlyOrgAdminException(user.Id, currentOrgId);
-        }
-
-        return null;
+        return staysSameOrgAdmin
+            ? null
+            : await lastActiveAdminGuard.RefuseRemovalAsync(user, currentOrgId, cancellationToken);
     }
 
     private async Task<Either<UserException, User>> ApplyUpdate(
@@ -155,16 +150,18 @@ public class AdminEditUserCommandHandler(
         User user,
         UserRole newRole,
         Organisation? newOrg,
+        string email,
         CancellationToken cancellationToken)
     {
         var before = UserSnapshot.Serialize(user);
         var name = new Name(request.FirstName!, request.LastName!);
-        user.UpdateDetails(name, request.Email!.Trim(), newRole);
+        user.UpdateDetails(name, email, dateTimeProvider.GetUtcNow(), newRole);
 
         var graphResult = await usersService.Update(
             user.SubId.Value.ToString(),
             user.Name,
             user.Email,
+            user.PasswordLoginEnabled,
             cancellationToken);
 
         return await graphResult.MatchAsync<Either<UserException, User>>(
@@ -179,24 +176,32 @@ public class AdminEditUserCommandHandler(
         string before,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var saved = await repository.UpdateAsync(user, cancellationToken);
+        // The user, their membership and the audit row commit together (BLUM-8748); the claims cache is dropped
+        // once they have.
+        var result = await transactionRunner.RunAsync<UserException, User>(
+            async token =>
+            {
+                try
+                {
+                    var saved = await repository.UpdateAsync(user, token);
 
-            await ManageOrganisationMembership(saved, newOrg, cancellationToken);
+                    await ManageOrganisationMembership(saved, newOrg, token);
 
-            userClaimsCache.Invalidate(saved.SubId);
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(actorId, AuditTargetType.User, saved.Id.Value, AuditAction.UserUpdated, before, UserSnapshot.Serialize(saved)),
+                        token);
 
-            await auditLogRepository.AppendAsync(
-                AuditLog.Create(actorId, AuditTargetType.User, saved.Id.Value, AuditAction.UserUpdated, before, UserSnapshot.Serialize(saved)),
-                cancellationToken);
+                    return saved;
+                }
+                catch (Exception exception)
+                {
+                    return new UserUnknownException(user.Id, exception);
+                }
+            },
+            cancellationToken);
 
-            return saved;
-        }
-        catch (Exception exception)
-        {
-            return new UserUnknownException(user.Id, exception);
-        }
+        result.IfRight(saved => userClaimsCache.Invalidate(saved.SubId));
+        return result;
     }
 
     private async Task ManageOrganisationMembership(User user, Organisation? newOrg, CancellationToken cancellationToken)

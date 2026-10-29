@@ -1,3 +1,4 @@
+using Application.Common.Validation;
 using Domain.Forms;
 
 namespace Application.Forms.Answers;
@@ -9,38 +10,40 @@ public record AnswerValidationError(string QuestionCode, string Message);
 // rules mirror the frontend GovUKDynamicQuestionRenderer so the two never disagree.
 public static class ActivityAnswerValidator
 {
-    private const int MaxTextLength = 10000;
+    private const int MaxTextLength = FieldLimits.AnswerText;
 
-    // A question is visible unless it has a conditional rule whose parent answer does not match. Matches the
-    // renderer: ConditionalValue is a comma-separated allow-list; a checkbox parent may hold several values.
-    public static bool IsVisible(FormQuestion question, IReadOnlyDictionary<string, string?> answers)
-    {
-        if (string.IsNullOrWhiteSpace(question.ConditionalQuestionCode) || string.IsNullOrWhiteSpace(question.ConditionalValue))
-        {
-            return true;
-        }
-
-        var parentAnswer = answers.TryGetValue(question.ConditionalQuestionCode, out var value) ? value : null;
-        if (string.IsNullOrWhiteSpace(parentAnswer))
-        {
-            return false;
-        }
-
-        var allowed = Split(question.ConditionalValue);
-        var parentValues = Split(parentAnswer);
-        return parentValues.Any(allowed.Contains);
-    }
+    // Which of these questions are visible, judged among themselves (AnswerVisibility). transitive is BLUM_9087: on, a
+    // question whose parent is hidden is hidden too.
+    public static AnswerVisibility Visibility(
+        IEnumerable<FormQuestion> questions,
+        IReadOnlyDictionary<string, string?> answers,
+        bool transitive) =>
+        AnswerVisibility.Of(
+            questions.Select(question => VisibilityNode.For(question.Code, question.ConditionalQuestionCode, question.ConditionalValue)),
+            answers,
+            transitive);
 
     public static IReadOnlyList<AnswerValidationError> Validate(
         IReadOnlyList<FormQuestion> questions,
         IReadOnlyDictionary<string, string?> answers,
-        bool enforceRequired)
+        bool enforceRequired,
+        bool transitive) =>
+        Validate(questions, answers, enforceRequired, Visibility(questions, answers, transitive));
+
+    // For a caller that validates part of a schema but judges visibility over all of it (the activity commands split
+    // the schema by activity type, and a rule may point across that split). The visibility must have been built from the
+    // same answers.
+    internal static IReadOnlyList<AnswerValidationError> Validate(
+        IReadOnlyList<FormQuestion> questions,
+        IReadOnlyDictionary<string, string?> answers,
+        bool enforceRequired,
+        AnswerVisibility visibility)
     {
         var errors = new List<AnswerValidationError>();
 
         foreach (var question in questions)
         {
-            if (!IsVisible(question, answers))
+            if (!visibility.IsVisible(question.Code))
             {
                 continue;
             }
@@ -52,19 +55,42 @@ public static class ActivityAnswerValidator
             {
                 if (enforceRequired && question.IsRequired)
                 {
-                    errors.Add(new AnswerValidationError(question.Code, $"Enter an answer for “{question.Label}”."));
+                    errors.Add(new AnswerValidationError(question.Code, question.ErrorMessage ?? $"Enter an answer for “{question.Label}”."));
                 }
 
                 continue;
             }
 
             var trimmed = value!.Trim();
+
+            // The protocol's own character limit, checked ahead of the type rules so an over-long answer is
+            // reported as such whatever the field type. MaxTextLength below stays as the backstop for questions
+            // the protocol gives no limit.
+            if (question.MaxLength is { } maxLength && trimmed.Length > maxLength)
+            {
+                errors.Add(new AnswerValidationError(
+                    question.Code,
+                    question.MaxLengthErrorMessage ?? $"“{question.Label}” must be {maxLength} characters or less"));
+                continue;
+            }
+
             switch (question.QuestionType.ToString())
             {
                 case QuestionTypes.Number:
                     if (!decimal.TryParse(trimmed, out _))
                     {
                         errors.Add(new AnswerValidationError(question.Code, $"“{question.Label}” must be a number."));
+                    }
+
+                    break;
+
+                case QuestionTypes.Currency:
+                    var quoted = MoneySubject.Quoting(question.Label);
+                    var subject = new MoneySubject(question.ErrorSubject ?? quoted.Sentence, question.ErrorSubjectInline ?? quoted.Inline);
+                    var currencyError = MoneyAnswer.Validate(trimmed, subject, question.MinValue);
+                    if (currencyError is not null)
+                    {
+                        errors.Add(new AnswerValidationError(question.Code, currencyError));
                     }
 
                     break;
@@ -79,7 +105,7 @@ public static class ActivityAnswerValidator
                     break;
 
                 case QuestionTypes.Checkbox:
-                    var selected = Split(trimmed);
+                    var selected = AnswerVisibility.Split(trimmed);
                     if (selected.Any(s => question.Options.All(o => o.Value != s)))
                     {
                         errors.Add(new AnswerValidationError(question.Code, $"Select valid options for “{question.Label}”."));
@@ -103,13 +129,20 @@ public static class ActivityAnswerValidator
     // The answers that should actually be persisted: visible questions that have a non-empty value.
     public static IReadOnlyList<(FormQuestion Question, string Value)> CollectPersistable(
         IReadOnlyList<FormQuestion> questions,
-        IReadOnlyDictionary<string, string?> answers)
+        IReadOnlyDictionary<string, string?> answers,
+        bool transitive) =>
+        CollectPersistable(questions, answers, Visibility(questions, answers, transitive));
+
+    internal static IReadOnlyList<(FormQuestion Question, string Value)> CollectPersistable(
+        IReadOnlyList<FormQuestion> questions,
+        IReadOnlyDictionary<string, string?> answers,
+        AnswerVisibility visibility)
     {
         var result = new List<(FormQuestion Question, string Value)>();
 
         foreach (var question in questions)
         {
-            if (!IsVisible(question, answers))
+            if (!visibility.IsVisible(question.Code))
             {
                 continue;
             }
@@ -124,7 +157,4 @@ public static class ActivityAnswerValidator
 
         return result;
     }
-
-    private static string[] Split(string value) =>
-        value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }

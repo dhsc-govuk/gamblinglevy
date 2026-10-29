@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ErrorSummary, GovUKFieldset, GovUKButton } from '../../../GovUKComponents';
 import type { FormModuleDto } from '../../../../views/Admin/Forms';
 import type { CreateFormModuleInput } from '../../../../views/Admin/Forms';
+import { govukColors } from '../../../../styles/govuk-global';
 
 // Inline add / edit form for a data-collection form module. The code is the module's immutable
 // identifier (locked on edit). Mirrors the activity Form Designer's inline forms — local state,
@@ -47,7 +48,7 @@ const ModuleForm = ({ module, onSubmit, onCancel, isSubmitting = false }: Props)
   const errorList = Object.entries(errors).map(([targetName, text]) => ({ targetName, text }));
 
   return (
-    <div className="govuk-!-margin-bottom-6 govuk-!-padding-4" style={{ border: '1px solid #b1b4b6' }} data-testid="admin-forms-module-form">
+    <div className="govuk-!-margin-bottom-6 govuk-!-padding-4" style={{ border: `1px solid ${govukColors.grey2}` }} data-testid="admin-forms-module-form">
       <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
       <GovUKFieldset.Input
@@ -89,12 +90,7 @@ const ModuleForm = ({ module, onSubmit, onCancel, isSubmitting = false }: Props)
         <GovUKButton onClick={handleSubmit} disabled={isSubmitting} data-testid="admin-forms-module-form-submit">
           {isEdit ? 'Save changes' : 'Create form'}
         </GovUKButton>
-        <button
-          type="button"
-          className="govuk-link"
-          style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
-          onClick={onCancel}
-          data-testid="admin-forms-module-form-cancel">
+        <button type="button" className="govuk-link" onClick={onCancel} data-testid="admin-forms-module-form-cancel">
           Cancel
         </button>
       </div>

@@ -24,6 +24,8 @@ public class DcFormQuestionConfiguration : IEntityTypeConfiguration<DcFormQuesti
         builder.Property(x => x.IsRequired).IsRequired();
         builder.Property(x => x.Hint).HasColumnType("text");
         builder.Property(x => x.HelpText).HasColumnType("text");
+        builder.Property(x => x.ErrorMessage).HasColumnType("text");
+        builder.Property(x => x.MaxLengthErrorMessage).HasColumnType("text");
         builder.Property(x => x.IsActive).IsRequired();
 
         builder.HasIndex(x => new { x.FormModuleId, x.SectionId });

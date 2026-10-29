@@ -1,7 +1,11 @@
+using Application.Common.Features;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
+using Application.Submissions.Audit;
 using Application.Submissions.Exceptions;
+using Domain.AuditLogs;
 using Domain.Collections;
 using Domain.DataCollectionForms;
 using Domain.Submissions;
@@ -22,9 +26,14 @@ public class CreateSubmissionCommandHandler(
     ISubmissionRepository submissionRepository,
     ISubmissionQueries submissionQueries,
     ICollectionQueries collectionQueries,
+    ICollectionRepository collectionRepository,
     IOrganisationQueries organisationQueries,
     IFormModuleQueries formModuleQueries,
-    PermissionsService permissionsService)
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner,
+    PermissionsService permissionsService,
+    IFeatureFlags featureFlags,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<CreateSubmissionCommand, Either<SubmissionException, Submission>>
 {
     public async Task<Either<SubmissionException, Submission>> Handle(
@@ -41,6 +50,8 @@ public class CreateSubmissionCommandHandler(
         Permission permission,
         CancellationToken cancellationToken)
     {
+        var utcNow = dateTimeProvider.GetUtcNow();
+
         if (permission.OrganisationId.IsNone || permission.UserId.IsNone)
         {
             return new SubmissionForbiddenException(SubmissionId.Empty(), "You are not associated with an organisation.");
@@ -50,12 +61,6 @@ public class CreateSubmissionCommandHandler(
         var actorId = permission.UserId.ValueUnsafe();
         var collectionId = new CollectionId(request.CollectionId);
 
-        var collectionLookup = await collectionQueries.GetByIdAsync(collectionId, cancellationToken: cancellationToken);
-        if (collectionLookup.IsNone)
-        {
-            return new SubmissionCollectionNotEligibleException(collectionId);
-        }
-
         var organisationLookup = await organisationQueries.GetOrganisationById(organisationId, cancellationToken);
         if (organisationLookup.IsNone)
         {
@@ -63,34 +68,76 @@ public class CreateSubmissionCommandHandler(
         }
 
         var organisation = organisationLookup.ValueUnsafe();
-        var collection = collectionLookup.ValueUnsafe();
-        if (!SubmissionEligibility.IsQuarterly(collection) || !SubmissionEligibility.IsAssignedTo(collection, organisation))
-        {
-            return new SubmissionCollectionNotEligibleException(collectionId);
-        }
 
-        if (!SubmissionEligibility.IsOpen(collection))
-        {
-            return new SubmissionCollectionNotOpenException(collectionId, collection.GetStatus());
-        }
+        // The submission and its audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<SubmissionException, Submission>(
+            async token =>
+            {
+                // With versioning on, the collection is read under its row lock (BLUM-9084). A change to its forms or
+                // recorded versions takes the same lock to check that no report has started, so a change already under
+                // way commits before this reads the forms, and one that comes later sees this report.
+                if (featureFlags.IsEnabled(Feature.BLUM_9087))
+                {
+                    await collectionRepository.LockForReportStartAsync(collectionId, token);
+                }
 
-        var existing = await submissionQueries.GetByCollectionAndOrgAsync(collectionId, organisationId, cancellationToken);
-        if (existing.IsSome)
-        {
-            return new SubmissionAlreadyExistsException(existing.ValueUnsafe().Id);
-        }
+                var collectionLookup = await collectionQueries.GetByIdAsync(collectionId, cancellationToken: token);
+                if (collectionLookup.IsNone)
+                {
+                    return new SubmissionCollectionNotEligibleException(collectionId);
+                }
 
-        try
-        {
-            var modules = await ResolveAssignedModulesAsync(collection, cancellationToken);
-            var submission = Submission.Start(SubmissionId.New(), collectionId, organisationId, modules, actorId);
-            var saved = await submissionRepository.AddAsync(submission, cancellationToken);
-            return saved;
-        }
-        catch (Exception exception)
-        {
-            return new SubmissionUnknownException(SubmissionId.Empty(), exception);
-        }
+                var collection = collectionLookup.ValueUnsafe();
+                if (!SubmissionEligibility.IsQuarterly(collection) || !SubmissionEligibility.IsAssignedTo(collection, organisation))
+                {
+                    return new SubmissionCollectionNotEligibleException(collectionId);
+                }
+
+                if (!SubmissionEligibility.IsOpen(collection, utcNow))
+                {
+                    return new SubmissionCollectionNotOpenException(collectionId, collection.GetStatus(utcNow));
+                }
+
+                var existing = await submissionQueries.GetByCollectionAndOrgAsync(collectionId, organisationId, token);
+                if (existing.IsSome)
+                {
+                    return new SubmissionAlreadyExistsException(existing.ValueUnsafe().Id);
+                }
+
+                IReadOnlyList<(FormModuleId ModuleId, string ModuleCode)> modules;
+                try
+                {
+                    modules = await ResolveAssignedModulesAsync(collection, token);
+                }
+                catch (Exception exception)
+                {
+                    return new SubmissionUnknownException(SubmissionId.Empty(), exception);
+                }
+
+                try
+                {
+                    var submission = Submission.Start(SubmissionId.New(), collectionId, organisationId, modules, actorId, utcNow);
+                    var saved = await submissionRepository.AddAsync(submission, token);
+
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            actorId,
+                            AuditTargetType.Submission,
+                            saved.Id.Value,
+                            AuditAction.SubmissionCreated,
+                            before: null,
+                            after: SubmissionSnapshot.Serialize(saved),
+                            organisationId: organisationId),
+                        token);
+
+                    return saved;
+                }
+                catch (Exception exception)
+                {
+                    return new SubmissionUnknownException(SubmissionId.Empty(), exception);
+                }
+            },
+            cancellationToken);
     }
 
     private async Task<IReadOnlyList<(FormModuleId ModuleId, string ModuleCode)>> ResolveAssignedModulesAsync(

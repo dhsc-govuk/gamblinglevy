@@ -1,6 +1,8 @@
+using Api.Common;
 using Api.Dtos;
 using Api.Modules.Errors;
 using Api.Services.Abstract;
+using Application.Common.Features;
 using Application.Common.Interfaces.Queries;
 using Application.Forms.Commands;
 using Application.Forms.Commands.CreateQuestion;
@@ -19,10 +21,11 @@ using Microsoft.AspNetCore.Mvc;
 namespace Api.Controllers;
 
 // DHSC/Departmental admin authoring surface for the activity-record form (BLUM-6444). The LA-facing read of
-// the active schema lives on ActivitiesController (GET activities/form-schema).
+// the active schema lives on ActivitiesController (GET activities/form-schema). Behind BLUM_9395, with its pages.
 [Route("admin/activity-form")]
 [ApiController]
 [Authorize(Roles = Role.Admin)]
+[RequiresFeature(Feature.BLUM_9395)]
 public class FormDesignerController(
     ISender sender,
     IFormDesignerControllerService controllerService,

@@ -47,8 +47,18 @@ export const NO_FALLBACK_PREFIXES = ['/assets/', '/fonts/', '/images/'];
  * `nginx.conf` passes the literal `API_ORIGIN`, which `docker-entrypoint.sh` substitutes.
  */
 export const buildCsp = ({ connectSrcExtra = [], frameSrcExtra = [] } = {}) => {
-  const connectSrc = ["'self'", ...connectSrcExtra, ...MICROSOFT_IDENTITY_HOSTS, ...TELEMETRY_HOSTS];
-  const frameSrc = [...MICROSOFT_IDENTITY_HOSTS, ...frameSrcExtra];
+  // wss: permits outbound WebSocket connections alongside the plain https: origins above.
+  const connectSrc = ["'self'", ...connectSrcExtra, ...MICROSOFT_IDENTITY_HOSTS, ...TELEMETRY_HOSTS, 'wss:'];
+  // 'self' alongside the identity hosts: CIAM answers the hidden renewal frame with a redirect
+  // back to our own redirect URI, and frame-src is re-checked on that hop. Without it the frame
+  // is blocked at the last step, acquireTokenSilent times out, and every token renewal turns
+  // into an interactive sign-in. Same frame the frame-ancestors note below is about.
+  //
+  // The app does not open that frame at present: since the move to MSAL v5 (BLUM-8757) silent
+  // renewal stops at the refresh token, because v5's frame needs a redirect bridge page this
+  // app does not serve. Both allowances are kept so adding the bridge is not also a header
+  // change. Tightening them instead is its own decision, and has to land in nginx.conf too.
+  const frameSrc = ["'self'", ...MICROSOFT_IDENTITY_HOSTS, ...frameSrcExtra];
 
   return [
     // Deny by default, then name every fetch type this app actually uses.
@@ -56,9 +66,12 @@ export const buildCsp = ({ connectSrcExtra = [], frameSrcExtra = [] } = {}) => {
     "manifest-src 'self'",
     // No inline script survives in index.html (BLUM-7237), so this needs no nonce or hash.
     "script-src 'self'",
-    // MUI, emotion and styled-components inject <style> elements at runtime. A hash or nonce
-    // here would make browsers ignore 'unsafe-inline' entirely and every styled component
-    // would lose its styling, so this stays until the styling stack changes.
+    // Three things need 'unsafe-inline' here: styled-components (inside govuk-react) injects
+    // <style> elements at runtime, index.html carries an inline <style> block for the fonts,
+    // and React `style` attributes fall under style-src too (there is no style-src-attr). A
+    // hash or nonce would make browsers ignore 'unsafe-inline' entirely and every styled
+    // component would lose its styling, so this stays until all three are gone. MUI and
+    // emotion, the other two injectors, were removed in BLUM-8758.
     "style-src 'self' 'unsafe-inline'",
     // blob: covers the object-URL anchors used for CSV/report downloads and recovery codes.
     "img-src 'self' data: blob:",

@@ -120,6 +120,54 @@ public class LocalAuthorityUpdateTests(IntegrationTestWebFactory factory)
         saved.OnsCode.Should().Be(_target.OnsCode);
     }
 
+    // BLUM-7663 AC1/AC2: mirrors CreateLocalAuthorityCommandValidator so an organisation cannot be edited
+    // into a code shape the create path would have rejected. ConfirmOnsCodeChange is true so the rejection
+    // asserted here is the format rule, not the confirm-not-confirmed gate above.
+    [Theory]
+    [InlineData("E1000001")] // too few digits
+    [InlineData("06000001")] // no letter prefix
+    [InlineData("X06000001")] // disallowed leading letter
+    public async Task ShouldRejectAMalformedOnsCode(string onsCode)
+    {
+        var request = new UpdateLocalAuthorityRequestDto(
+            Name: _target.Name,
+            OnsCode: onsCode,
+            Region: _target.Region.ToString(),
+            Type: _target.Type.ToString(),
+            ECode: "E1000001",
+            OnboardingStatus: null,
+            ConfirmOnsCodeChange: true);
+
+        var response = await Client.PutAsJsonAsync($"organisations/local-authorities/{_target.Id.Value}", request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("ONS code is not recognised. Enter it in the format E06000001 (a letter followed by 8 numbers).");
+
+        var saved = await Context.Organisations.AsNoTracking().FirstAsync(x => x.Id == _target.Id);
+        saved.OnsCode.Should().Be(_target.OnsCode);
+    }
+
+    // BLUM-7663 AC3: a correctly-shaped code still saves with no errors.
+    [Fact]
+    public async Task ShouldUpdateOnsCode_WhenCorrectlyShapedAndConfirmed()
+    {
+        var request = new UpdateLocalAuthorityRequestDto(
+            Name: _target.Name,
+            OnsCode: "E06000202",
+            Region: _target.Region.ToString(),
+            Type: _target.Type.ToString(),
+            ECode: "E1000001",
+            OnboardingStatus: null,
+            ConfirmOnsCodeChange: true);
+
+        var response = await Client.PutAsJsonAsync($"organisations/local-authorities/{_target.Id.Value}", request);
+
+        response.IsSuccessStatusCode.Should().BeTrue();
+        var saved = await Context.Organisations.AsNoTracking().FirstAsync(x => x.Id == _target.Id);
+        saved.OnsCode.Should().Be("E06000202");
+    }
+
     // BLUM-7050: the E-code is mandatory on edit as well as create, so an organisation cannot be edited into
     // a state the create path would have rejected. Organisations that predate the rule hold no E-code, so
     // their first edit has to supply one.
@@ -160,7 +208,8 @@ public class LocalAuthorityUpdateTests(IntegrationTestWebFactory factory)
             Region.London,
             OrgType.LocalAuthority,
             "TBC",
-            OnboardingStatus.Active);
+            OnboardingStatus.Active,
+            DateTime.UtcNow);
         await Context.Organisations.AddAsync(legacy);
         await SaveChangesAsync();
 

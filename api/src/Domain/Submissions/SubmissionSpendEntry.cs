@@ -48,7 +48,8 @@ public class SubmissionSpendEntry : IEntity<SubmissionSpendEntryId>
         SubmissionId submissionId,
         ActivityId? activityId,
         decimal amount,
-        UserId createdBy)
+        UserId createdBy,
+        DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(submissionId, nameof(submissionId));
@@ -56,7 +57,7 @@ public class SubmissionSpendEntry : IEntity<SubmissionSpendEntryId>
         Guard.GreaterThanOrEqual(amount, 0m, nameof(amount));
 
         return new SubmissionSpendEntry(
-            id, submissionId, activityId, SpendEntryKind.Actual, null, amount, createdBy, DateTime.UtcNow);
+            id, submissionId, activityId, SpendEntryKind.Actual, null, amount, createdBy, utcNow);
     }
 
     // Expected spend for a given future quarter for an activity (or, with a null activityId, "Other planned spend").
@@ -66,7 +67,8 @@ public class SubmissionSpendEntry : IEntity<SubmissionSpendEntryId>
         ActivityId? activityId,
         int quarter,
         decimal amount,
-        UserId createdBy)
+        UserId createdBy,
+        DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(submissionId, nameof(submissionId));
@@ -79,6 +81,6 @@ public class SubmissionSpendEntry : IEntity<SubmissionSpendEntryId>
         }
 
         return new SubmissionSpendEntry(
-            id, submissionId, activityId, SpendEntryKind.Forecast, quarter, amount, createdBy, DateTime.UtcNow);
+            id, submissionId, activityId, SpendEntryKind.Forecast, quarter, amount, createdBy, utcNow);
     }
 }

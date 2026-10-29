@@ -25,7 +25,7 @@ public class ApplicationUserClaimsTransformation(
         var cacheKey = $"user::{subId.Value}";
         var cachedUser = cache.GetItem<UserProfile>(cacheKey);
 
-        cachedUser.IfSome(u => SetUserClaims(principal, u));
+        cachedUser.IfSome(u => ApplyClaims(principal, u));
         if (cachedUser.IsSome)
         {
             return principal;
@@ -39,20 +39,69 @@ public class ApplicationUserClaimsTransformation(
 
     private ClaimsPrincipal UpdateCache(UserProfile profile, string cacheKey, ClaimsPrincipal principal)
     {
-        // Deactivated users get no claims — [Authorize] then rejects, giving us the immediate sign-in
-        // block required by BLUM-6014. The cache entry still exists (so the next request short-circuits
-        // here), but no claims means no access. Reactivation calls IUserClaimsCache.Invalidate, which
-        // forces a re-read on the next request.
-        if (profile.Status is not null && profile.Status.Equals(UserStatus.Deactivated))
-        {
-            cache.PutItem(cacheKey, profile, TimeSpan.FromMinutes(5));
-            return principal;
-        }
-
         cache.PutItem(cacheKey, profile, TimeSpan.FromMinutes(5));
-        SetUserClaims(principal, profile);
+        ApplyClaims(principal, profile);
 
         return principal;
+    }
+
+    /// <summary>
+    /// The single place claims are decided, so the cache-hit and cache-miss paths cannot disagree about a
+    /// deactivated user. They used to: the miss path withheld claims but still cached the profile, and the
+    /// hit path then handed that same profile to <see cref="SetUserClaims"/> unconditionally — so the first
+    /// request after deactivation was blocked and every request for the next five minutes carried full
+    /// role / userId / organisationId claims, repeating on each TTL (BLUM-6386).
+    ///
+    /// A deactivated user gets exactly two claims: status, and userId. Withholding the *role* claim is what
+    /// keeps the original fail-closed property from BLUM-6014 — every [Authorize(Roles = ...)] rejects them
+    /// even if UserDeactivatedMiddleware were removed — while the status claim is what lets that middleware
+    /// answer with an explicit USER_DEACTIVATED envelope instead of a bodiless 403.
+    ///
+    /// userId is emitted for the sake of the one endpoint they are still allowed to reach. /mfa/logout is
+    /// exempt from the middleware so the deactivated page's Sign out button works, but MfaController.Logout
+    /// resolves the caller through PermissionsService.GetUserId() → the userId claim, so withholding it made
+    /// the exemption pointless: the endpoint answered 401 "User id is missing", the mfa_sessions row was
+    /// never destroyed and every sign-out reported an exception to Sentry. It grants nothing on its own —
+    /// the middleware refuses every non-exempt path before authorization ever runs.
+    /// </summary>
+    private static void ApplyClaims(ClaimsPrincipal principal, UserProfile profile)
+    {
+        if (profile.Status is not null && profile.Status.Equals(UserStatus.Deactivated))
+        {
+            SetDeactivatedClaims(principal, profile);
+            return;
+        }
+
+        SetUserClaims(principal, profile);
+    }
+
+    private static void SetDeactivatedClaims(ClaimsPrincipal principal, UserProfile profile)
+    {
+        ClaimsIdentity claimsIdentity = new();
+
+        if (!principal.HasClaim(claim => claim.Type == "status") && profile.Status is not null)
+        {
+            claimsIdentity.AddClaim(new Claim("status", profile.Status.ToString()));
+        }
+
+        if (!principal.HasClaim(claim => claim.Type == "userId") && profile.Id is not null)
+        {
+            claimsIdentity.AddClaim(new Claim("userId", profile.Id.ToString()!));
+        }
+
+        AddIfAnyClaims(principal, claimsIdentity);
+    }
+
+    // Both claim branches are written to be idempotent — every claim is guarded on not already being there —
+    // so a second pass over the same principal must be a no-op. Without this it appends an empty identity
+    // instead, which is how the deactivated principal's "exactly two claims and nothing else" shape ends up
+    // depending on the transformation running exactly once per request rather than on the guards.
+    private static void AddIfAnyClaims(ClaimsPrincipal principal, ClaimsIdentity claimsIdentity)
+    {
+        if (claimsIdentity.Claims.Any())
+        {
+            principal.AddIdentity(claimsIdentity);
+        }
     }
 
     public Task<ClaimsPrincipal> TransformAsync(ClaimsPrincipal principal)
@@ -71,7 +120,7 @@ public class ApplicationUserClaimsTransformation(
             : new SubId(new Guid(subId));
     }
 
-    private void SetUserClaims(ClaimsPrincipal principal, UserProfile profile)
+    private static void SetUserClaims(ClaimsPrincipal principal, UserProfile profile)
     {
         ClaimsIdentity claimsIdentity = new();
         if (!principal.HasClaim(claim => claim.Type == ClaimConstants.Role))
@@ -120,7 +169,7 @@ public class ApplicationUserClaimsTransformation(
             claimsIdentity.AddClaim(new Claim(ClaimTypes.Email, profile.Email));
         }
 
-        principal.AddIdentity(claimsIdentity);
+        AddIfAnyClaims(principal, claimsIdentity);
     }
 }
 
@@ -230,8 +279,14 @@ internal static class SetupModule
             services.AddScoped<IOrganisationUsersControllerService, OrganisationUsersControllerService>();
             services.AddScoped<IProfileControllerService, ProfileControllerService>();
             services.AddScoped<IQuarterlyReportControllerService, QuarterlyReportControllerService>();
+            services.AddScoped<IQuarterlyReportOfflineControllerService, QuarterlyReportOfflineControllerService>();
             services.AddScoped<IReportSnapshotService, ReportSnapshotService>();
             services.AddScoped<IQuarterlyReportExportService, QuarterlyReportExportService>();
+            services.AddScoped<IReportExportSizeService, ReportExportSizeService>();
+            services.AddScoped<IActivityRecordExportService, ActivityRecordExportService>();
+            services.AddScoped<IMaturityAssessmentControllerService, MaturityAssessmentControllerService>();
+            services.AddScoped<IMaturityAssessmentSnapshotService, MaturityAssessmentSnapshotService>();
+            services.AddScoped<IMaturityAssessmentExportService, MaturityAssessmentExportService>();
         }
     }
 }

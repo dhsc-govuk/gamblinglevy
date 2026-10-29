@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { useQueries, useQuery } from 'react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import { composeTestId } from '../../../../helpers/testIds';
 import { ManagementLayout } from '../../../../layouts';
 import { GovUKInsetText, GovUKTable, NameLink, H1, PageLoading, type Column, type FilterOption } from '../../../../components/GovUKComponents';
 import { homeLinkForRole, EnumUserRole, HISTORICAL_ROLE_LABELS } from '../../../../components/AuthProvider';
@@ -8,6 +9,7 @@ import usePageTitle from '../../../../hooks/usePageTitle';
 import { getAuditLog, getAuditLogs, AuditLogListItem } from '../../../Admin/AuditLog/queries';
 import { defaultStaleTime, deletedUsersListKey, deletedUserDetailKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
+import { accessLevelFilterOptions } from '../accessLevels';
 import './styles.css';
 
 const sortOptions: FilterOption[] = [
@@ -16,8 +18,12 @@ const sortOptions: FilterOption[] = [
   { value: 'name-desc', label: 'Name Z–A' },
 ];
 
+// The name field must be called `name`: GovUKTable's Name A–Z / Z–A sort reads `name` (or firstName + lastName),
+// so under `displayName` every row compared equal and the sort silently did nothing (BLUM-9004).
 interface DeletedUserRow extends AuditLogListItem {
-  displayName: string;
+  name: string;
+  // The raw snapshot role ('' when the snapshot has none), which the access-level filter matches exactly.
+  role: string;
   accessLevel: string;
 }
 
@@ -38,10 +44,13 @@ const parseSnapshot = (before: string | null | undefined): UserSnapshot => {
 
 const columns: Column<DeletedUserRow>[] = [
   {
+    // Not renamed with the field: the key only names the cell testid (…-cell-displayName), which QA automation keys on.
     key: 'displayName',
     header: 'Name',
     className: 'admin-deleted-users-list__column',
-    render: (entry) => <NameLink name={entry.displayName} href={ROUTES.admin.users.deletedDetail(entry.targetId)} />,
+    render: (entry) => (
+      <NameLink name={entry.name} href={ROUTES.admin.users.deletedDetail(entry.targetId)} testId={composeTestId('admin-deleted-users-table', 'row', entry.id, 'name-link')} />
+    ),
   },
   {
     key: 'organisationName',
@@ -59,7 +68,7 @@ const columns: Column<DeletedUserRow>[] = [
 
 const DeletedUsersList = (): React.ReactElement => {
   usePageTitle('Deleted users');
-  const { data, isLoading: listLoading } = useQuery(deletedUsersListKey, () => getAuditLogs({ action: 'user.deleted', pageSize: 200 }));
+  const { data, isLoading: listLoading } = useQuery({ queryKey: deletedUsersListKey, queryFn: () => getAuditLogs({ action: 'user.deleted', pageSize: 200 }) });
 
   const entries = data?.data?.items ?? [];
 
@@ -67,22 +76,31 @@ const DeletedUsersList = (): React.ReactElement => {
   // (firstName/lastName/role live there). Fan out a parallel detail-fetch per row so
   // the Name and Access level columns populate. Cached per-event via React Query, so
   // pagination/refilter won't re-hit the network.
-  const detailQueries = useQueries(
-    entries.map((entry) => ({
+  const detailQueries = useQueries({
+    queries: entries.map((entry) => ({
       queryKey: deletedUserDetailKey(entry.id),
       queryFn: () => getAuditLog(entry.id),
       enabled: !!entry.id,
       staleTime: defaultStaleTime,
-    }))
-  );
+    })),
+  });
 
   const rows: DeletedUserRow[] = entries.map((entry, i) => {
     const snapshot = parseSnapshot(detailQueries[i]?.data?.data?.before);
     const fullName = snapshot.firstName && snapshot.lastName ? `${snapshot.firstName} ${snapshot.lastName}` : entry.targetDisplayName ?? '—';
     const accessLevel = snapshot.role ? HISTORICAL_ROLE_LABELS[snapshot.role] ?? snapshot.role : '—';
-    return { ...entry, displayName: fullName, accessLevel };
+    return { ...entry, name: fullName, role: snapshot.role ?? '', accessLevel };
   });
   const isLoading = listLoading || detailQueries.some((query) => query.isLoading);
+
+  // The active Users page's three levels, plus any role retired in BLUM-7038 that a deletion snapshot still
+  // carries: audit history is never rewritten, so without these a row labelled "LA contributor" could be
+  // seen under "All access levels" but never isolated.
+  const retiredRoleOptions: FilterOption[] = [...new Set(rows.map((row) => row.role))]
+    .filter((role) => role && !accessLevelFilterOptions.some((option) => option.value === role))
+    .map((role) => ({ value: role, label: HISTORICAL_ROLE_LABELS[role] ?? role }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const filterOptions = [...accessLevelFilterOptions, ...retiredRoleOptions];
 
   return (
     <ManagementLayout
@@ -103,16 +121,22 @@ const DeletedUsersList = (): React.ReactElement => {
         ) : (
           <div className="admin-deleted-users-list__table">
             <GovUKTable<DeletedUserRow>
+              label="Deleted users"
               testId="admin-deleted-users-table"
               data={rows}
               columns={columns}
               keyExtractor={(e) => e.id}
               searchPlaceholder="Search by name"
-              searchField="displayName"
+              searchField="name"
               sortOptions={sortOptions}
               sortLabel="Sort by"
+              filterOptions={filterOptions}
+              filterLabel="Filter by access level"
+              filterPlaceholder="All access levels"
+              filterField="role"
               getRowHref={(e) => ROUTES.admin.users.deletedDetail(e.targetId)}
               emptyMessage="No deleted users found."
+              noResultsMessage="No deleted users match your search or filter."
             />
           </div>
         )}

@@ -1,43 +1,7 @@
-/* MFA pages styles using GOV.UK Design System classes */
-
-.mfa-page {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.mfa-page__main {
-  flex-grow: 1;
-  background-color: #ffffff;
-}
-
-.mfa-page__service-banner {
-  background-color: #f4f8fb;
-  padding: 15px 0;
-  border-bottom: 2px solid #8eb8dc;
-}
-
-.mfa-page__service-name {
-  font-family: "GDS Transport", arial, sans-serif;
-  font-weight: 700;
-  font-size: 19px;
-  color: #0b0c0c;
-}
-
-.mfa-page__loading {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 60vh;
-}
+/* MFA page content. The page shell (header, service banner, main, footer) is layouts/SignInJourney. */
 
 .mfa-page__content-wrapper {
   max-width: 640px;
-}
-
-.mfa-page__input-wrapper {
-  max-width: 200px;
-  margin-bottom: 30px;
 }
 
 .mfa-page__qr-wrapper {
@@ -57,34 +21,9 @@
   border: 1px solid #b1b4b6;
 }
 
-.mfa-page__recovery-codes {
-  margin: 20px 0;
-  padding: 20px;
-  background-color: #f3f2f1;
-  border: 1px solid #b1b4b6;
-}
-
-.mfa-page__recovery-codes-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-}
-
-.mfa-page__recovery-code {
-  font-family: "GDS Transport", arial, sans-serif;
-  font-size: 16px;
-  padding: 8px 12px;
-  background-color: #ffffff;
-  border: 1px solid #b1b4b6;
-  text-align: center;
-}
-
-.mfa-page__button-group {
-  display: flex;
-  gap: 15px;
-  margin-bottom: 30px;
-  flex-wrap: wrap;
+/* The step headings take focus when the content under them is swapped in place, so a screen reader starts from the
+   new step. They are not controls the user tabbed to, so they paint no focus ring of their own — the same as the
+   sign-in page's banner focus targets. */
+.mfa-page__focus-target:focus {
+  outline: none;
 }

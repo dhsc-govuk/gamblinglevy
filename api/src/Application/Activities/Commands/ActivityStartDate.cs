@@ -7,9 +7,8 @@ namespace Application.Activities.Commands;
 // compare as false, so callers do not need to pre-guard against nulls.
 public static class ActivityStartDate
 {
-    public static bool IsInFuture(int? year, int? month)
+    public static bool IsInFuture(int? year, int? month, DateTime utcNow)
     {
-        var now = DateTime.UtcNow;
-        return year > now.Year || (year == now.Year && month > now.Month);
+        return year > utcNow.Year || (year == utcNow.Year && month > utcNow.Month);
     }
 }

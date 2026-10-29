@@ -2,7 +2,7 @@ using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
 using Domain.Organisations;
-using Domain.ValueObjects;
+using Infrastructure.Persistence.Extensions;
 using LanguageExt;
 using Microsoft.EntityFrameworkCore;
 
@@ -39,7 +39,7 @@ public class OrganisationRepository(ApplicationDbContext dbContext)
 
     public async Task<Option<Organisation>> GetOrganisationById(OrganisationId id, Permission permission, CancellationToken cancellationToken = default)
     {
-        var entity = await GetQuery(permission.UserRole, permission.OrganisationId).FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        var entity = await GetQuery(permission).FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         return entity ?? Option<Organisation>.None;
     }
 
@@ -76,20 +76,6 @@ public class OrganisationRepository(ApplicationDbContext dbContext)
         return entity ?? Option<Organisation>.None;
     }
 
-    private IQueryable<Organisation> GetQuery(UserRole userRole, Option<OrganisationId> organisationId)
-    {
-        if (userRole.Equals(UserRole.Admin))
-        {
-            return Context.Organisations.AsQueryable();
-        }
-
-        if (userRole.IsOrganisationMember())
-        {
-            return organisationId.Match(
-                orgId => Context.Organisations.AsQueryable().Where(x => x.Id == orgId),
-                Array.Empty<Organisation>().AsQueryable());
-        }
-
-        return Array.Empty<Organisation>().AsQueryable();
-    }
+    private IQueryable<Organisation> GetQuery(Permission permission) =>
+        Context.Organisations.ScopedTo(permission, orgId => x => x.Id == orgId);
 }

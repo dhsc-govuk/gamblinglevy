@@ -37,14 +37,14 @@ public static class SubmissionStatusRules
     //   not submitted, past the deadline       -> overdue   (whether or not a draft row exists)
     //   submission row started, within window  -> in_progress
     //   no submission row, within window       -> not_started
-    public static string Derive(bool hasSubmission, DateTime? submittedAt, DateOnly? deadline)
+    public static string Derive(bool hasSubmission, DateTime? submittedAt, DateOnly? deadline, DateTime utcNow)
     {
         if (submittedAt is not null)
         {
             return SubmissionStatuses.Completed;
         }
 
-        var isOverdue = deadline is { } d && DateOnly.FromDateTime(DateTime.UtcNow) > d;
+        var isOverdue = deadline is { } d && DateOnly.FromDateTime(utcNow) > d;
         if (isOverdue)
         {
             return SubmissionStatuses.Overdue;

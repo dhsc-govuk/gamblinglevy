@@ -1,0 +1,84 @@
+.audit-log-list-page {
+  padding-top: 5px;
+}
+
+/* Size comes from <H1 size="l"> (the govuk-heading-l token). Only the design's 50px gap to the intro is
+   stated here — govuk-heading-l ships 30px. */
+.audit-log-list-page .audit-log-list-page__title {
+  margin-bottom: 50px;
+}
+
+.audit-log-list-page__intro {
+  margin-bottom: 30px;
+}
+
+.audit-log-list-page__intro .govuk-body:last-child {
+  margin-bottom: 0;
+}
+
+/* Two controls, 30px apart, as drawn. Sort by keeps the design's 191px — "Newest"/"Oldest" fit it with
+   room to spare. Filter by action takes the rest of the row instead, because 191px cannot hold this
+   catalogue: at the 19px select font ~157px of text is visible inside a 191px control, and six of the
+   longest labels need 237px-395px. The design was drawn against "All actions", but even the value its own
+   table shows, "Organisations bulk imported", needs 237px, so 191px clips the filter you just applied. */
+.audit-log-list-page__filters {
+  align-items: end;
+  column-gap: 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 191px);
+  margin-bottom: 30px;
+  row-gap: 20px;
+}
+
+.audit-log-list-page__filters .govuk-form-group {
+  margin-bottom: 0;
+}
+
+.audit-log-list-page__filters .govuk-select {
+  box-sizing: border-box;
+  min-height: 40px;
+}
+
+/* govuk-frontend sets .govuk-select { min-width: 11.5em } (218.5px at 19px), and min-width always beats
+   width, so the declaration below cannot shrink it on its own — the select would overflow the 191px track
+   the design asks for. Zeroing min-width lets the track decide. Same pairing as
+   GovUKComponents/GovUKTable/styles.css. */
+.audit-log-list-page__filters .govuk-select {
+  min-width: 0;
+  width: 100% !important;
+}
+
+.audit-log-list-page__filter {
+  min-width: 0;
+}
+
+/* GovUKTableScroll carries the table's bottom margin (20px on mobile); this page keeps 30px above the pagination at
+   every width, as it had when the margin sat on the table. */
+.audit-log-list-page .audit-log-list-page__table-scroll {
+  margin-bottom: 30px;
+}
+
+.audit-log-list-page__table {
+  min-width: 560px;
+}
+
+.audit-log-list-page__table .govuk-table__header:first-child,
+.audit-log-list-page__table .govuk-table__cell:first-child {
+  white-space: nowrap;
+}
+
+.audit-log-list-page .govuk-pagination {
+  margin-bottom: 0;
+}
+
+/* Four columns fit the standard three-quarter content column, so the table no longer bleeds into the
+   margin the way the five-column version had to (BLUM-7720). Narrow screens scroll it in its GovUKTableScroll. */
+@media (max-width: 40.0525em) {
+  .audit-log-list-page .audit-log-list-page__title {
+    margin-bottom: 30px;
+  }
+
+  .audit-log-list-page__filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { httpMessageOf } from '../../../../../helpers/httpErrors';
 import { GeneralLayout } from '../../../../../layouts';
 import { ConfirmActionPanel, GovUKButton, GovUKNotificationBanner, Paragraph } from '../../../../../components/GovUKComponents';
 import usePageTitle from '../../../../../hooks/usePageTitle';
@@ -17,13 +18,14 @@ const LocalAuthoritiesDelete = (): React.ReactElement => {
   const queryClient = useQueryClient();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const { data } = useQuery(localAuthorityKey(organisationId), () => getLocalAuthority(organisationId), { enabled: !!organisationId });
+  const { data } = useQuery({ queryKey: localAuthorityKey(organisationId), queryFn: () => getLocalAuthority(organisationId), enabled: !!organisationId });
   const name = data?.data?.name ?? 'this organisation';
 
-  const { mutate, isLoading } = useMutation(() => deleteLocalAuthority(organisationId, true), {
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => deleteLocalAuthority(organisationId, true),
     onSuccess: () => {
-      queryClient.invalidateQueries(localAuthoritiesListKey());
-      queryClient.removeQueries(localAuthorityKey(organisationId));
+      queryClient.invalidateQueries({ queryKey: localAuthoritiesListKey() });
+      queryClient.removeQueries({ queryKey: localAuthorityKey(organisationId) });
       navigate(ROUTES.admin.organisations.list, {
         state: {
           banner: {
@@ -34,10 +36,8 @@ const LocalAuthoritiesDelete = (): React.ReactElement => {
         replace: true,
       });
     },
-    onError: (error: any) => {
-      const data = error?.response?.data;
-      const message = typeof data === 'string' ? data : data?.message ?? 'Could not delete the organisation account. Try again.';
-      setErrorMessage(message);
+    onError: (error) => {
+      setErrorMessage(httpMessageOf(error) ?? 'Could not delete the organisation account. Try again.');
     },
   });
 
@@ -54,17 +54,15 @@ const LocalAuthoritiesDelete = (): React.ReactElement => {
           <h1 className="govuk-heading-l" data-testid="admin-local-authorities-delete-heading">
             Are you sure you want to delete the organisation&rsquo;s account?
           </h1>
-          <Paragraph>
-            Deleting the account for &lsquo;{name}&rsquo; will permanently delete its users&apos; details and stop them from signing in to this service.
-          </Paragraph>
+          <Paragraph>Deleting the account for &lsquo;{name}&rsquo; will permanently delete its users&apos; details and stop them from signing in to this service.</Paragraph>
           <Paragraph>Any reports already submitted for the organisation will not be deleted.</Paragraph>
           <Paragraph>This action cannot be undone.</Paragraph>
           <div className="govuk-button-group">
             <GovUKButton
               className="govuk-button govuk-button--inverse"
               onClick={() => mutate()}
-              isLoading={isLoading}
-              disabled={isLoading}
+              isLoading={isPending}
+              disabled={isPending}
               data-testid="admin-local-authorities-delete-confirm">
               Delete account
             </GovUKButton>

@@ -20,12 +20,7 @@ const OptionsManager = ({ state, dispatch }: Props): React.ReactElement => (
     )}
 
     {state.options.map((option, index) => (
-      <div
-        key={index}
-        className="govuk-!-margin-bottom-4 govuk-!-padding-3"
-        style={{ border: '1px solid #b1b4b6' }}
-        data-testid={`form-question-option-${index}`}
-      >
+      <div key={index} className="govuk-!-margin-bottom-4 govuk-!-padding-3" style={{ border: '1px solid #b1b4b6' }} data-testid={`form-question-option-${index}`}>
         <div className="govuk-!-margin-bottom-2">
           <ReorderControls
             label={`option ${index + 1}`}
@@ -36,13 +31,7 @@ const OptionsManager = ({ state, dispatch }: Props): React.ReactElement => (
             testId={`form-question-option-${index}`}
           />
           {state.options.length > 1 && (
-            <button
-              type="button"
-              className="govuk-link"
-              style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
-              onClick={() => dispatch({ type: 'REMOVE_OPTION', index })}
-              data-testid={`form-question-option-${index}-remove`}
-            >
+            <button type="button" className="govuk-link" onClick={() => dispatch({ type: 'REMOVE_OPTION', index })} data-testid={`form-question-option-${index}-remove`}>
               Remove<span className="govuk-visually-hidden"> option {index + 1}</span>
             </button>
           )}
@@ -64,11 +53,7 @@ const OptionsManager = ({ state, dispatch }: Props): React.ReactElement => (
       </div>
     ))}
 
-    <GovUKButton
-      className="govuk-button govuk-button--secondary"
-      onClick={() => dispatch({ type: 'ADD_OPTION' })}
-      data-testid="form-question-options-add"
-    >
+    <GovUKButton className="govuk-button govuk-button--secondary" onClick={() => dispatch({ type: 'ADD_OPTION' })} data-testid="form-question-options-add">
       Add option
     </GovUKButton>
   </fieldset>

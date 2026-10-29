@@ -1,7 +1,7 @@
 import React from 'react';
 import { PageLoading } from '../../../components/GovUKComponents';
 import { useParams, useSearchParams, Link as RouterLink } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../layouts';
 import { GovUKNotificationBanner, H1 } from '../../../components/GovUKComponents';
 import ActivityWizard from '../../../components/Global/Activities/ActivityWizard';
@@ -23,7 +23,7 @@ const ActivitiesEdit = (): React.ReactElement => {
   // read the same param themselves, so only the two branches rendered here need it.
   const report = useActivityReportContext();
 
-  const { data, isLoading } = useQuery(activityKey(activityId), () => getActivity(activityId), { enabled: !!activityId });
+  const { data, isLoading } = useQuery({ queryKey: activityKey(activityId), queryFn: () => getActivity(activityId), enabled: !!activityId });
   const activity = data?.data;
   const readOnly = !!activity && !activity.isDraft && (activity.status === 'closed' || activity.status === 'finished');
 
@@ -81,6 +81,7 @@ const ActivitiesEdit = (): React.ReactElement => {
     status: activity.status ?? '',
     startMonth: activity.startMonth != null ? String(activity.startMonth) : '',
     startYear: activity.startYear != null ? String(activity.startYear) : '',
+    closureReason: activity.closureReason ?? '',
   };
 
   return <ActivityWizard mode="edit" activityId={activityId} initialState={initialState} allowSaveDraft />;

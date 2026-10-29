@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../../layouts';
 import { ConfirmActionPanel, GovUKButton, H1, Paragraph } from '../../../../../components/GovUKComponents';
 import usePageTitle from '../../../../../hooks/usePageTitle';
@@ -16,14 +16,15 @@ const UsersResetMfa = (): React.ReactElement => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data } = useQuery(adminUserKey(userId), () => getUser(userId), { enabled: !!userId });
+  const { data } = useQuery({ queryKey: adminUserKey(userId), queryFn: () => getUser(userId), enabled: !!userId });
   const user = data?.data;
   const fullName = user ? `${user.firstName} ${user.lastName}` : 'this user';
 
-  const { mutate, isLoading } = useMutation(() => resetUserMfa(userId), {
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => resetUserMfa(userId),
     onSuccess: () => {
-      queryClient.invalidateQueries(adminUsersListKey);
-      queryClient.invalidateQueries(adminUserKey(userId));
+      queryClient.invalidateQueries({ queryKey: adminUsersListKey });
+      queryClient.invalidateQueries({ queryKey: adminUserKey(userId) });
       navigate(ROUTES.admin.users.detail(userId), {
         state: {
           banner: {
@@ -47,8 +48,8 @@ const UsersResetMfa = (): React.ReactElement => {
             <GovUKButton
               className="govuk-button govuk-button--inverse"
               onClick={() => mutate()}
-              isLoading={isLoading}
-              disabled={isLoading}
+              isLoading={isPending}
+              disabled={isPending}
               data-testid="admin-users-reset-mfa-confirm">
               Reset MFA
             </GovUKButton>

@@ -1,0 +1,12 @@
+/* Matches the sibling report page headers. Sits tight under the H1's own 30px margin; the gap below is
+   the page's to set, via its own `__header > .govuk-inset-text` rule. */
+.govuk-inset-text.report-strategic-feedback-page-header__details {
+  box-sizing: border-box;
+  width: 630px;
+  max-width: 100%;
+  margin-top: 0;
+}
+
+.report-strategic-feedback-page-header__details .govuk-summary-list {
+  margin-bottom: 0;
+}

@@ -1,5 +1,6 @@
 using Api.Dtos;
 using Api.Services.Abstract;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
@@ -13,7 +14,8 @@ public class OrganisationsControllerService(
     IOrganisationQueries organisationQueries,
     IOrganisationUserQueries organisationUserQueries,
     ILocationQueries locationQueries,
-    IOrgFundingAllocationRepository allocationRepository) : IOrganisationsControllerService
+    IOrgFundingAllocationRepository allocationRepository,
+    IDateTimeProvider dateTimeProvider) : IOrganisationsControllerService
 {
     public async Task<IEnumerable<OrganisationDto>> GetAll(CancellationToken cancellationToken)
     {
@@ -35,11 +37,23 @@ public class OrganisationsControllerService(
         var organisations = await organisationQueries.GetLocalAuthorities(onboardingStatus, cancellationToken);
         var result = new List<LocalAuthorityDto>(organisations.Count);
 
+        // One query for every organisation's allocations rather than one per organisation inside the loop: an
+        // organisation now holds a row per financial year and the list has to show the year alongside each
+        // amount, so the old FindLatestForOrganisationAsync-per-row shape would have tripled an N+1.
+        var allocations = await allocationRepository.ListWithWindowsForOrganisationsAsync(
+            organisations.Select(o => o.Id).ToList(),
+            cancellationToken);
+
+        var byOrganisation = allocations
+            .GroupBy(x => x.Allocation.OrganisationId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<OrgAllocationWithWindow>)[.. g]);
+
+        var nowUtc = dateTimeProvider.GetUtcNow();
+
         foreach (var org in organisations)
         {
-            var allocation = await allocationRepository.FindLatestForOrganisationAsync(org.Id, cancellationToken);
-            var allocationEntity = allocation.IsSome ? allocation.ValueUnsafe() : null;
-            result.Add(LocalAuthorityDto.FromDomainModel(org, allocationEntity, null));
+            var forOrg = byOrganisation.TryGetValue(org.Id, out var rows) ? rows : [];
+            result.Add(LocalAuthorityDto.FromAllocations(org, forOrg, nowUtc));
         }
 
         return result;
@@ -56,10 +70,9 @@ public class OrganisationsControllerService(
         }
 
         var org = organisation.ValueUnsafe();
-        var allocation = await allocationRepository.FindLatestForOrganisationAsync(org.Id, cancellationToken);
-        var allocationEntity = allocation.IsSome ? allocation.ValueUnsafe() : null;
+        var allocations = await allocationRepository.ListWithWindowsForOrganisationsAsync([org.Id], cancellationToken);
 
-        return LocalAuthorityDto.FromDomainModel(org, allocationEntity, null);
+        return LocalAuthorityDto.FromAllocations(org, allocations, dateTimeProvider.GetUtcNow());
     }
 
     public async Task<Option<OrganisationHomeDto>> Totals(

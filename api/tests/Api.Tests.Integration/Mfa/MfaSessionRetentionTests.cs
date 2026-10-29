@@ -259,7 +259,8 @@ public class MfaSessionRetentionTests : BaseIntegrationTest, IAsyncLifetime
             ipAddressHash: HashForBinding("203.0.113.10"),
             userAgentHash: HashForBinding("IntegrationTest/1.0"),
             ipAddress: "203.0.113.10",
-            deviceLabel: "Chrome on Windows");
+            deviceLabel: "Chrome on Windows",
+            utcNow: DateTime.UtcNow);
 
         await Context.MfaSessions.AddAsync(session);
         await Context.AuditLogs.AddAsync(

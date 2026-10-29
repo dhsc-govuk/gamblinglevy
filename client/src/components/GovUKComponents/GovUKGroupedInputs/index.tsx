@@ -34,10 +34,7 @@ const GovUKGroupedInputs: React.FC<GovUKGroupedInputsProps> = ({ legend, hint, q
           </div>
         </legend>
         {hint && <div className="govuk-hint">{hint}</div>}
-        <hr
-          aria-hidden="true"
-          className="govuk-section-break govuk-section-break--visible govuk-!-margin-top-2 govuk-!-margin-bottom-3"
-        />
+        <hr aria-hidden="true" className="govuk-section-break govuk-section-break--visible govuk-!-margin-top-2 govuk-!-margin-bottom-3" />
         <div className="govuk-grouped-inputs__items">
           {items.map((item) => (
             <div key={item.code} className="govuk-grouped-inputs__item">

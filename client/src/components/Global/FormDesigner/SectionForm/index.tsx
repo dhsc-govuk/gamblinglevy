@@ -47,11 +47,7 @@ const SectionForm = ({
 
   return (
     <div className="govuk-!-margin-bottom-6 govuk-!-padding-4" style={{ border: '1px solid #b1b4b6' }} data-testid="form-section-form">
-      <ErrorSummary
-        heading="There is a problem"
-        errors={error ? [{ targetName: 'form-section-title', text: error }] : []}
-        focusTrigger={submitAttempts}
-      />
+      <ErrorSummary heading="There is a problem" errors={error ? [{ targetName: 'form-section-title', text: error }] : []} focusTrigger={submitAttempts} />
 
       <H3>{heading}</H3>
       <GovUKFieldset.Input
@@ -84,13 +80,7 @@ const SectionForm = ({
         <GovUKButton onClick={handleSubmit} disabled={isLoading} data-testid="form-section-form-save">
           {submitLabel}
         </GovUKButton>
-        <button
-          type="button"
-          className="govuk-link"
-          style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
-          onClick={onCancel}
-          data-testid="form-section-form-cancel"
-        >
+        <button type="button" className="govuk-link" onClick={onCancel} data-testid="form-section-form-cancel">
           Cancel
         </button>
       </div>

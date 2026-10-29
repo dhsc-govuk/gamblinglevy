@@ -23,7 +23,8 @@ public static class ExpectedResultSync
         IReadOnlyList<ActivityExpectedResult> existing,
         IReadOnlyList<(string? KeyResultCode, string Text)> incoming,
         ActivityId activityId,
-        UserId actorId)
+        UserId actorId,
+        DateTime utcNow)
     {
         // Standards group by code rather than ToDictionary: concurrent edits can plant duplicate rows for one
         // code (there is no unique index on it), and grouping lets the surplus fall through to ToRemove so the
@@ -61,7 +62,7 @@ public static class ExpectedResultSync
                 else
                 {
                     toAdd.Add(ActivityExpectedResult.Record(
-                        ActivityExpectedResultId.New(), activityId, text, order, actorId, keyResultCode));
+                        ActivityExpectedResultId.New(), activityId, text, order, actorId, utcNow, keyResultCode));
                 }
             }
             else
@@ -101,7 +102,7 @@ public static class ExpectedResultSync
             else
             {
                 toAdd.Add(ActivityExpectedResult.Record(
-                    ActivityExpectedResultId.New(), activityId, text, order, actorId));
+                    ActivityExpectedResultId.New(), activityId, text, order, actorId, utcNow));
             }
         }
 

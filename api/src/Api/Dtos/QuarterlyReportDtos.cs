@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Api.Dtos;
 
 // LA name, reporting window and report state for the "Submit your quarterly report" intro page. Null when the
@@ -69,7 +71,21 @@ public record ReportQuestionDto(
     decimal? MinValue,
     decimal? MaxValue,
     string? Suffix,
-    string Section);
+    string Section,
+
+    // Question Protocol copy (BLUM-7620): the "empty on submit" message, the free-text character limit (which
+    // makes the client render a GDS character count) and the message shown when it is exceeded. All three are
+    // mirrored client-side so the message a user sees before submitting matches the one the API would return.
+    string? ErrorMessage = null,
+    int? MaxLength = null,
+    string? MaxLengthErrorMessage = null)
+{
+    // Options DHSC has withdrawn from an Activity delivery question (BLUM-9104). Never sent: an LA is offered only
+    // Options. Kept so ReportAnswerPresenter can still label an answer given with one, in the report snapshot and the
+    // activity-record export.
+    [JsonIgnore]
+    public IReadOnlyList<ReportQuestionOptionDto> WithdrawnOptions { get; init; } = [];
+}
 
 // The full form for one activity: resolved questions plus current values (saved draft answers merged over the
 // prefill mapped from the activity record — saved values win).
@@ -95,23 +111,90 @@ public record FundingSpendQuarterDto(int Quarter, DateOnly Start, DateOnly End);
 
 // A reportable activity's spend lines. ActualThisQuarter is the saved "levy funding spent this quarter" (null until
 // answered); Forecast holds the saved expected spend keyed by quarter; TotalSpentSoFar is the accumulated actual
-// spend from earlier quarters of the same financial year (the per-activity "Total spent so far" inset).
+// spend from EVERY earlier quarter this activity has been reported in, earlier financial years included (the
+// per-activity "Total spent so far" inset, BLUM-7703) — a different question from the year-scoped
+// FundingSpendSummaryDto.SpendToDate rendered beside it, and from TotalActualToDate below, which is this year only
+// and includes the reporting quarter.
+//
+// CategoryName / ActualByQuarter / ForecastByQuarter / TotalActualToDate / ProjectedActivitySpend exist only for the
+// DHSC/LA CSV exports (BLUM-7130 CSV review) — deliberately additive rather than redefining ActualThisQuarter /
+// TotalSpentSoFar / Forecast, so the live "Record funding spent"/"Forecast spend" screens keep showing exactly what
+// they do today. ActualByQuarter covers Q1-4 (null for a quarter not yet reported); ForecastByQuarter covers Q2-4
+// only (Q1 can never be forecast — nothing precedes it in the financial year) and holds the MOST RECENTLY RECORDED
+// estimate for that quarter, which may come from an earlier submission than the one being exported.
+//
+// ForecastOnly marks a Planned activity (BLUM-7672): it belongs on the "Forecast spend" screen and not on "Activity
+// spending", so ActualThisQuarter is always null for it and the client leaves it off the actuals inputs. It keeps its
+// row in every quarter, Q4 included (no forecast inputs there, but the export still reads its earlier forecasts from
+// ForecastByQuarter), and earlier quarters' actuals (recorded before it was reverted to Planned) still appear in
+// ActualByQuarter, so its export row carries its own history. The flag is the server's call, not a status the client
+// interprets, so the rule for which screen an activity belongs on lives in FundingSpendContextResolver alone.
 public record FundingSpendActivityDto(
     Guid ActivityId,
     string Title,
     string? TaskName,
     decimal? ActualThisQuarter,
     decimal TotalSpentSoFar,
-    IReadOnlyDictionary<int, decimal?> Forecast);
+    IReadOnlyDictionary<int, decimal?> Forecast,
+    string? CategoryName,
+    IReadOnlyDictionary<int, decimal?> ActualByQuarter,
+    IReadOnlyDictionary<int, decimal?> ForecastByQuarter,
+    decimal TotalActualToDate,
+    decimal ProjectedActivitySpend,
+    bool ForecastOnly);
+
+// Export-only (BLUM-7607). Actual spend recorded against an activity that has no row in FundingSpendDto.Activities —
+// soft-deleted, or whose setup is no longer complete (a Planned activity is not one of these: it has a forecast-only
+// row that carries its earlier actuals itself, BLUM-7672) — so no amount an LA recorded can disappear between the
+// quarterly columns and the organisation total. Deliberately NOT merged into FundingSpendDto.Activities: that list
+// drives the LA "Activity spending" inputs, and SaveFundingActualsCommandHandler filters every posted amount through
+// the actual-spend set, so surfacing one of these on that screen would take an amount and silently discard it.
+//
+// Actuals only. Forecast cells render blank and the projection is just TotalActualToDate: a forecast is not money
+// recorded as spent, and orphaned forecasts are already absent from BOTH the Q{n} Forecast columns and Total
+// Forecast, so leaving them out breaks no reconciliation.
+//
+// ActivityId is null for the catch-all row — spend rows reference an activity by id with no foreign key, so an id
+// that resolves to no activity at all is possible and must still carry its money.
+public record FundingSpendUnreportedActivityDto(
+    Guid? ActivityId,
+    string Title,
+    string? CategoryName,
+    IReadOnlyDictionary<int, decimal?> ActualByQuarter,
+    decimal TotalActualToDate);
 
 // The "Summary for all activities" figures the backend can compute. TotalBudgetForYear / BudgetRemaining are
 // intentionally absent — no data source exists for an LA annual budget (follow-up).
+//
+// TotalSpendToDate / RemainingBudget / TotalForecast / ProjectedVariance exist only for the CSV exports (BLUM-7130
+// CSV review) — additive, not a redefinition of SpendToDate/ExpectedSpendForYear, for the same reason as the
+// per-activity fields above. TotalSpendToDate (unlike SpendToDate) includes the current quarter's own actual spend.
+//
+// TotalSpendToDate is the SUM of TotalActualByQuarter, not a second roll-up of its own (BLUM-7607). It used to come
+// from ISpendReportTotals, which counts every spend row, while the quarterly columns counted only reportable
+// activities — so an LA that deleted an activity after reporting spend against it produced a total its own quarterly
+// figures could not add up to. One derivation, and the columns reconcile with the total by construction. It also
+// stays equal to SpendToDate + TotalSpendThisQuarter, so the LA's own summary box reconciles with it, and
+// ExpectedSpendForYear (= TotalSpendToDate + TotalForecast) reconciles with both.
 public record FundingSpendSummaryDto(
     decimal TotalGrantAllocation,
     decimal TotalSpendThisQuarter,
     decimal ExpectedSpendForYear,
-    decimal SpendToDate);
+    decimal SpendToDate,
+    decimal TotalSpendToDate,
+    decimal RemainingBudget,
+    decimal TotalForecast,
+    decimal ProjectedVariance,
+    // The financial year TotalGrantAllocation belongs to, and the upcoming year's allocation alongside it
+    // (BLUM-7608). Both are export-only: they name the money rather than changing any figure derived from it.
+    // Trailing and defaulted so every existing positional construction still compiles.
+    string? GrantAllocationFinancialYear = null,
+    decimal? NextYearGrantAllocation = null,
+    string? NextYearFinancialYear = null);
 
+// OtherActualByQuarter / OtherForecastByQuarter / OtherTotalActualToDate / OtherProjectedSpend mirror the same new
+// export-only fields on FundingSpendActivityDto, for the "Other (not linked to an activity)" line — see that
+// record's comment for the exact semantics.
 public record FundingSpendDto(
     Guid SubmissionId,
     int CurrentQuarter,
@@ -121,7 +204,13 @@ public record FundingSpendDto(
     IReadOnlyList<FundingSpendActivityDto> Activities,
     decimal? OtherActualThisQuarter,
     IReadOnlyDictionary<int, decimal?> OtherForecast,
-    FundingSpendSummaryDto Summary);
+    IReadOnlyDictionary<int, decimal?> OtherActualByQuarter,
+    IReadOnlyDictionary<int, decimal?> OtherForecastByQuarter,
+    decimal OtherTotalActualToDate,
+    decimal OtherProjectedSpend,
+    FundingSpendSummaryDto Summary,
+    IReadOnlyDictionary<int, decimal?> TotalActualByQuarter,
+    IReadOnlyList<FundingSpendUnreportedActivityDto> UnreportedActivities);
 
 public record FundingActivitySpendInputDto(Guid? ActivityId, decimal? Amount);
 
@@ -186,7 +275,10 @@ public record MyCollectionSummaryDto(
     DateOnly? SubmissionDeadline,
     string CollectionStatus,
     string SubmissionStatus,
-    DateTime? SubmittedAt);
+    DateTime? SubmittedAt,
+    // Trailing, optional: a maturity-assessment row (Type = maturity_assessment, Quarter = null) is named by its
+    // financial year on the LA history list (BLUM-7859 AC1).
+    string? FinancialYear = null);
 
 // The caller's own submission detail for one collection (BLUM-6098, LA read-only view — no DHSC verification
 // controls). HasSubmission drives the empty state; SubmittedByName/Email/SubmittedAt are populated only once the
@@ -202,4 +294,12 @@ public record MySubmissionDetailDto(
     bool HasSubmission,
     string? SubmittedByName,
     string? SubmittedByEmail,
-    DateTime? SubmittedAt);
+    DateTime? SubmittedAt,
+    // Trailing, optional (BLUM-7859): the collection type lets the client pick the maturity read-only view, whose
+    // sections come from maturity-assessment/{id}/submitted; ReferenceNumber is the finalised report's reference.
+    string? Type = null,
+    string? FinancialYear = null,
+    string? ReferenceNumber = null,
+    // The finalised ZIP's byte length, captioning the download ("ZIP, 389 KB", BLUM-9018). Null until submitted, or
+    // when it could not be measured — see ReportExportSizeService.
+    long? ExportSizeBytes = null);

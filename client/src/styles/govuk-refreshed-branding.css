@@ -52,25 +52,30 @@ optgroup {
 
 /* Global link styling - GOV.UK Design System */
 /* Ensures all links have consistent GOV.UK styling */
-/* Excludes navigation links that have their own styling */
-a:not(.govuk-header__link):not(.govuk-footer__link):not(.govuk-skip-link):not(.govuk-back-link):not(.govuk-breadcrumbs__link):not(.govuk-button):not(.govuk-tabs__tab):not(.govuk-service-navigation__link):not(.app-subnav__link):not(.govuk-link--inverse) {
+/* Excludes navigation links that have their own styling.
+   The first exclusion used to name `.govuk-header__link`, which does not exist in govuk-frontend 6 — so it
+   excluded nothing real, while every crown link that copied the v5 class name silently opted out of the only
+   :focus rule that would have given it the yellow #ffdd00 indicator. It now names the class v6 actually ships,
+   which keeps the specificity identical (0,10,1) and means a future header link that forgets
+   `govuk-link--inverse` still degrades to correct vendor styling rather than a blue crown on the blue bar. */
+a:not(.govuk-header__homepage-link):not(.govuk-footer__link):not(.govuk-skip-link):not(.govuk-back-link):not(.govuk-breadcrumbs__link):not(.govuk-button):not(.govuk-tabs__tab):not(.govuk-service-navigation__link):not(.app-subnav__link):not(.govuk-link--inverse) {
   color: #1d70b8;
   text-decoration: underline;
   text-decoration-thickness: max(1px, .0625rem);
   text-underline-offset: .1578em;
 }
 
-a:not(.govuk-header__link):not(.govuk-footer__link):not(.govuk-skip-link):not(.govuk-back-link):not(.govuk-breadcrumbs__link):not(.govuk-button):not(.govuk-tabs__tab):not(.govuk-service-navigation__link):not(.app-subnav__link):not(.govuk-link--inverse):visited {
+a:not(.govuk-header__homepage-link):not(.govuk-footer__link):not(.govuk-skip-link):not(.govuk-back-link):not(.govuk-breadcrumbs__link):not(.govuk-button):not(.govuk-tabs__tab):not(.govuk-service-navigation__link):not(.app-subnav__link):not(.govuk-link--inverse):visited {
   color: #4c2c92;
 }
 
-a:not(.govuk-header__link):not(.govuk-footer__link):not(.govuk-skip-link):not(.govuk-back-link):not(.govuk-breadcrumbs__link):not(.govuk-button):not(.govuk-tabs__tab):not(.govuk-service-navigation__link):not(.app-subnav__link):not(.govuk-link--inverse):hover {
+a:not(.govuk-header__homepage-link):not(.govuk-footer__link):not(.govuk-skip-link):not(.govuk-back-link):not(.govuk-breadcrumbs__link):not(.govuk-button):not(.govuk-tabs__tab):not(.govuk-service-navigation__link):not(.app-subnav__link):not(.govuk-link--inverse):hover {
   color: #003078;
   text-decoration-thickness: max(3px, .1875rem, .12em);
   text-decoration-skip-ink: none;
 }
 
-a:not(.govuk-header__link):not(.govuk-footer__link):not(.govuk-skip-link):not(.govuk-back-link):not(.govuk-breadcrumbs__link):not(.govuk-button):not(.govuk-tabs__tab):not(.govuk-service-navigation__link):not(.app-subnav__link):not(.govuk-link--inverse):focus {
+a:not(.govuk-header__homepage-link):not(.govuk-footer__link):not(.govuk-skip-link):not(.govuk-back-link):not(.govuk-breadcrumbs__link):not(.govuk-button):not(.govuk-tabs__tab):not(.govuk-service-navigation__link):not(.app-subnav__link):not(.govuk-link--inverse):focus {
   outline: 3px solid transparent;
   color: #0b0c0c;
   background-color: #ffdd00;
@@ -78,15 +83,26 @@ a:not(.govuk-header__link):not(.govuk-footer__link):not(.govuk-skip-link):not(.g
   text-decoration: none;
 }
 
-a:not(.govuk-header__link):not(.govuk-footer__link):not(.govuk-skip-link):not(.govuk-back-link):not(.govuk-breadcrumbs__link):not(.govuk-button):not(.govuk-tabs__tab):not(.govuk-service-navigation__link):not(.app-subnav__link):not(.govuk-link--inverse):active {
+a:not(.govuk-header__homepage-link):not(.govuk-footer__link):not(.govuk-skip-link):not(.govuk-back-link):not(.govuk-breadcrumbs__link):not(.govuk-button):not(.govuk-tabs__tab):not(.govuk-service-navigation__link):not(.app-subnav__link):not(.govuk-link--inverse):active {
   color: #0b0c0c;
 }
 
 /* Buttons styled as links (e.g. summary-card "Change" actions that fire onClick rather than navigate).
    :link/:visited only match <a href>, so a <button class="govuk-link"> inherits the default button
    text colour without this rule. Mirrors the anchor block above minus the pseudo-classes that don't
-   apply to buttons. */
+   apply to buttons.
+
+   The chrome reset belongs here rather than in a style={{ background: 'none' }} on each caller: an
+   inline declaration beats any selector, so it also suppresses the #ffdd00 fill in the :focus rule
+   below and leaves the control with no visible focus state (WCAG 1.4.11 / 2.4.13). At 0,1,1 this
+   block loses to button.govuk-link:focus at 0,2,1 whatever the source order, so focus still paints.
+   No caller resets inline any more (BLUM-8755 deleted the last eleven), and none should: the only inline
+   style a link-style button may need is `font: inherit`, where its container sets a size or weight. */
 button.govuk-link {
+  background-color: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
   color: #1d70b8;
   text-decoration: underline;
   text-decoration-thickness: max(1px, .0625rem);
@@ -119,88 +135,29 @@ button.govuk-link:active {
   font-weight: 700;
 }
 
-.signin-page .govuk-header,
-.mfa-page .govuk-header,
-.help-page .govuk-header,
-.acceptable-use-policy-page .govuk-header {
-  background: #1d70b8 !important;
-  background-color: #1d70b8 !important;
-  border-bottom: none !important;
-  padding: 10px 0 !important;
+/* govuk-frontend 6 sets `line-height: 1` on `.govuk-header`, and `.govuk-header__homepage-link`'s
+   `font-size: 30px` assumes it. The app's own header bar (layouts/General/LayoutHeader/HeaderBar, also used by
+   views/Public/Cookies and AccessibilityStatement) has no `.govuk-header` ancestor, so the link would inherit
+   the body's `line-height: 1.5` (styles/baseline.css) instead, growing from 32px to 45px: the crown shifts up
+   ~6.5px and the yellow focus highlight is oversized. This restores the value the class already computes to
+   inside a real `.govuk-header`, so it is a no-op there. Don't move it onto .app-header-bar instead — that would
+   also shrink the sign-out button's focus box, which is currently correct. */
+.govuk-header__homepage-link {
+  line-height: 1;
 }
 
 /* Breadcrumbs — governed entirely by govuk-frontend. No overrides here.
    govuk-frontend v6 uses ::before on each li for the chevron separator and
    sets link colour to var(--_govuk-text-colour, #0b0c0c). */
 
-/* Page-specific breadcrumb overrides */
-.signin-page .govuk-breadcrumbs,
-.mfa-page .govuk-breadcrumbs,
-.help-page .govuk-breadcrumbs,
-.acceptable-use-policy-page .govuk-breadcrumbs {
-  text-align: left !important;
-}
-
-.signin-page .govuk-header__container,
-.mfa-page .govuk-header__container,
-.help-page .govuk-header__container,
-.acceptable-use-policy-page .govuk-header__container {
-  border-bottom: none !important;
-}
-
-.signin-page .govuk-header__link,
-.signin-page .govuk-header__link:link,
-.signin-page .govuk-header__link:visited,
-.signin-page .govuk-header__link:active,
-.mfa-page .govuk-header__link,
-.mfa-page .govuk-header__link:link,
-.mfa-page .govuk-header__link:visited,
-.mfa-page .govuk-header__link:active,
-.help-page .govuk-header__link,
-.help-page .govuk-header__link:link,
-.help-page .govuk-header__link:visited,
-.help-page .govuk-header__link:active,
-.acceptable-use-policy-page .govuk-header__link,
-.acceptable-use-policy-page .govuk-header__link:link,
-.acceptable-use-policy-page .govuk-header__link:visited,
-.acceptable-use-policy-page .govuk-header__link:active {
-  color: #ffffff !important;
-}
-
-.signin-page .govuk-header__link:hover,
-.mfa-page .govuk-header__link:hover,
-.help-page .govuk-header__link:hover,
-.acceptable-use-policy-page .govuk-header__link:hover {
-  text-decoration: underline !important;
-  color: #ffffff !important;
-}
-
-.signin-page .govuk-header__link:focus,
-.mfa-page .govuk-header__link:focus,
-.help-page .govuk-header__link:focus,
-.acceptable-use-policy-page .govuk-header__link:focus {
-  color: #0b0c0c !important;
-}
-
-/* SVG logo styling - white with green dot */
-.signin-page .govuk-header svg,
-.signin-page .govuk-header__logotype,
-.mfa-page .govuk-header svg,
-.mfa-page .govuk-header__logotype,
-.help-page .govuk-header svg,
-.help-page .govuk-header__logotype,
-.acceptable-use-policy-page .govuk-header svg,
-.acceptable-use-policy-page .govuk-header__logotype {
-  fill: #ffffff !important;
-}
-
-/* Green dot between GOV and UK */
-.signin-page .govuk-header .govuk-logo-dot,
-.mfa-page .govuk-header .govuk-logo-dot,
-.help-page .govuk-header .govuk-logo-dot,
-.acceptable-use-policy-page .govuk-header .govuk-logo-dot {
-  fill: #00703c !important;
-}
+/* Deliberately no `fill` override for the crown logo here. It used to be pinned white with `!important`,
+   which is not needed at rest — govuk-frontend's `.govuk-header__logotype { fill: currentcolor }` plus the
+   anchor's `.govuk-header__homepage-link:link { color: #fff }` already produce white — and actively breaks
+   the focus state: an important declaration beats the `:focus` rule's `color: #0b0c0c`, so the logotype
+   stayed white on the #ffdd00 focus block at 1.35:1 (WCAG 2.2 AA SC 1.4.11). The same applied to the
+   `.govuk-logo-dot { fill: #00703c }` rule that sat here, which would freeze the dot green over the focus
+   block instead of letting `:focus .govuk-logo-dot { fill: currentcolor }` darken it. Don't reinstate
+   either — the colours come from the anchor's `color`, which is the whole point. */
 
 /* GOV.UK Heading Styles - ensure consistent typography */
 .govuk-heading-xl {

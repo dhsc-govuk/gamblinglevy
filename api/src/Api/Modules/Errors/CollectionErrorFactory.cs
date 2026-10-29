@@ -7,6 +7,20 @@ public static class CollectionErrorFactory
 {
     public static ObjectResult ToObjectResult(this CollectionException error)
     {
+        // The one refusal with an error code (BLUM-9084), so the collection wizard can put it on the Forms field. The
+        // other refusals stay plain text: the client tells them apart by status alone (every 409 is "name taken").
+        if (error is CollectionFormsLockedException)
+        {
+            return new ObjectResult(new
+            {
+                error = CollectionFormsLockedException.ErrorCode,
+                message = error.Message,
+            })
+            {
+                StatusCode = StatusCodes.Status422UnprocessableEntity,
+            };
+        }
+
         return new ObjectResult(error.Message)
         {
             StatusCode = error switch

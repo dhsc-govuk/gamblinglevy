@@ -56,7 +56,20 @@
   margin-bottom: 10px;
 }
 
-.activity-wizard .govuk-input,
+/* The activity-type group is nested inside the category conditional reveal, which already supplies the grey rule
+   and the indent — it must fill the panel rather than restate the wizard's fixed 630px column (BLUM-7649).
+   Deliberately keyed off the wrapper rather than .govuk-radios__conditional > .govuk-form-group: that selector
+   also matches the schema-driven sections' own reveals, where a Form Designer question can reveal more than one
+   follow-up and the 30px between them is wanted. */
+.activity-wizard__type-reveal > .govuk-form-group {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+/* Textareas only. `.govuk-input` is already border-box and `width: 100%`, and restating `max-width: 100%` on it
+   outranked govuk-frontend's `.govuk-input--width-N` caps (0,2,0 vs 0,1,0) — which is what stretched the Joint
+   partnership £ field across the whole column instead of the Figma's compact width-5 box (BLUM-8113). The start-date
+   inputs are unaffected: StepStatus pins them to 51px/85px, inside their width-2/width-4 caps at every viewport. */
 .activity-wizard .govuk-textarea {
   box-sizing: border-box;
   max-width: 100%;

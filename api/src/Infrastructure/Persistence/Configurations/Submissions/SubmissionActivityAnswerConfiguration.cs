@@ -24,5 +24,9 @@ public class SubmissionActivityAnswerConfiguration : IEntityTypeConfiguration<Su
 
         builder.HasIndex(x => new { x.SubmissionId, x.ActivityId, x.QuestionCode }).IsUnique();
         builder.HasIndex(x => new { x.SubmissionId, x.ActivityId });
+
+        // The carry-forward lookup (GetPriorSubmittedActivityAnswersAsync) filters on ActivityId alone and joins
+        // out to submissions/collections from there — the pair above leads with SubmissionId, so neither serves it.
+        builder.HasIndex(x => x.ActivityId);
     }
 }

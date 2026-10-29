@@ -127,7 +127,6 @@ function GovUKCheckbox({
               </React.Fragment>
             );
           })}
-
         </div>
       </fieldset>
     </div>

@@ -17,4 +17,10 @@ public interface IActivityQueries
     Task<IReadOnlyList<Activity>> GetDeletedByOrganisationAsync(OrganisationId organisationId, CancellationToken cancellationToken = default);
 
     Task<Option<Activity>> GetByIdForOrgAsync(ActivityId id, OrganisationId organisationId, bool includeDeleted = false, CancellationToken cancellationToken = default);
+
+    // Batched reads for the maturity-assessment pre-fill (BLUM-7856), which walks every reportable activity of an
+    // organisation at once — the per-activity repositories would be an N+1 over ~50 records. AsNoTracking.
+    Task<IReadOnlyList<ActivityAnswer>> GetAnswersForActivitiesAsync(IReadOnlyCollection<ActivityId> activityIds, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ActivityExpectedResult>> GetExpectedResultsForActivitiesAsync(IReadOnlyCollection<ActivityId> activityIds, CancellationToken cancellationToken = default);
 }

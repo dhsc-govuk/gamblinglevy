@@ -4,7 +4,13 @@ export const ROUTES = {
   public: {
     signIn: '/sign-in',
     organisationSuspended: '/organisation-suspended',
+    // Reached only by the axios interceptor answering a 403 USER_DEACTIVATED (BLUM-6386). Public in the
+    // routing sense — no ProtectedRoleRoute — because a deactivated user has no role claim to gate on.
+    accountDeactivated: '/account-deactivated',
     cookies: '/cookies',
+    // The DHSC-agreed accessibility statement (BLUM-7684). Public in the routing sense: the Public Sector
+    // Bodies Accessibility Regulations 2018 require it to be reachable without signing in.
+    accessibilityStatement: '/accessibility-statement',
   },
   mfa: {
     setup: '/mfa/setup',
@@ -18,12 +24,13 @@ export const ROUTES = {
   },
   admin: {
     home: '/admin/home',
+    // Unrouted and deliberately absent from the header nav (BLUM-7820): the Trends page does not
+    // exist yet, so the tab 404'd. The path is reserved here for when it is built.
     trends: '/admin/trends',
     management: '/admin/collections',
     guidance: '/admin/guidance',
     users: {
       list: '/admin/users',
-      accessLevelTypes: '/admin/users#access-level-types',
       create: '/admin/users/create',
       createReview: '/admin/users/create/review',
       deleted: '/admin/users/deleted',
@@ -37,6 +44,10 @@ export const ROUTES = {
       reactivate: (userId: string) => `/admin/users/${userId}/reactivate`,
       resetMfaPath: '/admin/users/:userId/reset-mfa',
       resetMfa: (userId: string) => `/admin/users/${userId}/reset-mfa`,
+      enablePasswordLoginPath: '/admin/users/:userId/enable-password-login',
+      enablePasswordLogin: (userId: string) => `/admin/users/${userId}/enable-password-login`,
+      resetPasswordPath: '/admin/users/:userId/reset-password',
+      resetPassword: (userId: string) => `/admin/users/${userId}/reset-password`,
       deletePath: '/admin/users/:userId/delete',
       delete: (userId: string) => `/admin/users/${userId}/delete`,
       editPath: '/admin/users/:userId/edit',
@@ -87,12 +98,15 @@ export const ROUTES = {
       detailPath: '/admin/audit-logs/:auditLogId',
       detail: (auditLogId: string) => `/admin/audit-logs/${auditLogId}`,
     },
+    // The activity-record question pages, routed only while BLUM_9395 is on (ungated before BLUM-9395). Nothing links to them either way.
     activityRecordQuestions: {
       list: '/admin/activity-record-questions',
       create: '/admin/activity-record-questions/create',
       editPath: '/admin/activity-record-questions/:questionId/edit',
       edit: (questionId: string) => `/admin/activity-record-questions/${questionId}/edit`,
     },
+    // The data-collection forms builder, routed only while BLUM_9087 (form versioning) is on. Off, these paths have no
+    // route and 404 exactly as they did after BLUM-7464.
     forms: {
       list: '/admin/forms',
       modulePath: '/admin/forms/:moduleId',
@@ -101,6 +115,11 @@ export const ROUTES = {
       createQuestion: (moduleId: string) => `/admin/forms/${moduleId}/questions/create`,
       editQuestionPath: '/admin/forms/:moduleId/questions/:questionId/edit',
       editQuestion: (moduleId: string, questionId: string) => `/admin/forms/${moduleId}/questions/${questionId}/edit`,
+      // Saved versions (BLUM-9102).
+      versionsPath: '/admin/forms/:moduleId/versions',
+      versions: (moduleId: string) => `/admin/forms/${moduleId}/versions`,
+      versionPath: '/admin/forms/:moduleId/versions/:versionNumber',
+      version: (moduleId: string, versionNumber: number) => `/admin/forms/${moduleId}/versions/${versionNumber}`,
     },
     reports: {
       list: '/admin/reports',
@@ -133,6 +152,7 @@ export const ROUTES = {
   },
   organisationAdmin: {
     home: '/organisation-admin/home',
+    trends: '/organisation-admin/trends',
     users: {
       list: '/organisation-admin/users',
       create: '/organisation-admin/users/create',
@@ -152,6 +172,10 @@ export const ROUTES = {
       deactivate: (userId: string) => `/organisation-admin/users/${userId}/deactivate`,
       resetMfaPath: '/organisation-admin/users/:userId/reset-mfa',
       resetMfa: (userId: string) => `/organisation-admin/users/${userId}/reset-mfa`,
+      enablePasswordLoginPath: '/organisation-admin/users/:userId/enable-password-login',
+      enablePasswordLogin: (userId: string) => `/organisation-admin/users/${userId}/enable-password-login`,
+      resetPasswordPath: '/organisation-admin/users/:userId/reset-password',
+      resetPassword: (userId: string) => `/organisation-admin/users/${userId}/reset-password`,
       deletePath: '/organisation-admin/users/:userId/delete',
       delete: (userId: string) => `/organisation-admin/users/${userId}/delete`,
     },
@@ -183,7 +207,7 @@ export const ROUTES = {
     submittedDetailPath: '/reports/submitted/:collectionId',
     submittedDetail: (collectionId: string) => `/reports/submitted/${collectionId}`,
     // Kept only to redirect legacy bookmarks to the landing, which is where a collection is chosen. The splat
-    // catches the deeper pre-BLUM-6950 links (…/funding-spent/forecast, …/key-results/{activityId}/check, …)
+    // catches the deeper pre-BLUM-6950 links (…/funding-spent/forecast, …/strategic-feedback/check, …)
     // that match no scoped route; the three-segment ones (…/tasks) match quarterlyPath with a non-guid id and
     // are redirected by the page itself when the context read 404s.
     quarterlyLegacy: '/reports/quarterly',
@@ -194,14 +218,18 @@ export const ROUTES = {
     tasks: (collectionId: string) => `/reports/quarterly/${collectionId}/tasks`,
     confirmActivitiesPath: '/reports/quarterly/:collectionId/confirm-activities',
     confirmActivities: (collectionId: string) => `/reports/quarterly/${collectionId}/confirm-activities`,
-    keyResultsPath: '/reports/quarterly/:collectionId/key-results',
-    keyResults: (collectionId: string) => `/reports/quarterly/${collectionId}/key-results`,
-    keyResultsActivityPath: '/reports/quarterly/:collectionId/key-results/:activityId',
-    keyResultsActivity: (collectionId: string, activityId: string) => `/reports/quarterly/${collectionId}/key-results/${activityId}`,
-    keyResultsDeliveryPath: '/reports/quarterly/:collectionId/key-results/:activityId/delivery',
-    keyResultsDelivery: (collectionId: string, activityId: string) => `/reports/quarterly/${collectionId}/key-results/${activityId}/delivery`,
-    keyResultsCheckPath: '/reports/quarterly/:collectionId/key-results/:activityId/check',
-    keyResultsCheck: (collectionId: string, activityId: string) => `/reports/quarterly/${collectionId}/key-results/${activityId}/check`,
+    // The URL says /results because "key results" has gone from the user-facing language (BLUM-7563); the
+    // keyResults* names track the module code 'activity_key_results', which is a stable DB/API contract and did
+    // not change. keyResultsLegacyWildcard keeps pre-BLUM-7563 bookmarks working — see KeyResultsLegacyRedirect.
+    keyResultsLegacyWildcard: '/reports/quarterly/:collectionId/key-results/*',
+    keyResultsPath: '/reports/quarterly/:collectionId/results',
+    keyResults: (collectionId: string) => `/reports/quarterly/${collectionId}/results`,
+    keyResultsActivityPath: '/reports/quarterly/:collectionId/results/:activityId',
+    keyResultsActivity: (collectionId: string, activityId: string) => `/reports/quarterly/${collectionId}/results/${activityId}`,
+    keyResultsDeliveryPath: '/reports/quarterly/:collectionId/results/:activityId/delivery',
+    keyResultsDelivery: (collectionId: string, activityId: string) => `/reports/quarterly/${collectionId}/results/${activityId}/delivery`,
+    keyResultsCheckPath: '/reports/quarterly/:collectionId/results/:activityId/check',
+    keyResultsCheck: (collectionId: string, activityId: string) => `/reports/quarterly/${collectionId}/results/${activityId}/check`,
     fundingSpentPath: '/reports/quarterly/:collectionId/funding-spent',
     fundingSpent: (collectionId: string) => `/reports/quarterly/${collectionId}/funding-spent`,
     fundingSpentForecastPath: '/reports/quarterly/:collectionId/funding-spent/forecast',
@@ -218,5 +246,23 @@ export const ROUTES = {
     submit: (collectionId: string) => `/reports/quarterly/${collectionId}/submit`,
     submittedConfirmationPath: '/reports/quarterly/:collectionId/submitted',
     submittedConfirmation: (collectionId: string) => `/reports/quarterly/${collectionId}/submitted`,
+    // The annual maturity assessment (BLUM-7855 / 7858 / 7859), collection-scoped like the quarterly flow. Section
+    // codes are catalogue slugs that never equal the static `submit` / `submitted` segments, and page codes never
+    // equal `check`, so the static routes always win the ranking.
+    maturityPath: '/reports/maturity/:collectionId',
+    maturity: (collectionId: string) => `/reports/maturity/${collectionId}`,
+    maturitySectionPath: '/reports/maturity/:collectionId/:sectionCode',
+    maturitySection: (collectionId: string, sectionCode: string) => `/reports/maturity/${collectionId}/${sectionCode}`,
+    maturitySectionPagePath: '/reports/maturity/:collectionId/:sectionCode/:pageCode',
+    maturitySectionPage: (collectionId: string, sectionCode: string, pageCode: string) => `/reports/maturity/${collectionId}/${sectionCode}/${pageCode}`,
+    maturitySectionCheckPath: '/reports/maturity/:collectionId/:sectionCode/check',
+    maturitySectionCheck: (collectionId: string, sectionCode: string) => `/reports/maturity/${collectionId}/${sectionCode}/check`,
+    maturitySubmitPath: '/reports/maturity/:collectionId/submit',
+    maturitySubmit: (collectionId: string) => `/reports/maturity/${collectionId}/submit`,
+    maturitySubmittedConfirmationPath: '/reports/maturity/:collectionId/submitted',
+    maturitySubmittedConfirmation: (collectionId: string) => `/reports/maturity/${collectionId}/submitted`,
+    // The read-only view of one submitted section, under the shared submission-detail record.
+    submittedMaturitySectionPath: '/reports/submitted/:collectionId/maturity/:sectionCode',
+    submittedMaturitySection: (collectionId: string, sectionCode: string) => `/reports/submitted/${collectionId}/maturity/${sectionCode}`,
   },
 } as const;

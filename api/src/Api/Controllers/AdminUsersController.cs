@@ -2,6 +2,12 @@ using Api.Dtos;
 using Api.Modules.Errors;
 using Api.Services.Abstract;
 using Application.Users.Commands.Admins;
+using Application.Users.Commands.DeactivateUser;
+using Application.Users.Commands.DeleteUser;
+using Application.Users.Commands.EnableUserPasswordLogin;
+using Application.Users.Commands.ReactivateUser;
+using Application.Users.Commands.ResetUserMfa;
+using Application.Users.Commands.ResetUserPassword;
 using Domain.ValueObjects;
 using LanguageExt;
 using MediatR;
@@ -105,6 +111,28 @@ public class AdminUsersController(
         CancellationToken cancellationToken)
     {
         var result = await sender.Send(new ResetUserMfaCommand(userId), cancellationToken);
+        return result.Match<ActionResult<UserDto>>(
+            user => UserDto.FromDomainModel(user),
+            error => error.ToObjectResult());
+    }
+
+    [HttpPost("{userId:guid}/enable-password-login")]
+    public async Task<ActionResult<UserDto>> EnablePasswordLogin(
+        [FromRoute] Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var result = await sender.Send(new EnableUserPasswordLoginCommand(userId), cancellationToken);
+        return result.Match<ActionResult<UserDto>>(
+            user => UserDto.FromDomainModel(user),
+            error => error.ToObjectResult());
+    }
+
+    [HttpPost("{userId:guid}/reset-password")]
+    public async Task<ActionResult<UserDto>> ResetPassword(
+        [FromRoute] Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var result = await sender.Send(new ResetUserPasswordCommand(userId), cancellationToken);
         return result.Match<ActionResult<UserDto>>(
             user => UserDto.FromDomainModel(user),
             error => error.ToObjectResult());

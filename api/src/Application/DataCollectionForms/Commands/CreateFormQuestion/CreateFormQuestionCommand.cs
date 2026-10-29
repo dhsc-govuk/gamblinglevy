@@ -1,7 +1,12 @@
+using Application.Common.Features;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
+using Application.DataCollectionForms.Audit;
 using Application.DataCollectionForms.Exceptions;
+using Application.DataCollectionForms.Versions;
+using Domain.AuditLogs;
 using Domain.DataCollectionForms;
 using LanguageExt;
 using LanguageExt.UnsafeValueAccess;
@@ -27,7 +32,12 @@ public record CreateFormQuestionCommand : IRequest<Either<FormModuleException, F
 public class CreateFormQuestionCommandHandler(
     IFormModuleQueries formModuleQueries,
     IFormModuleRepository formModuleRepository,
-    PermissionsService permissionsService)
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner,
+    PublishedQuestionRules publishedQuestionRules,
+    IFeatureFlags featureFlags,
+    PermissionsService permissionsService,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<CreateFormQuestionCommand, Either<FormModuleException, FormModule>>
 {
     public async Task<Either<FormModuleException, FormModule>> Handle(
@@ -58,46 +68,78 @@ public class CreateFormQuestionCommandHandler(
         }
 
         var code = request.Code!.Trim();
-        if (module.Questions.Any(q => string.Equals(q.Code, code, StringComparison.OrdinalIgnoreCase)))
+        var existing = module.Questions.FirstOrDefault(q => string.Equals(q.Code, code, StringComparison.OrdinalIgnoreCase));
+        if (existing is { IsActive: true })
         {
             return new DcFormQuestionDuplicateCodeException(moduleId, code);
         }
 
-        try
+        // BLUM-9105: answers are joined across versions by code, so a code a published version used stays that question's.
+        // Asked before the duplicate check for a withdrawn question, which still holds its code: "retired" says why.
+        if (featureFlags.IsEnabled(Feature.BLUM_9087)
+            && (await publishedQuestionRules.PublishedCodesAsync(moduleId, cancellationToken)).Contains(code))
         {
-            var questionType = Domain.Forms.QuestionType.From(request.QuestionType!);
-            // Use max+1 (not count+1) so a new question never reuses the display order of an existing one
-            // after a question has been deleted (deletion leaves gaps but never renumbers).
-            var displayOrder = module.Questions.Count > 0 ? module.Questions.Max(q => q.DisplayOrder) + 1 : 1;
-            var sectionId = request.SectionId.HasValue ? new DcFormSectionId(request.SectionId.Value) : null;
+            return new DcFormQuestionCodeRetiredException(moduleId, code);
+        }
 
-            var question = module.AddQuestion(
-                DcFormQuestionId.New(),
-                code,
-                request.Label!,
-                questionType,
-                displayOrder,
-                actorId,
-                sectionId,
-                request.IsRequired,
-                request.Hint,
-                request.HelpText);
+        if (existing is not null)
+        {
+            return new DcFormQuestionDuplicateCodeException(moduleId, code);
+        }
 
-            if (questionType.IsChoice)
+        // The change and its audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<FormModuleException, FormModule>(
+            async token =>
             {
-                for (var idx = 0; idx < request.Options.Count; idx++)
+                try
                 {
-                    var option = request.Options[idx];
-                    question.AddOption(DcFormQuestionOptionId.New(), option.Value, option.Label, idx + 1);
-                }
-            }
+                    var questionType = Domain.Forms.QuestionType.From(request.QuestionType!);
+                    // Use max+1 (not count+1) so a new question never reuses the display order of an existing one
+                    // after a question has been deleted (deletion leaves gaps but never renumbers).
+                    var displayOrder = module.Questions.Count > 0 ? module.Questions.Max(q => q.DisplayOrder) + 1 : 1;
+                    var sectionId = request.SectionId.HasValue ? new DcFormSectionId(request.SectionId.Value) : null;
 
-            await formModuleRepository.UpdateAsync(module, cancellationToken);
-            return module;
-        }
-        catch (Exception exception)
-        {
-            return new FormModuleUnknownException(moduleId, exception);
-        }
+                    var question = module.AddQuestion(
+                        DcFormQuestionId.New(),
+                        code,
+                        request.Label!,
+                        questionType,
+                        displayOrder,
+                        actorId,
+                        dateTimeProvider.GetUtcNow(),
+                        sectionId,
+                        request.IsRequired,
+                        request.Hint,
+                        request.HelpText);
+
+                    if (questionType.IsChoice)
+                    {
+                        for (var idx = 0; idx < request.Options.Count; idx++)
+                        {
+                            var option = request.Options[idx];
+                            question.AddOption(DcFormQuestionOptionId.New(), option.Value, option.Label, idx + 1);
+                        }
+                    }
+
+                    await formModuleRepository.UpdateAsync(module, token);
+
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            actorId,
+                            AuditTargetType.DataCollectionForm,
+                            question.Id.Value,
+                            AuditAction.DataCollectionFormQuestionCreated,
+                            before: null,
+                            after: DataCollectionFormSnapshot.Serialize(question)),
+                        token);
+
+                    return module;
+                }
+                catch (Exception exception)
+                {
+                    return new FormModuleUnknownException(moduleId, exception);
+                }
+            },
+            cancellationToken);
     }
 }

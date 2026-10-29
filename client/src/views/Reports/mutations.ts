@@ -1,5 +1,6 @@
 import axios from 'axios';
-import type { ReportProgressStatus, SubmissionTaskListDto } from './queries';
+import { encodedJsonBody } from '../../helpers/encodedJsonBody';
+import type { OfflineUploadResultDto, ReportProgressStatus, SubmissionTaskListDto } from './queries';
 
 export interface ReportAnswerInput {
   questionCode: string;
@@ -11,8 +12,8 @@ export interface ActivityReportStateDto {
   reportStatus: ReportProgressStatus;
 }
 
-// "Create report" on the intro page. 409 when a submission already exists; 422 REPORT_NOT_OPEN envelope
-// when the collection is closed/scheduled/draft.
+// Creates the draft submission as the task-list page opens. 409 when a submission already exists; 422
+// REPORT_NOT_OPEN when the collection is closed/scheduled/draft.
 export const startReport = (collectionId: string) => axios.post<SubmissionTaskListDto>(`quarterly-report/${collectionId}/submission`);
 
 // Marks the "Manage your list of activities" step completed and clears any review flags.
@@ -30,10 +31,13 @@ export interface SaveActivityReportInput {
 }
 
 export const saveActivityReport = ({ collectionId, activityId, saveAsDraft, answers }: SaveActivityReportInput) =>
-  axios.put<ActivityReportStateDto>(`quarterly-report/${collectionId}/activities/${activityId}/answers`, {
-    saveAsDraft,
-    answers,
-  });
+  axios.put<ActivityReportStateDto>(
+    `quarterly-report/${collectionId}/activities/${activityId}/answers`,
+    ...encodedJsonBody({
+      saveAsDraft,
+      answers,
+    })
+  );
 
 // "Check your answers" Continue for one activity — no body; the saved draft answers are validated server-side
 // and the report marked completed (a 422 SUBMISSION_ANSWERS_INVALID envelope when answers are missing).
@@ -60,11 +64,14 @@ export interface SaveFundingActualsInput {
 }
 
 export const saveFundingActuals = ({ collectionId, saveAsDraft, otherAmount, activities }: SaveFundingActualsInput) =>
-  axios.put<FundingSpendStateDto>(`quarterly-report/${collectionId}/funding-spend/actuals`, {
-    saveAsDraft,
-    otherAmount,
-    activities,
-  });
+  axios.put<FundingSpendStateDto>(
+    `quarterly-report/${collectionId}/funding-spend/actuals`,
+    ...encodedJsonBody({
+      saveAsDraft,
+      otherAmount,
+      activities,
+    })
+  );
 
 export interface FundingQuarterAmountInput {
   quarter: number;
@@ -84,11 +91,14 @@ export interface SaveFundingForecastInput {
 }
 
 export const saveFundingForecast = ({ collectionId, saveAsDraft, activities, other }: SaveFundingForecastInput) =>
-  axios.put<FundingSpendStateDto>(`quarterly-report/${collectionId}/funding-spend/forecast`, {
-    saveAsDraft,
-    activities,
-    other,
-  });
+  axios.put<FundingSpendStateDto>(
+    `quarterly-report/${collectionId}/funding-spend/forecast`,
+    ...encodedJsonBody({
+      saveAsDraft,
+      activities,
+      other,
+    })
+  );
 
 // "Check your spending totals" Continue — validates the whole section and marks it completed (a 422
 // SUBMISSION_ANSWERS_INVALID envelope when amounts are missing/invalid).
@@ -109,10 +119,13 @@ export interface SaveStrategicFeedbackInput {
 }
 
 export const saveStrategicFeedback = ({ collectionId, saveAsDraft, answers }: SaveStrategicFeedbackInput) =>
-  axios.put<StrategicFeedbackStateDto>(`quarterly-report/${collectionId}/strategic-feedback`, {
-    saveAsDraft,
-    answers,
-  });
+  axios.put<StrategicFeedbackStateDto>(
+    `quarterly-report/${collectionId}/strategic-feedback`,
+    ...encodedJsonBody({
+      saveAsDraft,
+      answers,
+    })
+  );
 
 // "Check your answers" Continue — validates every required answer and marks the section completed (a 422
 // SUBMISSION_ANSWERS_INVALID envelope when answers are missing).
@@ -146,4 +159,15 @@ export const downloadReportExport = async (collectionId: string): Promise<void> 
   link.click();
   link.remove();
   window.URL.revokeObjectURL(url);
+};
+
+// --- "Complete your report offline" (BLUM-8310, behind the BLUM_8310 flag) ---
+
+// Uploads a filled-in offline template; the file says which section it is for. 200 saves and completes that
+// section; 422 OFFLINE_UPLOAD_INVALID lists the file's errors (nothing saved); 400 OFFLINE_* refuses the file as a
+// whole. See mapOfflineUploadError.
+export const uploadOfflineReport = ({ collectionId, file }: { collectionId: string; file: File }) => {
+  const form = new FormData();
+  form.append('file', file);
+  return axios.post<OfflineUploadResultDto>(`quarterly-report/${collectionId}/offline/upload`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
 };

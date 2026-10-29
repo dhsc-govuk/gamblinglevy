@@ -2,7 +2,7 @@ import React from 'react';
 import { GovUKDynamicQuestionRenderer, GovUKFieldset, Paragraph } from '../../../GovUKComponents';
 import type { FormQuestionDto, FormSectionDto } from '../../../../types/formSchema';
 import type { ActivityFormState, ActivityFormAction } from '../../../../views/Activities/reducer';
-import { ACTIVITY_NAME_QUESTION } from '../../../../views/Activities/display';
+import { ACTIVITY_NAME_HINT, ACTIVITY_NAME_QUESTION } from '../../../../views/Activities/display';
 
 interface Props {
   section: FormSectionDto;
@@ -10,28 +10,20 @@ interface Props {
   state: ActivityFormState;
   dispatch: React.Dispatch<ActivityFormAction>;
   showNameField?: boolean;
-  // The selected type-of-work label (or custom "Other" text) — interpolated into the name-field hint.
-  selectedTypeName?: string;
 }
 
 // Renders one category-scoped form section's questions as a step in the activity wizard. The section title is
 // rendered as the page heading by the wizard host; this body renders the optional description + the questions.
 // Conditional reveal and active-question filtering are handled by GovUKDynamicQuestionRenderer.
-const StepDynamicSection = ({ section, questions, state, dispatch, showNameField = false, selectedTypeName }: Props): React.ReactElement => {
+// The one remaining piece of seed copy patched here: typographic apostrophes and percent signs the Form Designer
+// cannot express. The label and hint overrides that used to sit alongside them were removed with BLUM-7620 — the
+// seed now carries the protocol's own wording, and an override would silently mask it.
+const StepDynamicSection = ({ section, questions, state, dispatch, showNameField = false }: Props): React.ReactElement => {
   const activeQuestions = questions
     .filter((question) => question.isActive)
     .map((question) => ({
       ...question,
-      label:
-        question.code.endsWith('_RELATED_ISSUES_OTHER')
-          ? 'What else will the activity address?'
-          : question.code === 'PR_FUNDING_TIME'
-            ? question.label.replace("staff member's", 'staff member’s')
-            : question.label,
-      hint:
-        section.title === 'Additional information' && question.code.endsWith('_PLAN')
-          ? "Use this space to add any other information about your approach and the steps you'll take"
-          : question.hint,
+      label: question.code === 'PR_FUNDING_TIME' ? question.label.replace("staff member's", 'staff member’s') : question.label,
       options:
         question.code === 'PR_FUNDING_TIME'
           ? question.options.map((option) => ({
@@ -40,14 +32,6 @@ const StepDynamicSection = ({ section, questions, state, dispatch, showNameField
             }))
           : question.options,
     }));
-  const nameHint = selectedTypeName ? (
-    <>
-      If you do not enter a name, we’ll use the type of work you selected:
-      <span className="govuk-!-display-block">{selectedTypeName}</span>
-    </>
-  ) : (
-    'If you do not enter a name, we’ll use the type of work you selected'
-  );
 
   return (
     <>
@@ -59,7 +43,7 @@ const StepDynamicSection = ({ section, questions, state, dispatch, showNameField
           testId="activities-details-activity-name"
           label={ACTIVITY_NAME_QUESTION}
           labelSize="m"
-          hint={nameHint}
+          hint={ACTIVITY_NAME_HINT}
           value={state.title}
           error={state.errors['activity-name']}
           onChange={(e) => dispatch({ type: 'SET_TITLE', value: e.target.value })}

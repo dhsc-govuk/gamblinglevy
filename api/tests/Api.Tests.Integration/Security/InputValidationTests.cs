@@ -462,7 +462,8 @@ public class InputValidationTests(IntegrationTestWebFactory factory)
             + Field("region", region) + Comma
             + Field("type", OrgTypes.LocalAuthority) + Comma
             + Field("eCode", "E1000099") + Comma
-            + RawField("allocatedAmount", allocatedAmount)
+            + RawField("allocatedAmount", allocatedAmount) + Comma
+            + RawField("activateImmediately", "true")
             + extra
             + CloseBrace;
     }
@@ -475,7 +476,8 @@ public class InputValidationTests(IntegrationTestWebFactory factory)
             Region: "London",
             Type: OrgTypes.LocalAuthority,
             ECode: "E1000099",
-            AllocatedAmount: 250000m);
+            AllocatedAmount: 250000m,
+            ActivateImmediately: true);
     }
 
     private Task<HttpResponseMessage> PostJsonAsync(string route, string json)

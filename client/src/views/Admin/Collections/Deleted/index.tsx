@@ -1,6 +1,6 @@
 import React from 'react';
 import { PageLoading } from '../../../../components/GovUKComponents';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { ManagementLayout } from '../../../../layouts';
 import { GovUKInsetText, GovUKNotificationBanner, H1, Paragraph } from '../../../../components/GovUKComponents';
@@ -19,7 +19,7 @@ const CollectionsDeleted = (): React.ReactElement => {
   const banner = ((location.state as BannerState | null) ?? {}).banner;
   const hasRestoredBanner = banner?.title === 'Data collection restored';
 
-  const { data, isLoading } = useQuery(collectionsDeletedKey, getDeletedCollections);
+  const { data, isLoading } = useQuery({ queryKey: collectionsDeletedKey, queryFn: getDeletedCollections });
   const rows = data?.data ?? [];
 
   return (
@@ -30,7 +30,7 @@ const CollectionsDeleted = (): React.ReactElement => {
             <p className="govuk-body">
               {banner.body}
               {banner.link && (
-                <RouterLink to={banner.link.href} className="govuk-link">
+                <RouterLink to={banner.link.href} className="govuk-link" data-testid="admin-collections-deleted-banner-link">
                   {banner.link.label}
                 </RouterLink>
               )}

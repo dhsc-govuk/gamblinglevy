@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { PageLoading } from '../../../components/GovUKComponents';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Link as RouterLink } from 'react-router-dom';
 import { GeneralLayout } from '../../../layouts';
 import { GovUKTable, GovUKInsetText, Paragraph, type Column, type FilterOption } from '../../../components/GovUKComponents';
@@ -12,6 +12,8 @@ import { myReportCollectionsKey } from '../../../helpers/queriesParams';
 import { getMyReportCollections } from '../queries';
 import { formatGovUkDate, reportHistoryRows, typeLabel, LA_SUBMISSION_STATUS_LABEL, type ReportHistoryRow } from '../display';
 import { previousReportsBreadcrumbs } from '../navigation';
+import { REPORT_HISTORY_FILTERS } from './filter';
+import './styles.css';
 
 // Reporting period first, so an overdue row sits in date order alongside the submitted ones. Sorting by submission
 // date is kept as an option but cannot be the default: an overdue row has no submission date, and GovUKTable's
@@ -24,8 +26,6 @@ const sortOptions: FilterOption[] = [
   { value: 'displayName-asc', label: 'Name (A to Z)' },
   { value: 'displayName-desc', label: 'Name (Z to A)' },
 ];
-
-const typeFilterOptions: FilterOption[] = [{ value: 'quarterly_report', label: 'Quarterly report' }];
 
 // The design (Figma 420-80855) sized three columns at a third each of the 960px table. With the Status column added
 // for BLUM-7077 the explicit widths go to the three columns holding long content — Name, Type and the "31 December
@@ -65,20 +65,21 @@ const columns: Column<ReportHistoryRow>[] = [
 ];
 
 // LA report history (BLUM-6097). The caller's own finished reporting periods — submitted reports plus any window
-// that closed without a submission, which shows as Overdue (BLUM-7077) — with search, sort and type filter.
+// that closed without a submission, which shows as Overdue (BLUM-7077) — with search, sort and a type/status filter
+// (BLUM-9088).
 // Org-scoped server-side.
 const PreviousReports = (): React.ReactElement => {
   usePageTitle('Your reports');
   const { userRole } = useAuthProvider();
 
-  const { data, isLoading } = useQuery(myReportCollectionsKey, getMyReportCollections);
-  const rows = reportHistoryRows(data?.data ?? []);
+  const { data, isLoading } = useQuery({ queryKey: myReportCollectionsKey, queryFn: getMyReportCollections });
+  const rows = useMemo(() => reportHistoryRows(data?.data ?? []), [data]);
 
   return (
     // The design (Figma 420-80855) omits the beta phase banner, but that is now global chrome on every page per
     // BLUM-7060 AC1 (see BLUM-7102).
     <GeneralLayout breadcrumbs={previousReportsBreadcrumbs(userRole)}>
-      <div data-testid="la-reports-submitted-page">
+      <div className="la-report-history" data-testid="la-reports-submitted-page">
         {/* Heading sizes and the two-thirds intro column per the design (Figma 420-80855): 36px H1, 24px H2. */}
         <div className="govuk-grid-row">
           <div className="govuk-grid-column-two-thirds">
@@ -99,6 +100,7 @@ const PreviousReports = (): React.ReactElement => {
           </GovUKInsetText>
         ) : (
           <GovUKTable<ReportHistoryRow>
+            label="Report history"
             testId="la-reports-submitted"
             data={rows}
             columns={columns}
@@ -108,10 +110,10 @@ const PreviousReports = (): React.ReactElement => {
             searchField="displayName"
             sortOptions={sortOptions}
             sortLabel="Sort by"
-            filterOptions={typeFilterOptions}
-            filterLabel="Filter by type"
-            filterPlaceholder="Select type"
-            filterField="type"
+            filterOptions={REPORT_HISTORY_FILTERS}
+            filterLabel="Filter by"
+            filterPlaceholder="Select"
+            noResultsMessage="No reports match your search or filter."
           />
         )}
 

@@ -42,7 +42,8 @@ public class SubmissionActivityAnswer : IEntity<SubmissionActivityAnswerId>
         ActivityId activityId,
         string questionCode,
         string value,
-        UserId createdBy)
+        UserId createdBy,
+        DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(submissionId, nameof(submissionId));
@@ -57,6 +58,6 @@ public class SubmissionActivityAnswer : IEntity<SubmissionActivityAnswerId>
             questionCode.Trim(),
             value ?? string.Empty,
             createdBy,
-            DateTime.UtcNow);
+            utcNow);
     }
 }

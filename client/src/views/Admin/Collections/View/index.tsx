@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ManagementLayout } from '../../../../layouts';
 import {
   GovUKActionMenu,
@@ -59,9 +59,7 @@ const CollectionsView = (): React.ReactElement => {
   const location = useLocation();
   const banner = ((location.state as { banner?: { title: string; body: string } } | null) ?? {}).banner;
 
-  const { data, isLoading } = useQuery(collectionKey(collectionId), () => getCollection(collectionId), {
-    enabled: !!collectionId,
-  });
+  const { data, isLoading } = useQuery({ queryKey: collectionKey(collectionId), queryFn: () => getCollection(collectionId), enabled: !!collectionId });
   const c = data?.data;
 
   // The title must describe the page that is actually rendered, not the record that was requested: passing a falsy
@@ -175,15 +173,19 @@ const CollectionsView = (): React.ReactElement => {
     });
   }
 
-  // Card 5 — Automatic reminders (one row per reminder, or a single em-dash row when none).
+  // Card 5 — Automatic reminders (one row per reminder, or a single em-dash row when none). Row labels
+  // are "Reminder 1"/"Reminder 2" (or plain "Reminder" for a single one), matching the wizard's check-answers
+  // step and CollectionReminderBlock's own headings — not the question text, which gave every row the same
+  // label with no way to tell which answer belonged to which reminder.
+  const reminderRowLabel = (index: number): string => (c.reminders.length > 1 ? `Reminder ${index + 1}` : 'Reminder');
   const reminderItems =
     c.reminders.length > 0
       ? c.reminders.map((reminder, index) => ({
-          label: 'When do you want to send the reminder?',
+          label: reminderRowLabel(index),
           value: reminderLabel(reminder),
           testId: `admin-collections-view-reminders-row-${index}`,
         }))
-      : [{ label: 'When do you want to send the reminder?', value: '—' }];
+      : [{ label: 'Reminder', value: '—' }];
 
   // Card 6 — Record information.
   const createdValue = recordValue(c.createdBy, c.createdAt);

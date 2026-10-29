@@ -1,11 +1,22 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import { Box } from '@mui/material';
 import usePageTitle from '../../../hooks/usePageTitle';
 import { GovUKHeaderLogo } from '../../../components/Logos';
-import { GovUKBreadcrumbs, GovUKButton, GovUKFieldset, GovUKNotificationBanner, GovUKSkipLink, GovUKTable, H1, H2, Paragraph } from '../../../components/GovUKComponents';
+import {
+  GovUKBreadcrumbs,
+  GovUKButton,
+  GovUKFieldset,
+  GovUKNotificationBanner,
+  GovUKNotificationDisplay,
+  GovUKSkipLink,
+  GovUKTable,
+  H1,
+  H2,
+  Paragraph,
+  useGovUKNotification,
+} from '../../../components/GovUKComponents';
 import type { Column } from '../../../components/GovUKComponents';
 import { homeLinkForRole, useAuthProvider } from '../../../components/AuthProvider';
-import { Header, HeaderContainer, govukWhite } from '../../../layouts/General/LayoutHeader/styles';
+import HeaderBar from '../../../layouts/General/LayoutHeader/HeaderBar';
 import LayoutFooter from '../../../layouts/General/LayoutFooter';
 import { getCookiePreferences, saveCookiePreferences, type CookiePreferences } from '../../../helpers/cookiePolicy';
 import './styles.css';
@@ -63,6 +74,7 @@ const Cookies = (): React.ReactElement => {
   const [preferences, setPreferences] = useState<CookiePreferences>(() => getCookiePreferences());
   const bannerRef = useRef<HTMLDivElement>(null);
   const { userRole } = useAuthProvider();
+  const { setNotification } = useGovUKNotification();
 
   usePageTitle('Cookies');
 
@@ -77,6 +89,10 @@ const Cookies = (): React.ReactElement => {
   const handleSave = (event: React.FormEvent) => {
     event.preventDefault();
     saveCookiePreferences(preferences);
+    // Retire any confirmation carried in from another page first. Since this page started rendering
+    // GovUKNotificationDisplay, arriving with one (a draft saved on the way out of the activity wizard) and
+    // then saving here would stack two role="alert" success banners, and focus would move to the lower one.
+    setNotification(null);
     setSaveCount((count) => count + 1);
   };
 
@@ -84,24 +100,31 @@ const Cookies = (): React.ReactElement => {
     <div data-testid="public-cookies">
       <GovUKSkipLink />
 
-      {/* Standard GOV.UK blue header bar (reusing the app's Header styles), but without the sign-out link
-          or the service-navigation bar — this is a public informational page, not an app surface. */}
-      <Box component="header" role="banner">
-        <Header>
-          <HeaderContainer sx={{ display: 'flex', alignItems: 'center' }}>
-            <a href={baseUrl} className="govuk-header__link govuk-header__link--homepage" style={{ color: govukWhite, textDecoration: 'none' }}>
-              <GovUKHeaderLogo />
-            </a>
-          </HeaderContainer>
-        </Header>
-      </Box>
+      {/* The app's blue header bar, but without the sign-out link or the service-navigation bar — this is a
+          public informational page, not an app surface. */}
+      <header role="banner" data-testid="public-cookies-header">
+        <HeaderBar>
+          {/* Classes and the absence of an inline colour are load-bearing — see the crown link in
+                layouts/General/LayoutHeader for the full reasoning (BLUM-6386). */}
+          <a href={baseUrl} className="govuk-header__homepage-link govuk-link--inverse" data-testid="public-cookies-header-home-link">
+            <GovUKHeaderLogo />
+          </a>
+        </HeaderBar>
+      </header>
 
-      <Box component="main" className="govuk-main-wrapper" id="main-content" role="main">
+      <main className="govuk-main-wrapper" id="main-content" role="main">
         <div className="govuk-width-container">
           <GovUKBreadcrumbs items={[{ label: 'Home', href: homeLinkForRole(userRole) }]} />
 
           <div className="govuk-grid-row">
             <div className="govuk-grid-column-two-thirds">
+              {/* The app-wide notification surface. These two public pages build their own chrome rather than
+                  rendering GeneralLayout, so they do not get the GovUKNotificationDisplay in layouts/General/Content
+                  — and they became reachable mid-flow when BLUM-7831 started intercepting the footer's internal
+                  links. Without this mount, a draft saved on the way here shows no confirmation at all and the
+                  notification then flashes on the next page that does render the display. */}
+              <GovUKNotificationDisplay />
+
               {saveCount > 0 && (
                 <div ref={bannerRef} tabIndex={-1} className="public-cookies__banner">
                   <GovUKNotificationBanner type="success" title="Your cookie settings were saved" testId="public-cookies-saved-banner">
@@ -153,6 +176,7 @@ const Cookies = (): React.ReactElement => {
                 use them.
               </Paragraph>
               <GovUKTable<CookieRow>
+                label="Strictly necessary cookies"
                 testId="public-cookies-essential-table"
                 data={essentialCookies}
                 columns={cookieColumns}
@@ -162,7 +186,7 @@ const Cookies = (): React.ReactElement => {
             </div>
           </div>
         </div>
-      </Box>
+      </main>
 
       <LayoutFooter />
     </div>

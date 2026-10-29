@@ -42,6 +42,13 @@ public class ActivityAnswersInvalidException(ActivityId id, IReadOnlyList<Answer
 public class ActivityExpectedResultsInvalidException(ActivityId id, string reason)
     : ActivityException(id, reason);
 
+// The activity name became mandatory on completion in the 13 August Question Protocol (BLUM-7620). Its own
+// exception (rather than a FluentValidation rule) because the rule is category-dependent — People-and-roles
+// records are named by their role type and never collect a name — and the category name has to be resolved
+// from the database to know that.
+public class ActivityNameRequiredException(ActivityId id, string reason)
+    : ActivityException(id, reason);
+
 public class ActivityForbiddenException(ActivityId id, string message)
     : ActivityException(id, message);
 

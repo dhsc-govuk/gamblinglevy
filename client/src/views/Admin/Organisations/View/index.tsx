@@ -1,14 +1,17 @@
 import React from 'react';
+import { composeTestId } from '../../../../helpers/testIds';
 import { PageLoading } from '../../../../components/GovUKComponents';
 import { useNavigate, useParams, useLocation, Link as RouterLink } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ManagementLayout } from '../../../../layouts';
 import { GovUKActionMenu, GovUKNotificationBanner, GovUKSummaryCard, GovUKTable, H1, H2, NameLink, SummaryList, type Column } from '../../../../components/GovUKComponents';
 import { ROLE_LABELS } from '../../../../components/AuthProvider';
 import usePageTitle, { pageTitleWithName } from '../../../../hooks/usePageTitle';
 import { localAuthorityKey, organisationUsersListKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
+import { formatGBP } from '../../../../helpers/currency';
 import { getLocalAuthority } from '../queries';
+import { displayOrganisationStatus } from '../display';
 import { getOrganisationUserList } from '../../../../components/Global/OrganisationUsers/api';
 import './styles.css';
 
@@ -23,13 +26,9 @@ interface OrganisationUserRow {
   status: string;
 }
 
-const formatAllocation = (amount: number | null) => (amount === null ? '—' : `£${amount.toLocaleString('en-GB', { maximumFractionDigits: 2 })}`);
-
 const sentenceCase = (value: string) => (value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : value);
 
 const canReactivateStatus = (status: string) => status === 'suspended' || status === 'deactivated';
-
-const displayOrganisationStatus = (status: string) => (canReactivateStatus(status) ? 'Deactivated' : sentenceCase(status));
 
 const formatDateTime = (iso: string | null) => {
   if (!iso) return '—';
@@ -48,10 +47,10 @@ const LocalAuthoritiesView = (): React.ReactElement => {
   const location = useLocation();
   const banner = ((location.state as BannerState | null) ?? {}).banner;
 
-  const { data, isLoading } = useQuery(localAuthorityKey(organisationId), () => getLocalAuthority(organisationId), {
-    enabled: !!organisationId,
-  });
-  const { data: usersData, isLoading: isLoadingUsers } = useQuery(organisationUsersListKey(organisationId), () => getOrganisationUserList(organisationId), {
+  const { data, isLoading } = useQuery({ queryKey: localAuthorityKey(organisationId), queryFn: () => getLocalAuthority(organisationId), enabled: !!organisationId });
+  const { data: usersData, isLoading: isLoadingUsers } = useQuery({
+    queryKey: organisationUsersListKey(organisationId),
+    queryFn: () => getOrganisationUserList(organisationId),
     enabled: !!organisationId,
   });
 
@@ -82,7 +81,13 @@ const LocalAuthoritiesView = (): React.ReactElement => {
     {
       key: 'name',
       header: 'Name',
-      render: (user) => <NameLink name={user.name} href={ROUTES.admin.organisations.user(organisationId, user.id)} />,
+      render: (user) => (
+        <NameLink
+          name={user.name}
+          href={ROUTES.admin.organisations.user(organisationId, user.id)}
+          testId={composeTestId('admin-local-authorities-view-users-table', 'row', user.id, 'name-link')}
+        />
+      ),
     },
     { key: 'role', header: 'Role' },
     {
@@ -135,12 +140,24 @@ const LocalAuthoritiesView = (): React.ReactElement => {
                   { label: 'Region', value: org.region },
                   { label: 'Type', value: org.type },
                   { label: 'E-code', value: org.eCode || '—' },
+                  // One row per allocation, each naming its financial year (BLUM-7608). Before this the single
+                  // row showed a bare amount: the year was rendered only when the API supplied it, and it never
+                  // did, so the figure on screen did not say which year it belonged to.
                   {
                     label: 'Annual allocation',
                     value: (
                       <>
-                        {formatAllocation(org.allocatedAmount)}
+                        {formatGBP(org.allocatedAmount)}
                         {org.fundingFinancialYear && <span className="organisations-view-page__muted"> ({org.fundingFinancialYear})</span>}
+                      </>
+                    ),
+                  },
+                  {
+                    label: 'Annual allocation (upcoming year)',
+                    value: (
+                      <>
+                        {formatGBP(org.nextYearAllocatedAmount)}
+                        {org.nextYearFinancialYear && <span className="organisations-view-page__muted"> ({org.nextYearFinancialYear})</span>}
                       </>
                     ),
                   },
@@ -154,7 +171,7 @@ const LocalAuthoritiesView = (): React.ReactElement => {
               actions={[
                 {
                   label: 'Edit',
-                  onClick: () => navigate(ROUTES.admin.organisations.edit(org.id)),
+                  onClick: () => navigate(ROUTES.admin.organisations.editContacts(org.id)),
                   visuallyHiddenText: 'contacts',
                   testId: 'admin-local-authorities-view-edit-contacts',
                 },
@@ -172,7 +189,7 @@ const LocalAuthoritiesView = (): React.ReactElement => {
                               {user.firstName} {user.lastName}
                             </span>
                             <span className="organisations-view-page__muted">{ROLE_LABELS[user.role] ?? user.role}</span>
-                            <a href={`mailto:${user.email}`} className="govuk-link">
+                            <a href={`mailto:${user.email}`} className="govuk-link" data-testid={composeTestId('admin-local-authorities-view', 'contact', index + 1, 'email')}>
                               {user.email}
                             </a>
                           </span>
@@ -221,6 +238,7 @@ const LocalAuthoritiesView = (): React.ReactElement => {
               <div className="govuk-inset-text">You have not added any users for this organisation. When you add a user, their details will be listed on this page.</div>
             ) : (
               <GovUKTable<OrganisationUserRow>
+                label="Users"
                 testId="admin-local-authorities-view-users-table"
                 data={userRows}
                 columns={userColumns}

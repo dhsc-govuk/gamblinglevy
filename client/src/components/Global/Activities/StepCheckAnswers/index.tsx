@@ -10,10 +10,12 @@ import {
   activityCopy,
   activityTypeDisplayName,
   CATEGORY_QUESTION,
+  EXPECTED_RESULTS_QUESTION,
+  OTHER_MEASURE_LABEL,
   formatStartDate,
   isOtherType,
   keyResultsForTask,
-  keyResultsQuestionLabel,
+  measureRowLabel,
   STATUS_LABELS,
 } from '../../../../views/Activities/display';
 
@@ -32,7 +34,14 @@ interface Props {
   categoryStepIndex: number | null;
   typeStepIndex: number | null;
   expectedResultsStepIndex: number | null;
-  statusStepIndex: number;
+  // Null where there is no status step to change (a fixed status).
+  statusStepIndex: number | null;
+  // False for a category offering exactly one activity type: the user was never asked, so summarising an answer
+  // they did not give — and repeating the category name a second time — is noise (BLUM-7860).
+  showTypeCard?: boolean;
+  // True where the status is fixed rather than chosen (forcedActivityStatus): the card then shows the status
+  // read-only — no Change link and no start date, neither of which was asked (BLUM-8090).
+  statusLocked?: boolean;
   additionalInformationPlacement?: 'before-status' | 'after-status';
   onChange: (step: number) => void;
 }
@@ -46,6 +55,8 @@ const StepCheckAnswers = ({
   typeStepIndex,
   expectedResultsStepIndex,
   statusStepIndex,
+  showTypeCard = true,
+  statusLocked = false,
   additionalInformationPlacement = 'after-status',
   onChange,
 }: Props): React.ReactElement => {
@@ -62,12 +73,12 @@ const StepCheckAnswers = ({
   const expectedResultItems = hasStandardKeyResultOptions
     ? [
         {
-          label: keyResultsQuestionLabel(true),
+          label: EXPECTED_RESULTS_QUESTION,
           value: inlineAnswer([...standardKeyResults, ...(customKeyResults.length > 0 ? ['Other'] : [])]),
         },
-        ...(customKeyResults.length > 0 ? [{ label: 'What other result will you use?', value: inlineAnswer(customKeyResults) }] : []),
+        ...(customKeyResults.length > 0 ? [{ label: OTHER_MEASURE_LABEL, value: inlineAnswer(customKeyResults) }] : []),
       ]
-    : customKeyResults.map((value, index) => ({ label: `Key result ${index + 1}`, value }));
+    : customKeyResults.map((value, index) => ({ label: measureRowLabel(index), value }));
   const startDisplay = formatStartDate(state.startMonth, state.startYear) ?? 'Not provided';
 
   const typeItems = [{ label: copy.typeQuestion, value: taskName }];
@@ -76,8 +87,11 @@ const StepCheckAnswers = ({
   }
 
   const statusItems = [{ label: copy.statusQuestion, value: state.status ? STATUS_LABELS[state.status as keyof typeof STATUS_LABELS] : 'Not provided' }];
-  if (state.status === 'active') {
+  if (!statusLocked && state.status === 'active') {
     statusItems.push({ label: copy.startQuestion, value: startDisplay });
+  }
+  if (!statusLocked && state.status === 'closed') {
+    statusItems.push({ label: copy.closureQuestion, value: state.closureReason.trim() || 'Not provided' });
   }
 
   const renderAnswerSection = ({ section, questions, stepIndex, showNameField }: AnswerSection): React.ReactNode => {
@@ -126,12 +140,14 @@ const StepCheckAnswers = ({
         <SummaryList halfWidthColumns items={[{ label: CATEGORY_QUESTION, value: categoryName }]} />
       </GovUKSummaryCard>
 
-      <GovUKSummaryCard
-        title={copy.typeTitle}
-        testId="activities-check-type"
-        actions={typeStepIndex !== null ? [{ label: 'Change', onClick: () => onChange(typeStepIndex), visuallyHiddenText: 'activity type' }] : []}>
-        <SummaryList halfWidthColumns items={typeItems} />
-      </GovUKSummaryCard>
+      {showTypeCard && (
+        <GovUKSummaryCard
+          title={copy.typeTitle}
+          testId="activities-check-type"
+          actions={typeStepIndex !== null ? [{ label: 'Change', onClick: () => onChange(typeStepIndex), visuallyHiddenText: 'activity type' }] : []}>
+          <SummaryList halfWidthColumns items={typeItems} />
+        </GovUKSummaryCard>
+      )}
 
       {detailSections.map(renderAnswerSection)}
 
@@ -140,7 +156,7 @@ const StepCheckAnswers = ({
           title="Expected results"
           testId="activities-check-expected-results"
           actions={[{ label: 'Change', onClick: () => onChange(expectedResultsStepIndex), visuallyHiddenText: 'expected results' }]}>
-          <SummaryList halfWidthColumns items={expectedResultItems} />
+          <SummaryList halfWidthColumns testId="activities-check-expected-results-answers" items={expectedResultItems} />
         </GovUKSummaryCard>
       )}
 
@@ -149,8 +165,8 @@ const StepCheckAnswers = ({
       <GovUKSummaryCard
         title={copy.statusTitle}
         testId="activities-check-status"
-        actions={[{ label: 'Change', onClick: () => onChange(statusStepIndex), visuallyHiddenText: 'activity status' }]}>
-        <SummaryList halfWidthColumns items={statusItems} />
+        actions={statusStepIndex !== null ? [{ label: 'Change', onClick: () => onChange(statusStepIndex), visuallyHiddenText: 'activity status' }] : []}>
+        <SummaryList halfWidthColumns testId="activities-check-status-answers" items={statusItems} />
       </GovUKSummaryCard>
 
       {additionalInformationPlacement === 'after-status' && additionalInformationSections.map(renderAnswerSection)}

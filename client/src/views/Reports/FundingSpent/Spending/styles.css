@@ -39,7 +39,7 @@
   margin-bottom: 30px;
 }
 
-.reports-funding-spending__header > .govuk-body {
+.reports-funding-spending__header > .govuk-inset-text {
   margin-bottom: 20px;
 }
 
@@ -63,6 +63,12 @@
   gap: 15px;
 }
 
+.reports-funding-spending__other {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
 .reports-funding-spending__activity-heading .govuk-caption-m,
 .reports-funding-spending__activity-heading .govuk-heading-l {
   margin: 0;
@@ -79,7 +85,22 @@
   line-height: 30px;
 }
 
+.reports-funding-spending__other-heading .govuk-heading-l,
+.reports-funding-spending__other-heading .govuk-body {
+  margin: 0;
+}
+
+.reports-funding-spending__other-heading .govuk-heading-l {
+  font-size: 24px;
+  line-height: 30px;
+}
+
+.reports-funding-spending__other-heading .govuk-body {
+  color: #505a5f;
+}
+
 .reports-funding-spending__activity > .govuk-inset-text,
+.reports-funding-spending__other > .govuk-inset-text,
 .reports-funding-spending__summary {
   box-sizing: border-box;
   width: 630px;
@@ -132,6 +153,12 @@
 }
 
 @media (min-width: 641px) {
+  /* See the matching rule on the Check screen: last row, matched by position, desktop only. */
+  .reports-funding-spending__summary .govuk-summary-list__row:last-child .govuk-summary-list__key,
+  .reports-funding-spending__summary .govuk-summary-list__row:last-child .govuk-summary-list__value {
+    border-top: 2px solid #b1b4b6;
+  }
+
   .reports-funding-spending__header .govuk-caption-l {
     font-size: 24px;
     line-height: 30px;

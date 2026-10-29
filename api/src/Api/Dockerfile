@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y libgssapi-krb5-2 && rm -rf /var/lib/apt
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
+# The csproj files carry no package versions; without this file the restore below fails.
+COPY ["Directory.Packages.props", "./"]
 COPY ["src/Api/Api.csproj", "src/Api/"]
 COPY ["src/Application/Application.csproj", "src/Application/"]
 COPY ["src/Domain/Domain.csproj", "src/Domain/"]

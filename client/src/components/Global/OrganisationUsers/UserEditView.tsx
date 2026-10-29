@@ -1,19 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { httpMessageOf, httpStatusOf } from '../../../helpers/httpErrors';
 import { GeneralLayout } from '../../../layouts';
-import {
-  GovUKFieldset,
-  GovUKButton,
-  ErrorSummary,
-  H1,
-} from '../../GovUKComponents';
-import {
-  ROLE_LABELS,
-  laAdminAssignableRoles,
-} from '../../AuthProvider';
+import { GovUKFieldset, GovUKButton, ErrorSummary, H1 } from '../../GovUKComponents';
+import { ROLE_LABELS, laAdminAssignableRoles } from '../../AuthProvider';
 import usePageTitle from '../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../hooks/useErrorSummaryFocus';
 import { organisationUserKey, organisationUsersListKey } from '../../../helpers/queriesParams';
 import { validateEmailAddress } from '../../../helpers/validators';
 import { getOrganisationUser, updateOrganisationUser } from './api';
@@ -43,16 +35,7 @@ export interface UserEditViewProps {
   testIdPrefix: string;
 }
 
-const UserEditView = ({
-  organisationId,
-  userId,
-  pageTitle,
-  heading,
-  breadcrumbs,
-  backLinkHref,
-  successNavigateHref,
-  testIdPrefix,
-}: UserEditViewProps): React.ReactElement => {
+const UserEditView = ({ organisationId, userId, pageTitle, heading, breadcrumbs, backLinkHref, successNavigateHref, testIdPrefix }: UserEditViewProps): React.ReactElement => {
   usePageTitle(pageTitle);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -65,11 +48,11 @@ const UserEditView = ({
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitAttempts, setSubmitAttempts] = useState(0);
 
-  const { data, isLoading } = useQuery(
-    organisationUserKey(organisationId, userId),
-    () => getOrganisationUser(organisationId, userId),
-    { enabled: !!organisationId && !!userId },
-  );
+  const { data, isLoading } = useQuery({
+    queryKey: organisationUserKey(organisationId, userId),
+    queryFn: () => getOrganisationUser(organisationId, userId),
+    enabled: !!organisationId && !!userId,
+  });
 
   useEffect(() => {
     if (data?.data) {
@@ -81,34 +64,31 @@ const UserEditView = ({
     }
   }, [data]);
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
-
-  const { mutate, isLoading: isSaving } = useMutation(
-    () => updateOrganisationUser(organisationId, {
-      id: userId,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      email: email.trim().toLowerCase(),
-      role,
-      status,
-    }),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(organisationUsersListKey(organisationId));
-        queryClient.invalidateQueries(organisationUserKey(organisationId, userId));
-        navigate(successNavigateHref);
-      },
-      onError: (error: any) => {
-        const httpStatus = error?.response?.status;
-        const message = error?.response?.data?.toString() ?? 'Could not update the user. Try again.';
-        if (httpStatus === 409) {
-          setErrors({ email: 'A user with this email address already exists.' });
-        } else {
-          setErrors({ submit: message });
-        }
-      },
+  const { mutate, isPending: isSaving } = useMutation({
+    mutationFn: () =>
+      updateOrganisationUser(organisationId, {
+        id: userId,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim().toLowerCase(),
+        role,
+        status,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: organisationUsersListKey(organisationId) });
+      queryClient.invalidateQueries({ queryKey: organisationUserKey(organisationId, userId) });
+      navigate(successNavigateHref);
     },
-  );
+    onError: (error) => {
+      const httpStatus = httpStatusOf(error);
+      const message = httpMessageOf(error) ?? 'Could not update the user. Try again.';
+      if (httpStatus === 409) {
+        setErrors({ email: 'A user with this email address already exists.' });
+      } else {
+        setErrors({ submit: message });
+      }
+    },
+  });
 
   const validate = (): FormErrors => {
     const next: FormErrors = {};
@@ -117,7 +97,7 @@ const UserEditView = ({
     if (!email.trim()) {
       next.email = 'Enter the user’s email address';
     } else if (!validateEmailAddress(email.trim())) {
-      next.email = 'Enter a valid email address';
+      next.email = 'Enter an email address in the correct format, like name@example.com';
     }
     if (!role) next.role = 'Select a role for the user';
     return next;
@@ -139,9 +119,7 @@ const UserEditView = ({
   return (
     <GeneralLayout breadcrumbs={breadcrumbs} backLink={{ href: backLinkHref }}>
       <div style={{ paddingTop: '20px' }}>
-        {errorList.length > 0 && (
-          <ErrorSummary heading="There is a problem" errors={errorList} />
-        )}
+        <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
         <H1>{heading}</H1>
 
@@ -181,23 +159,9 @@ const UserEditView = ({
               autoComplete="email"
               required
             />
-            <GovUKFieldset.Select
-              id="role"
-              name="role"
-              label="Role"
-              value={role}
-              options={roleOptions}
-              onChange={(e) => setRole(e.target.value)}
-              error={errors.role}
-              required
-            />
+            <GovUKFieldset.Select id="role" name="role" label="Role" value={role} options={roleOptions} onChange={(e) => setRole(e.target.value)} error={errors.role} required />
 
-            <GovUKButton
-              type="submit"
-              isLoading={isSaving}
-              disabled={isSaving}
-              data-testid={`${testIdPrefix}-edit-submit`}
-            >
+            <GovUKButton type="submit" isLoading={isSaving} disabled={isSaving} data-testid={`${testIdPrefix}-edit-submit`}>
               Save changes
             </GovUKButton>
           </form>

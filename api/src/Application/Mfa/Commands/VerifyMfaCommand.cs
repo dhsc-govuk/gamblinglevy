@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Settings;
@@ -25,6 +26,8 @@ public class VerifyMfaCommandHandler(
     IAuditLogRepository auditLogRepository,
     MfaAttemptGate attemptGate,
     MfaFailureRecorder failureRecorder,
+    IDateTimeProvider dateTimeProvider,
+    ITransactionRunner transactionRunner,
     ApplicationSettings settings)
     : IRequestHandler<VerifyMfaCommand, Either<MfaException, MfaVerifyResponseDto>>
 {
@@ -54,14 +57,16 @@ public class VerifyMfaCommandHandler(
 
     private Either<MfaException, UserMfa> ValidateNotLockedOut(UserMfa mfa, UserId userId)
     {
-        return mfa.IsLockedOut()
-            ? new MfaLockedOutException(userId, mfa.LockedUntil!.Value, RetryAfterSeconds(mfa))
+        var utcNow = dateTimeProvider.GetUtcNow();
+
+        return mfa.IsLockedOut(utcNow)
+            ? new MfaLockedOutException(userId, mfa.LockedUntil!.Value, RetryAfterSeconds(mfa, utcNow))
             : mfa;
     }
 
-    private int RetryAfterSeconds(UserMfa mfa)
+    private int RetryAfterSeconds(UserMfa mfa, DateTime utcNow)
     {
-        return MfaRetryAfter.Seconds(mfa.LockedUntil, DateTime.UtcNow, settings.Mfa.LockoutMinutes * 60);
+        return MfaRetryAfter.Seconds(mfa.LockedUntil, utcNow, settings.Mfa.LockoutMinutes * 60);
     }
 
     private async Task<Either<MfaException, MfaVerifyResponseDto>> ValidateAndVerifyAsync(
@@ -89,7 +94,18 @@ public class VerifyMfaCommandHandler(
             return await RecordFailedAttemptAsync(request, mfa, cancellationToken);
         }
 
-        var secret = encryptionService.Decrypt(mfa.EncryptedSecret);
+        string secret;
+        try
+        {
+            secret = encryptionService.Decrypt(mfa.EncryptedSecret);
+        }
+        catch (CryptographicException ex)
+        {
+            // A lost or rotated Data Protection key (see IMfaEncryptionService.Decrypt) would otherwise
+            // surface as an unhandled 500 with no MFA_* envelope — UnhandledExceptionBehaviour rethrows
+            // anything that is not part of this handler's Either.
+            return new MfaUnknownException(request.UserId, ex);
+        }
 
         if (!totpService.ValidateCode(secret, request.Code))
         {
@@ -97,11 +113,18 @@ public class VerifyMfaCommandHandler(
         }
 
         rateLimitService.ResetAttempts(request.UserId);
-        mfa.ResetFailedAttempts();
-        await userMfaRepository.UpdateAsync(mfa, cancellationToken);
 
-        await auditLogRepository.AppendAsync(
-            AuditLog.Create(request.UserId, AuditTargetType.User, request.UserId.Value, AuditAction.MfaVerifySucceeded, before: null, after: null),
+        // The counter reset and its audit row commit together (BLUM-8748); the session is created once they have.
+        await transactionRunner.RunAsync(
+            async token =>
+            {
+                mfa.ResetFailedAttempts(dateTimeProvider.GetUtcNow());
+                await userMfaRepository.UpdateAsync(mfa, token);
+
+                await auditLogRepository.AppendAsync(
+                    AuditLog.Create(request.UserId, AuditTargetType.User, request.UserId.Value, AuditAction.MfaVerifySucceeded, before: null, after: null),
+                    token);
+            },
             cancellationToken);
 
         var session = await sessionService.CreateSessionAsync(

@@ -1,0 +1,66 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title C3 - Component Diagram - Gambling Levy API
+
+Container(webApp, "Gambling Levy Web App", "React 18 (Vite) SPA", "Calls the API with a Bearer JWT (MSAL) plus the MFA session cookie issued after the in-platform TOTP challenge.")
+
+Container_Boundary(api, "Gambling Levy API (.NET 10 / ASP.NET Core)") {
+
+    Boundary(presentation, "Api layer") {
+        Component(middleware, "Middleware Pipeline", "ASP.NET Core middleware", "Load-bearing order: CORS -> Routing -> Rate Limiting -> Validation Exception Handler -> Authentication -> Authorization -> Organisation Suspended -> MFA Required -> Application Insights Tracing. MFA Required refuses non-exempt requests without a valid MFA session.")
+        Component(rateLimiter, "Rate Limiter", "Hand-written (Api/Middleware)", "Per-IP / per-route fixed-window limiter. Hand-written because Microsoft.AspNetCore.RateLimiting has no success-path hook to set RateLimit-* headers.")
+        Component(controllers, "Controllers", "ASP.NET Core MVC (16 controllers)", "Writes call ISender.Send(command); 9 of 16 also inject a Controller Service for reads, 4 are read-only via a Controller Service alone.")
+        Component(minimalEndpoints, "Minimal API Endpoints", "ApiEndpointsModule (MapApiEndpoints)", "A second routing surface alongside MapControllers(): / , /health , /uptime.")
+        Component(controllerServices, "Controller Services", "Api/Services/Implementation", "Assembles read-side DTOs from Read Queries; owns CSV/ZIP export composition (ReportSnapshotService, DHSC + LA submission exports).")
+    }
+
+    Boundary(appLayer, "Application + Domain layers") {
+        Component(mediatr, "MediatR Pipeline", "MediatR + FluentValidation", "~70 Commands/Handlers, one file per slice. ValidationBehaviour + UnhandledExceptionBehaviour pipeline behaviours run on every command.")
+        Component(queries, "Read Queries", "I{Aggregate}Queries interfaces", "One read interface per aggregate; the read side deliberately bypasses MediatR and is implemented directly in Infrastructure.")
+        Component(domain, "Domain Aggregates", "Plain C#, DDD-style entities", "Activities, AuditLogs, Categories, Collections, DataCollectionForms, Forms, Funding, KeyResults, Locations, LocationUsers, Organisations, OrganisationUsers, Submissions, Users.")
+        Component(permissions, "Permissions Service", "Application/Common/Permissions", "Resolves the caller's identity and organisation scope for authorisation and query filtering, rather than ad-hoc role comparisons.")
+        Component(csv, "CSV / ZIP Writer", "Application/Common/Csv", "RFC-4180 CSV with spreadsheet formula-injection neutralisation; shared by every export in the app.")
+    }
+
+    Boundary(infraLayer, "Infrastructure layer") {
+        Component(repositories, "EF Core Repositories", "Infrastructure/Persistence", "Implements Read Queries and I*Repository interfaces via RepositoryBase<T,TKey>; EFCore.NamingConventions (snake_case).")
+        Component(identityService, "Identity Service", "Infrastructure/Identity", "Microsoft Graph-backed CIAM user provisioning; ApplicationUserClaimsTransformation synthesises the role/org claims on every request.")
+        Component(mfaServices, "MFA Services", "Infrastructure/Mfa (Otp.NET)", "Application-managed RFC 6238 TOTP MFA: code validation, Data Protection-encrypted secrets, BCrypt-hashed recovery codes, MFA session cookie (30-min idle, 8-h cap), attempt limiting and lockout. Entra Conditional Access is not used.")
+        Component(emailService, "Email Service", "Infrastructure/Email (GOV.UK Notify)", "GOV.UK Notify-backed: InvitationEmailService, SubmissionConfirmationEmailService; a logging/no-op variant swaps in for non-production.")
+        Component(blobService, "Blob Service", "Infrastructure/Blob", "Azure Blob Storage client for uploaded attachments and generated export files.")
+        Component(telemetry, "Telemetry", "Microsoft.ApplicationInsights.AspNetCore", "The sole monitoring provider.")
+    }
+}
+
+ContainerDb(db, "Portal Database", "PostgreSQL", "Aggregates persisted via EF Core; snake_case naming convention.")
+ContainerDb(blobStorage, "Azure Blob Storage", "Storage Account", "Attachments and generated export documents.")
+System_Ext(entra, "Azure Entra External ID (CIAM)", "Issues Bearer JWTs; exposes JWKS for signature validation.")
+System_Ext(graph, "Microsoft Graph", "CIAM user provisioning API.")
+System_Ext(govNotify, "GOV.UK Notify", "Email delivery service.")
+System_Ext(appInsights, "Application Insights", "Metrics, exceptions, performance tracing.")
+
+Rel(webApp, middleware, "HTTPS/JSON, Bearer JWT")
+Rel(middleware, entra, "Validates JWT signature", "JWKS")
+Rel(middleware, controllers, "Routes matched requests to")
+Rel(middleware, minimalEndpoints, "Routes matched requests to")
+Rel(rateLimiter, middleware, "Runs after routing, before authentication")
+
+Rel(controllers, mediatr, "ISender.Send(command)", "writes")
+Rel(controllers, controllerServices, "reads")
+Rel(controllerServices, queries, "calls")
+Rel(controllerServices, csv, "builds export files via")
+Rel(mediatr, domain, "loads / mutates")
+Rel(mediatr, permissions, "resolves caller scope via")
+Rel(mediatr, repositories, "persists via")
+Rel(queries, repositories, "implemented by")
+
+Rel(repositories, db, "EF Core", "SQL")
+Rel(identityService, graph, "Provisions / looks up users", "HTTPS")
+Rel(middleware, mfaServices, "Validates MFA session via")
+Rel(mfaServices, repositories, "Persists MFA config and sessions via")
+Rel(emailService, govNotify, "Sends notifications", "HTTPS API")
+Rel(blobService, blobStorage, "Stores/retrieves documents", "HTTPS")
+Rel(telemetry, appInsights, "Reports metrics/traces", "HTTPS")
+
+@enduml

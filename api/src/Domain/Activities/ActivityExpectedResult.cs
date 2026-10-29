@@ -56,6 +56,7 @@ public class ActivityExpectedResult : IEntity<ActivityExpectedResultId>
         string text,
         int displayOrder,
         UserId createdBy,
+        DateTime utcNow,
         string? keyResultCode = null)
     {
         Guard.NotNull(id, nameof(id));
@@ -70,6 +71,6 @@ public class ActivityExpectedResult : IEntity<ActivityExpectedResultId>
             text.Trim(),
             displayOrder,
             createdBy,
-            DateTime.UtcNow);
+            utcNow);
     }
 }

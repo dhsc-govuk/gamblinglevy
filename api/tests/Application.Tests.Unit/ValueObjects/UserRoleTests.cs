@@ -17,8 +17,8 @@ public class UserRoleTests
         UserRole.SupportedRoleNames.Should().BeEquivalentTo(
             [Role.Admin, Role.OrganisationAdmin, Role.Lead],
             "adding or removing a role changes who can reach every [Authorize(Roles = ...)] endpoint; "
-            + "re-examine Role.AnyOrganisationMember, Role.UserManagers, AssignableRoles, the repository "
-            + "GetQuery role switches and UserProfileRepository before changing this");
+            + "re-examine Role.AnyOrganisationMember, Role.UserManagers, AssignableRoles, "
+            + "PermissionScopeExtensions.ScopedTo, LastActiveAdminGuard and UserProfileRepository before changing this");
     }
 
     [Theory]

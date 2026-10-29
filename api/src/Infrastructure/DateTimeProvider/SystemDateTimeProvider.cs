@@ -3,7 +3,8 @@
 namespace Infrastructure.DateTimeProvider;
 public class SystemDateTimeProvider : IDateTimeProvider
 {
-    public DateTime GetNow() => DateTime.Now;
-
+    // The one place the system clock is read. Everything else takes it from here, or as a utcNow parameter.
+#pragma warning disable RS0030
     public DateTime GetUtcNow() => DateTime.UtcNow;
+#pragma warning restore RS0030
 }

@@ -16,7 +16,9 @@ const StepReminders = ({ state, dispatch }: Props): React.ReactElement => {
 
   return (
     <>
-      <Paragraph>An email will be sent to all reporting organisations that have not yet submitted their information. You can add more than one reminder.</Paragraph>
+      <Paragraph>
+        An email will be sent to all reporting organisations that have not yet submitted their information. You must send at least one reminder. You can send more than one.
+      </Paragraph>
 
       {state.reminders.map((reminder, index) => (
         <CollectionReminderBlock

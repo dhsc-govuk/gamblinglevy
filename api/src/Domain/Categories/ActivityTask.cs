@@ -45,6 +45,7 @@ public class ActivityTask : IEntity<ActivityTaskId>
         string taskName,
         int sequenceOrder,
         UserId createdBy,
+        DateTime utcNow,
         string? description = null,
         bool isActive = true)
     {
@@ -53,6 +54,16 @@ public class ActivityTask : IEntity<ActivityTaskId>
         Guard.NotNullOrEmptyOrWhiteSpace(taskName, nameof(taskName));
         Guard.NotNull(createdBy, nameof(createdBy));
 
-        return new ActivityTask(id, categoryId, taskName.Trim(), description, sequenceOrder, isActive, createdBy, DateTime.UtcNow, null);
+        return new ActivityTask(id, categoryId, taskName.Trim(), description, sequenceOrder, isActive, createdBy, utcNow, null);
+    }
+
+    // The seeder's only edit to an existing type: it puts a category's catalogued types back in catalogue order
+    // after it has inserted one among them (BLUM-8749).
+    public void SetSequenceOrder(int sequenceOrder, DateTime utcNow)
+    {
+        Guard.GreaterThanOrEqual(sequenceOrder, 0, nameof(sequenceOrder));
+
+        SequenceOrder = sequenceOrder;
+        UpdatedAt = utcNow;
     }
 }

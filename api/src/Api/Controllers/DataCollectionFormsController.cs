@@ -1,6 +1,8 @@
+using Api.Common;
 using Api.Dtos;
 using Api.Modules.Errors;
 using Api.Services.Abstract;
+using Application.Common.Features;
 using Application.Common.Interfaces.Queries;
 using Application.DataCollectionForms.Commands;
 using Application.DataCollectionForms.Commands.CreateFormModule;
@@ -12,6 +14,8 @@ using Application.DataCollectionForms.Commands.DeleteFormSection;
 using Application.DataCollectionForms.Commands.PublishFormModule;
 using Application.DataCollectionForms.Commands.ReorderFormQuestions;
 using Application.DataCollectionForms.Commands.ReorderFormSections;
+using Application.DataCollectionForms.Commands.RestoreFormModuleVersion;
+using Application.DataCollectionForms.Commands.StartFormModuleDraft;
 using Application.DataCollectionForms.Commands.UpdateFormModule;
 using Application.DataCollectionForms.Commands.UpdateFormQuestion;
 using Application.DataCollectionForms.Commands.UpdateFormSection;
@@ -111,6 +115,72 @@ public class DataCollectionFormsController(
         CancellationToken cancellationToken)
     {
         var result = await sender.Send(new PublishFormModuleCommand { Id = moduleId }, cancellationToken);
+        return result.Match<ActionResult<FormModuleWithChildrenDto>>(
+            published => controllerService.ToDto(published.Module) with
+            {
+                LatestVersionNumber = published.LatestVersionNumber,
+                VersionCreated = published.LatestVersionNumber is null ? null : published.VersionCreated,
+            },
+            error => error.ToObjectResult());
+    }
+
+    // BLUM-9102: reopens a published module for editing; its published content is already kept as a version.
+    [HttpPost("modules/{moduleId:guid}/draft")]
+    [RequiresFeature(Feature.BLUM_9087)]
+    public async Task<ActionResult<FormModuleWithChildrenDto>> StartDraft(
+        [FromRoute] Guid moduleId,
+        CancellationToken cancellationToken)
+    {
+        var result = await sender.Send(new StartFormModuleDraftCommand { Id = moduleId }, cancellationToken);
+        return result.Match<ActionResult<FormModuleWithChildrenDto>>(
+            module => controllerService.ToDto(module),
+            error => error.ToObjectResult());
+    }
+
+    // BLUM-9102: the module's saved versions, newest first. An unknown module has none, so it lists nothing.
+    [HttpGet("modules/{moduleId:guid}/versions")]
+    [RequiresFeature(Feature.BLUM_9087)]
+    public async Task<ActionResult<IReadOnlyList<FormModuleVersionSummaryDto>>> ListVersions(
+        [FromRoute] Guid moduleId,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await controllerService.ListVersionsAsync(FormModuleId.From(moduleId), cancellationToken));
+    }
+
+    // BLUM-9086: the collections that use each of the module's versions, newest version first. Soft-deleted collections
+    // are left out. An unknown module has no versions, so it lists nothing.
+    [HttpGet("modules/{moduleId:guid}/versions/collections")]
+    [RequiresFeature(Feature.BLUM_9087)]
+    public async Task<ActionResult<IReadOnlyList<FormModuleVersionCollectionsDto>>> ListVersionCollections(
+        [FromRoute] Guid moduleId,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await controllerService.ListVersionCollectionsAsync(FormModuleId.From(moduleId), cancellationToken));
+    }
+
+    [HttpGet("modules/{moduleId:guid}/versions/{versionNumber:int}")]
+    [RequiresFeature(Feature.BLUM_9087)]
+    public async Task<ActionResult<FormModuleVersionDto>> GetVersion(
+        [FromRoute] Guid moduleId,
+        [FromRoute] int versionNumber,
+        CancellationToken cancellationToken)
+    {
+        var version = await controllerService.GetVersionAsync(FormModuleId.From(moduleId), versionNumber, cancellationToken);
+        return version.Match<ActionResult<FormModuleVersionDto>>(
+            dto => dto,
+            () => new FormModuleVersionNotFoundException(FormModuleId.From(moduleId), versionNumber).ToObjectResult());
+    }
+
+    // BLUM-9102: replaces the draft with what a saved version held (a published module is reopened first).
+    // Publishing it afterwards saves the next version; the restored version itself never changes.
+    [HttpPost("modules/{moduleId:guid}/versions/{versionNumber:int}/restore")]
+    [RequiresFeature(Feature.BLUM_9087)]
+    public async Task<ActionResult<FormModuleWithChildrenDto>> RestoreVersion(
+        [FromRoute] Guid moduleId,
+        [FromRoute] int versionNumber,
+        CancellationToken cancellationToken)
+    {
+        var result = await sender.Send(new RestoreFormModuleVersionCommand { ModuleId = moduleId, VersionNumber = versionNumber }, cancellationToken);
         return result.Match<ActionResult<FormModuleWithChildrenDto>>(
             module => controllerService.ToDto(module),
             error => error.ToObjectResult());

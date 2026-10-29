@@ -20,6 +20,7 @@ internal static class ActivitySnapshot
             isComplete = activity.IsComplete,
             startMonth = activity.StartMonth,
             startYear = activity.StartYear,
+            closureReason = activity.ClosureReason,
             isFlaggedForReview = activity.IsFlaggedForReview,
             deletedAt = activity.DeletedAt,
             expectedResults = expectedResults?.Select(r => new { r.KeyResultCode, r.Text, r.DisplayOrder }),

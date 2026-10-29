@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 
-const SERVICE_NAME = 'Share progress preventing gambling harms';
+// The user-facing service name. Also rendered by the sign-in journey's service banner (layouts/SignInJourney)
+// and in the MFA setup page's authenticator "Account name".
+export const SERVICE_NAME = 'Share progress preventing gambling harms';
 
 // A detail page's title must name the page, not just the record shown on it: "Local Authority" alone tells a
 // screen-reader user nothing about where they are (WCAG 2.2 SC 2.4.2, BLUM-7275). Centralised so the shape is

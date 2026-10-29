@@ -36,6 +36,7 @@
   margin-bottom: 30px;
 }
 
+.reports-key-results-questions--delivery .reports-key-results-questions__header > .govuk-inset-text,
 .reports-key-results-questions--delivery .reports-key-results-questions__header .govuk-body {
   margin-bottom: 20px;
 }

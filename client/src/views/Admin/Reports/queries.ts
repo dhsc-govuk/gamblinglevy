@@ -1,5 +1,6 @@
 import axios from 'axios';
-import type { CollectionStatus } from '../Collections/queries';
+import type { CollectionStatus, CollectionType } from '../Collections/queries';
+import type { MaturitySectionSummaryDto, MaturitySnapshotSectionDto } from '../../MaturityAssessment/queries';
 
 // DHSC submission visibility (BLUM-6095 / BLUM-6445). The reporting-windows list reuses the data-collections
 // summary endpoint (see ../Collections/queries getCollections); these reads add the per-window organisation
@@ -28,6 +29,10 @@ export interface CollectionSubmissionSummaryDto {
   reportingPeriodStart: string | null;
   reportingPeriodEnd: string | null;
   organisations: OrgSubmissionStatusDto[];
+  // The screen serves both submission flows (BLUM-7855 AC4): a maturity window has no quarter and is named by its
+  // financial year.
+  collectionType?: CollectionType | null;
+  financialYear?: string | null;
 }
 
 export interface OrgSubmissionDetailDto {
@@ -51,6 +56,15 @@ export interface OrgSubmissionDetailDto {
   quarter: number | null;
   reportingPeriodStart: string | null;
   reportingPeriodEnd: string | null;
+  // A maturity assessment is read inline (BLUM-7859 AC2): its per-section statuses, and — once submitted — the
+  // frozen snapshot. Null for a quarterly window.
+  collectionType?: CollectionType | null;
+  financialYear?: string | null;
+  maturitySections?: MaturitySectionSummaryDto[] | null;
+  maturitySnapshot?: MaturitySnapshotSectionDto[] | null;
+  // The finalised ZIP's byte length for the Files caption (BLUM-9018). Null until submitted, or when the server could
+  // not measure it — the caption then shows the format alone.
+  exportSizeBytes?: number | null;
 }
 
 export const getReportSubmissions = (collectionId: string) => axios.get<CollectionSubmissionSummaryDto>(`data-collections/${collectionId}/submissions`);

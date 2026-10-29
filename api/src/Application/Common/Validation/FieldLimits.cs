@@ -25,6 +25,7 @@ public static class FieldLimits
     public const int ECode = 64;              // organisations.e_code, and Organisation.ECodeMaxLength
     public const int FinancialYear = 16;      // collections.financial_year, funding_windows.financial_year
     public const int ShortText = 255;         // varchar(255) free text: activities.custom_task_text, conditional_value
+    public const int ClosureReason = 500;     // activities.closure_reason — the protocol's 500-character free-text ceiling
 
     // 'text' columns. Unbounded in PostgreSQL, so these are a policy choice rather than a schema fact: a
     // request body is capped at 4 MB (Program.cs) and a single field has no reason to fill it.
@@ -32,8 +33,9 @@ public static class FieldLimits
     public const int Purpose = 2000;          // collections.purpose
     public const int LongText = 4000;         // descriptions, help text
 
-    // Matches ActivityAnswerValidator.MaxTextLength and SubmissionAnswerValidator.MaxTextLength, so a free
-    // text answer is bounded identically wherever it is checked.
+    // ActivityAnswerValidator.MaxTextLength and SubmissionAnswerValidator.MaxTextLength are defined as this, so a
+    // free text answer is bounded identically wherever it is checked. The maturity client mirrors it as
+    // MATURITY_ANSWER_MAX_LENGTH, because maturity free text has no protocol limit to catch it first (BLUM-8411).
     public const int AnswerText = 10000;
 
     // Money. numeric(18,2) holds sixteen integer digits, and MaxMoney matches FundingSpendValidator.MaxAmount
@@ -51,7 +53,16 @@ public static class FieldLimits
     // A reminder offset is fed to AddDays when the schedule is built, so it needs an upper bound as well as
     // a lower one. Two years is far beyond any collection window.
     public const int MaxReminderDays = 730;
+
+    // A collection's open date and deadline. DateOnly accepts any year up to 9999, so a mistyped 5050 passed
+    // validation and was saved (BLUM-8053). Same range as an activity's start year.
+    public const int MinDateYear = 2000;
+    public const int MaxDateYear = 2100;
     public const int MaxCsvUploadBytes = 10 * 1024 * 1024;
+
+    // An offline quarterly report file (BLUM-8310). A real one is tens of kilobytes; the cap keeps a stray export or
+    // a pasted image from being decoded, parsed and validated cell by cell.
+    public const int MaxOfflineReportUploadBytes = 5 * 1024 * 1024;
 
     // Paging. MaxPageSize was previously a silent clamp inside AuditLogRepository; MaxPage exists because
     // (page - 1) * pageSize is computed in an int and would otherwise overflow into a negative OFFSET.

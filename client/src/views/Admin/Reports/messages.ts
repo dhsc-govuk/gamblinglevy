@@ -2,7 +2,8 @@
 // business pulling that whole feature into its module graph (the useOrganisationUser precedent imports the same
 // constant the same way).
 import { SERVICE_PROBLEM_HEADING } from '../../../components/Global/OrganisationUsers/UserLoadFailed';
-import { httpStatusOf, isForbiddenError, isNotFoundError, isRateLimitedError } from '../../../helpers/httpErrors';
+import { httpStatusOf, isForbiddenError, isNotFoundError } from '../../../helpers/httpErrors';
+import { shouldRetryQuery } from '../../../helpers/queryRetry';
 
 // Why a failed DHSC submission-visibility read failed. The three cases need three different pages, and lumping them
 // together is the BLUM-7216 defect: a 500 was reported to admins as "Submission not found", so a service outage read
@@ -35,7 +36,7 @@ export const reportErrorKind = (error: unknown): ReportErrorKind => {
 // carries the last attempt past that window so the redirect can fire. Shared by both Reports screens rather than
 // copied into each — these rules are not obvious enough to survive being restated (the useOrganisationUser
 // precedent, written after five copies had already drifted).
-export const reportQueryRetry = (failureCount: number, error: unknown): boolean => !isNotFoundError(error) && !isRateLimitedError(error) && failureCount < 3;
+export const reportQueryRetry = (failureCount: number, error: unknown): boolean => !isNotFoundError(error) && shouldRetryQuery(failureCount, error);
 
 // Each screen's own not-found wording. The detail page is about one organisation's submission, so it must not tell
 // the admin "this report was not found" under a "Submission not found" heading.

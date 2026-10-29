@@ -19,7 +19,8 @@ public static class LocationUsersData
             email: "main.location.admin@loc.com",
             new SubId(Guid.NewGuid()),
             status: UserStatus.Active,
-            role: UserRole.Lead);
+            role: UserRole.Lead,
+            utcNow: DateTime.UtcNow);
 
         return LocationUser.New(id: LocationUserId.New(), userId: user.Id, locationId: locationId, user: user);
     }
@@ -32,7 +33,8 @@ public static class LocationUsersData
             email: "second.location.admin2@loc.com",
             new SubId(Guid.NewGuid()),
             status: UserStatus.Deactivated,
-            role: UserRole.Lead);
+            role: UserRole.Lead,
+            utcNow: DateTime.UtcNow);
 
         return LocationUser.New(id: LocationUserId.New(), userId: user.Id, locationId: locationId, user: user);
     }

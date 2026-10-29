@@ -1,14 +1,24 @@
-using System.Text.Json;
 using Api.Common;
 using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Settings;
+using Application.Common.Telemetry;
 using Domain.Users;
+using Microsoft.ApplicationInsights;
 
 namespace Api.Middleware;
 
 public class MfaRequiredMiddleware
 {
+    // The values mfa_required's "reason" can take (BLUM-8321). Spelled out rather than taken from
+    // MfaSessionStatus.ToString() so a query has one naming style to match, and renaming an enum member
+    // cannot silently change what a saved query or alert is looking for.
+    private const string ReasonNoCookie = "no_cookie";
+    private const string ReasonNotFound = "not_found";
+    private const string ReasonNotOwned = "not_owned";
+    private const string ReasonDeviceMismatch = "device_mismatch";
+    private const string ReasonOther = "other";
+
     private static readonly HashSet<string> ExemptPaths = new(StringComparer.OrdinalIgnoreCase)
     {
         "/mfa/",
@@ -28,6 +38,7 @@ public class MfaRequiredMiddleware
         IIdentityService identityService,
         IMfaSessionService sessionService,
         IUserMfaRepository userMfaRepository,
+        TelemetryClient telemetryClient,
         ApplicationSettings settings)
     {
         if (settings.Mfa.BypassForTesting)
@@ -80,6 +91,7 @@ public class MfaRequiredMiddleware
         var sessionId = MfaSessionCookie.TryRead(context.Request);
         if (sessionId is null)
         {
+            TrackMfaRequired(telemetryClient, context, userId, ReasonNoCookie);
             await WriteMfaRequiredResponse(context);
             return;
         }
@@ -120,23 +132,47 @@ public class MfaRequiredMiddleware
             // NotFound, NotOwned and DeviceMismatch: this request is not carrying a session we can act on, so
             // asking for verification is the right answer.
             default:
+                TrackMfaRequired(telemetryClient, context, userId, ReasonFor(status));
                 await WriteMfaRequiredResponse(context);
                 return;
         }
     }
 
-    private static bool IsExemptPath(string path)
-    {
-        foreach (var exemptPath in ExemptPaths)
-        {
-            if (path.StartsWith(exemptPath, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
+    private static bool IsExemptPath(string path) => GlobalGate.IsExemptPath(path, ExemptPaths);
 
-        return false;
-    }
+    // "other" only if a status is ever added that reaches the MFA_REQUIRED branch without being named here;
+    // the envelope still goes out either way, so this must not throw.
+    private static string ReasonFor(MfaSessionStatus status) => status switch
+    {
+        MfaSessionStatus.NotFound => ReasonNotFound,
+        MfaSessionStatus.NotOwned => ReasonNotOwned,
+        MfaSessionStatus.DeviceMismatch => ReasonDeviceMismatch,
+        _ => ReasonOther,
+    };
+
+    /// <summary>
+    /// MFA_REQUIRED stands for four different situations — no cookie, no such session, somebody else's
+    /// session, or a device-binding mismatch — and the client sees the same envelope for all of them. The
+    /// reason goes to telemetry so that, if users keep being sent back to the code-entry screen and none of
+    /// these events says DeviceMismatch, it is still possible to tell which branch is firing (BLUM-8321).
+    /// Telemetry only: the no-cookie case is part of every ordinary sign-in, far too common for audit_logs.
+    ///
+    /// fetchSite is the browser's own Sec-Fetch-Site (BLUM-8419), reduced to FetchSite's closed set so that
+    /// nothing a caller chose is written out. "cross-site" means the client and the API are on different
+    /// sites in that environment, so mfa_session is a third-party cookie there — which is the only way to
+    /// see how an environment we do not deploy is laid out, and whether a no_cookie straight after a
+    /// successful verification is a browser refusing to store it.
+    /// </summary>
+    private static void TrackMfaRequired(TelemetryClient telemetryClient, HttpContext context, UserId userId, string reason) =>
+        telemetryClient.TrackEventIfEnabled(
+            "mfa_required",
+            new Dictionary<string, string>
+            {
+                ["reason"] = reason,
+                ["userId"] = userId.Value.ToString(),
+                ["path"] = context.Request.Path.Value ?? string.Empty,
+                ["fetchSite"] = FetchSite.Classify(context.Request),
+            });
 
     /// <summary>
     /// The three answers that mean "the session this cookie names is gone for good" — timed out, or revoked.
@@ -167,19 +203,8 @@ public class MfaRequiredMiddleware
     /// axios interceptor, which dispatches on `response.data.error`, so every envelope has to keep the same
     /// shape — one writer is what stops two of three copies drifting and silently ceasing to match.
     /// </summary>
-    private static async Task WriteJsonError(HttpContext context, int statusCode, string error, string message)
-    {
-        context.Response.StatusCode = statusCode;
-        context.Response.ContentType = "application/json";
-
-        var response = new
-        {
-            error,
-            message,
-        };
-
-        await context.Response.WriteAsync(JsonSerializer.Serialize(response));
-    }
+    private static Task WriteJsonError(HttpContext context, int statusCode, string error, string message) =>
+        GlobalGate.WriteEnvelopeAsync(context, statusCode, error, message);
 
     private static string GetClientIpAddress(HttpContext context) => ClientIpAddress.Resolve(context.Request);
 }

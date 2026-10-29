@@ -506,7 +506,8 @@ public class MfaConcurrentSessionTests : BaseIntegrationTest, IAsyncLifetime
             ipAddressHash: HashForBinding(LaptopIp),
             userAgentHash: HashForBinding(LaptopUserAgent),
             ipAddress: LaptopIp,
-            deviceLabel: "Chrome on Windows");
+            deviceLabel: "Chrome on Windows",
+            utcNow: DateTime.UtcNow);
 
         await Context.MfaSessions.AddAsync(session);
         await Context.AuditLogs.AddAsync(

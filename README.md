@@ -12,6 +12,8 @@ A secure, multi-org web application for DHSC to administer the gambling harm pre
 - [Testing](#testing)
 - [Deployment](#deployment)
 - [Documentation](#documentation)
+- [Development in the open](#development-in-the-open)
+- [Licence](#licence)
 
 ---
 
@@ -20,13 +22,13 @@ A secure, multi-org web application for DHSC to administer the gambling harm pre
 A full-stack application consisting of:
 
 - **API**: .NET 10 REST API — Clean Architecture (`Domain`, `Application`, `Infrastructure`, `Api` layers), MediatR/CQRS for writes (`Either<TException, TResult>` folded via `ToObjectResult()`), a controller-service layer for read/DTO composition, FluentValidation, custom TOTP MFA (`Otp.NET`) enforced via middleware, and organisation-suspension gating
-- **Client**: React 18 + TypeScript SPA — Vite, GOV.UK Design System (`govuk-frontend` + project `GovUKComponents` wrappers), MSAL React v3 authentication, React Query v3, MUI v5 (data grids and date pickers only)
+- **Client**: React 18 + TypeScript SPA — Vite, GOV.UK Design System (`govuk-frontend` + project `GovUKComponents` wrappers), MSAL v5 authentication, TanStack Query v5
 - **Database**: PostgreSQL 15 — EF Core with snake_case naming convention (`EFCore.NamingConventions`); ~550 backend files across 16 controllers, ~70 MediatR commands and 49 migrations spanning Activities, AuditLogs, Categories, Collections, DataCollectionForms, Forms, Funding, KeyResults, Locations, LocationUsers, Organisations, OrganisationUsers, Submissions and Users
 - **Authentication**: Microsoft Entra External ID (CIAM) — federated email-OTP sign-in via OIDC/OAuth2; MFA is a bespoke in-platform TOTP layer (not Entra Conditional Access)
 - **Identity**: Microsoft Graph API — CIAM user provisioning
 - **Storage**: Azure Blob Storage — file-upload answers and generated export documents (quarterly/yearly PDFs and CSVs)
-- **Monitoring**: Sentry.io (client + API error/exception tracking) and Application Insights (dashboards, metrics, distributed tracing)
-- **Notifications**: SendGrid (email) — the architecture diagrams below reflect a planned move to GOV.UK Notify
+- **Monitoring**: Application Insights (dashboards, metrics, distributed tracing) — the target/primary observability platform; Sentry remains wired in parallel during the transition (see [design_docs/Technical-Architecture-Spec.md](design_docs/Technical-Architecture-Spec.md))
+- **Notifications**: GOV.UK Notify (email) — the decided target provider; SendGrid remains the only implemented integration until the Notify integration is built
 - **Hosting**: Azure App Service — zip-deployed from Bitbucket Pipelines via the `atlassian/azure-web-apps-deploy` pipe
 - **CI/CD**: Bitbucket Pipelines — parallel client/API builds plus the backend test suite on every pull request; automatic deploy to MVP on push to `mvp`, with manual promotion to UAT
 
@@ -39,8 +41,8 @@ For the full architecture diagrams and detailed technical specification see [des
 ### Required
 
 - **.NET 10 SDK**: [Download](https://dotnet.microsoft.com/download/dotnet/10.0)
-- **Node.js 18+** (CI builds on Node 20): [Download](https://nodejs.org/)
-- **Docker Desktop**: [Download](https://www.docker.com/products/docker-desktop) — required both for the full local stack (`docker compose`) and for backend integration tests (Testcontainers boots PostgreSQL)
+- **Node.js 24 (LTS)** — pinned to the 24.x line in `client/.nvmrc` and `client/package.json` `engines` (`cd client && nvm use`); CI and both Dockerfiles build on `node:24`, matching the Azure App Service runtime, which Microsoft only offers at major granularity (`24-lts`): [Download](https://nodejs.org/)
+- **Docker Desktop**: [Download](https://www.docker.com/products/docker-desktop) — required both for the full local stack (`docker compose`) and for backend integration tests (one shared PostgreSQL Testcontainer per run, unless `TEST_POSTGRES_CONNECTION` points at a server)
 - **Git**: [Download](https://git-scm.com/downloads)
 
 ### Azure Services (for full local dev)
@@ -66,7 +68,7 @@ gambling-levy-suite/
 │   │   ├── Domain/                     # Entities, value objects, aggregate exception hierarchies
 │   │   └── Infrastructure/             # EF Core, repositories, Graph/SendGrid/Blob/MFA/Sentry integrations
 │   └── tests/
-│       ├── Api.Tests.Integration/      # Testcontainers-backed integration tests
+│       ├── Api.Tests.Integration/      # Integration tests (a PostgreSQL database per test class)
 │       ├── Application.Tests.Unit/     # Pure calculation, value-object and seed-protocol tests
 │       ├── Tests.Common/               # BaseIntegrationTest, TestFactory
 │       └── Tests.Data/                 # Test data builders
@@ -109,7 +111,6 @@ AD_SCOPES=api://your-api-client-id/user_impersonation
 GRAPH_APPLICATION_ID=your-graph-app-id
 GRAPH_APPLICATION_OBJECT_ID=your-graph-app-object-id
 GRAPH_ENTERPRISE_APPLICATION_OBJECT_ID=your-graph-enterprise-app-object-id
-NPM_ORGANISATION_TOKEN=your-npm-token
 WORK_DIR=.
 API_ROOT_DIR=./api
 CLIENT_ROOT_DIR=./client
@@ -223,7 +224,7 @@ The client is available at `http://localhost:3000`.
 
 - **appsettings.json**: Base configuration
 - **appsettings.Development.json**: Local development overrides (not committed)
-- **appsettings.Test.json**: Used by `Api.Tests.Integration` / Testcontainers
+- **appsettings.Test.json**: Used by `Api.Tests.Integration`
 
 ### Client Configuration
 
@@ -252,22 +253,27 @@ The client uses `client/src/config.json` (or matching `VITE_*` environment varia
 # Build
 dotnet build api/GamblingLevy.sln
 
-# Run all tests (requires Docker — Testcontainers boots PostgreSQL)
+# Run all tests (requires Docker — one shared PostgreSQL Testcontainer per run)
 dotnet test api/GamblingLevy.sln
+
+# ...or against a PostgreSQL server you already run (how CI runs them; no Docker needed)
+TEST_POSTGRES_CONNECTION="Host=127.0.0.1;Port=5432;Username=postgres;Password=postgres;Database=postgres" dotnet test api/GamblingLevy.sln
 
 # Run a single integration test
 dotnet test api/tests/Api.Tests.Integration/Api.Tests.Integration.csproj --filter "FullyQualifiedName~TestMethodName"
 ```
 
-`Api.Tests.Integration` inherits `BaseIntegrationTest` and boots a real PostgreSQL Testcontainer per test class; `Application.Tests.Unit` covers pure calculation, value-object and seed-protocol logic without Docker.
+`Api.Tests.Integration` inherits `BaseIntegrationTest`; each test class boots the real API against its own freshly created PostgreSQL database (`gl_test_{guid}`), dropped when the class finishes; `Application.Tests.Unit` covers pure calculation, value-object and seed-protocol logic without Docker.
 
 ### Client
 
-There is no frontend test runner (no vitest/jest/RTL/Playwright) — `tsc` and review are the only automated checks:
+Unit tests for pure client logic run on [Vitest](https://vitest.dev/) (`client/vitest.config.mts`); there is no component or end-to-end suite yet:
 
 ```bash
 npm --prefix client run build   # "tsc && vite build" — the typecheck is the real gate
-npm --prefix client run lint    # eslint --max-warnings 0 (also enforced at commit time via lint-staged)
+npm --prefix client run lint    # eslint (commit time adds --max-warnings 0 and prettier --check via lint-staged)
+npm --prefix client test        # vitest run over client/src/**/*.test.ts ("run test:watch" to watch)
+npm --prefix client run format  # prettier --write over client/src
 ```
 
 ---
@@ -278,8 +284,9 @@ npm --prefix client run lint    # eslint --max-warnings 0 (also enforced at comm
 
 Defined in [bitbucket-pipelines.yml](bitbucket-pipelines.yml):
 
-- **Pull requests**: builds the client and API in parallel, then runs the backend test suite (2x-size step, `TESTCONTAINERS_RYUK_DISABLED=true`, `xUnit.MaxParallelThreads=2` against a 5120 MB Docker sidecar). No lint step, no frontend tests; the SonarQube analysis step exists but is currently commented out.
+- **Pull requests**: builds the client (running its Vitest unit tests first) and API in parallel, then runs the backend test suite (2x-size step, `xUnit.MaxParallelThreads=2`, against the native `postgres-tests` service container rather than Testcontainers). No separate lint step; the SonarQube analysis step exists but is currently commented out. The test step also measures backend code coverage (coverlet, configured in `api/coverlet.runsettings`): the line and branch totals are printed in the step log and the full HTML report is kept as the step's `coverage-report` artifact. Coverage is reported, not gated.
 - **`mvp` branch**: build → test → deploy client and API to the **MVP** environment automatically, via the `atlassian/azure-web-apps-deploy` pipe (zip deploy, no Docker image involved in production). Promotion to **UAT** is a manual trigger on the same pipeline; a **PROD** stage is defined but currently commented out.
+- **Publish to open source repo** runs automatically after every successful MVP deploy and publishes that commit to the public repository — see [Development in the open](#development-in-the-open).
 - A manual "Upload to client github" stage mirrors the `client/` and `api/` folders to a separate GitHub repository's `develop` branch.
 
 ### Required Azure Configuration
@@ -319,11 +326,28 @@ Add the redirect URI to the SPA app registration in the Azure Portal under Authe
 **Database connection fails locally**
 Check the connection string in `appsettings.Development.json`, ensure PostgreSQL is running, and that the user has the correct grants.
 
-**Testcontainers fails in CI or locally**
-Ensure the Docker service is available and running before executing `dotnet test`.
+**Integration tests cannot reach PostgreSQL**
+Locally, make sure Docker is running (the suite starts one Testcontainer), or set `TEST_POSTGRES_CONNECTION` to a server-level connection string. In CI, check that the step lists the `postgres-tests` service and exports `TEST_POSTGRES_CONNECTION`.
 
 **CORS errors**
 Configure allowed origins in `appsettings.json`/`appsettings.Development.json` under `Cors.AllowedOrigins`.
 
 **Commit rejected by pre-commit hook**
-`client/.husky/pre-commit` runs `lint-staged` (`eslint --max-warnings 0` — any warning fails the commit) and hard-blocks staged changes to `client/src/config.json`. Fix the lint warning or unstage the config file.
+`client/.husky/pre-commit` runs `lint-staged` (`eslint --max-warnings 0` — any warning fails the commit — then `prettier --check`) and hard-blocks staged changes to `client/src/config.json`. Fix the lint warning, run `npm --prefix client run format`, or unstage the config file.
+
+---
+
+## Development in the open
+
+The service is developed in a private Bitbucket repository and published continuously to the public repository [dhsc-govuk/gamblinglevy](https://github.com/dhsc-govuk/gamblinglevy).
+
+- Every pull request is built and tested in Bitbucket Pipelines before it can merge.
+- Every merge to the `mvp` branch is built, tested and deployed to the MVP environment, then the same commit is published to the public repository's `main` branch automatically. Each public commit names the source commit it came from.
+- What is published is defined in one place, [scripts/open-source/stage.sh](scripts/open-source/stage.sh): the client and API source, the design documentation, `docker-compose.yml`, the pipeline configuration, this README and the licence. Files holding environment-specific credentials are excluded, and deployment secrets live in pipeline variables, never in the repository.
+- Before anything is pushed, the publish step fails if a Markdown link points to a file that is not published ([scripts/open-source/check-links.sh](scripts/open-source/check-links.sh)) or if [gitleaks](https://github.com/gitleaks/gitleaks) finds anything that looks like a secret.
+
+To report an issue or suggest a change, open an issue on the public repository.
+
+## Licence
+
+The source code is released under the [MIT licence](LICENSE). Documentation is © Crown copyright and available under the [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).

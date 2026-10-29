@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Link as RouterLink, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
 import { ConfirmActionPanel, GovUKButton, LoadingBox, LeadParagraph } from '../../../../components/GovUKComponents';
 import usePageTitle from '../../../../hooks/usePageTitle';
@@ -16,9 +16,7 @@ const CollectionsDiscard = (): React.ReactElement => {
   const location = useLocation();
   const wizardState = location.state as CollectionWizardDiscardState | null;
 
-  const { data, isLoading } = useQuery(collectionKey(collectionId), () => getCollection(collectionId), {
-    enabled: !!collectionId,
-  });
+  const { data, isLoading } = useQuery({ queryKey: collectionKey(collectionId), queryFn: () => getCollection(collectionId), enabled: !!collectionId });
   const name = data?.data?.name ?? wizardState?.formState.name ?? 'this data collection';
 
   useEffect(() => {

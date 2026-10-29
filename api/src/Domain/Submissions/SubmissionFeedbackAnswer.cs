@@ -37,7 +37,8 @@ public class SubmissionFeedbackAnswer : IEntity<SubmissionFeedbackAnswerId>
         SubmissionId submissionId,
         string questionCode,
         string value,
-        UserId createdBy)
+        UserId createdBy,
+        DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(submissionId, nameof(submissionId));
@@ -50,6 +51,6 @@ public class SubmissionFeedbackAnswer : IEntity<SubmissionFeedbackAnswerId>
             questionCode.Trim(),
             value ?? string.Empty,
             createdBy,
-            DateTime.UtcNow);
+            utcNow);
     }
 }

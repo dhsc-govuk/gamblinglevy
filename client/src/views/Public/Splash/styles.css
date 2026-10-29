@@ -1,0 +1,56 @@
+/* The splash screen at "/" while MSAL settles. */
+
+/* min-height, not height: content taller than the viewport scrolls rather than losing its top to centring. */
+.app-splash {
+  min-height: 100%;
+  width: 100%;
+  padding: 0 15px;
+  background-color: #ffffff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.app-splash__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  text-align: center;
+  animation: app-splash-fade-in 2700ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.app-splash__logo {
+  max-width: 100%;
+}
+
+/* The max- caps are for 1.4.10 Reflow (BLUM-9351): at 400% zoom the viewport is 320px wide and 256px tall or less,
+   so the crown shrinks to fit and leaves 5rem of height for the text. Neither applies at 100% zoom in a window 528px
+   or taller, where the crown is drawn exactly as before. The vertical padding is inside the letterbox at full size
+   and keeps the crown off the text once it shrinks. */
+.app-splash__logo svg {
+  width: 28rem;
+  height: 28rem;
+  max-width: 100%;
+  max-height: calc(100vh - 5rem);
+  max-height: calc(100svh - 5rem); /* the height with a phone's browser toolbars showing, where supported */
+  flex: 0 0 auto;
+  padding: 1rem 3rem;
+}
+
+@keyframes app-splash-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-splash__content {
+    animation: none;
+  }
+}

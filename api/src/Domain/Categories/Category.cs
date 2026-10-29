@@ -41,6 +41,7 @@ public class Category : IEntity<CategoryId>
         string name,
         int sequenceOrder,
         UserId createdBy,
+        DateTime utcNow,
         string? description = null,
         bool isActive = true)
     {
@@ -48,6 +49,16 @@ public class Category : IEntity<CategoryId>
         Guard.NotNullOrEmptyOrWhiteSpace(name, nameof(name));
         Guard.NotNull(createdBy, nameof(createdBy));
 
-        return new Category(id, name.Trim(), description, isActive, sequenceOrder, createdBy, DateTime.UtcNow, null);
+        return new Category(id, name.Trim(), description, isActive, sequenceOrder, createdBy, utcNow, null);
+    }
+
+    // The seeder's only edit to an existing category: it puts the catalogue's categories back in catalogue order
+    // after it has inserted one among them (BLUM-8749).
+    public void SetSequenceOrder(int sequenceOrder, DateTime utcNow)
+    {
+        Guard.GreaterThanOrEqual(sequenceOrder, 0, nameof(sequenceOrder));
+
+        SequenceOrder = sequenceOrder;
+        UpdatedAt = utcNow;
     }
 }

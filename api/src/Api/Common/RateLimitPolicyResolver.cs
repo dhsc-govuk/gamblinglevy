@@ -78,8 +78,9 @@ public static class RateLimitPolicyResolver
             return true;
         }
 
-        // Fans a SendGrid email out to every reporting organisation in the collection — around a hundred and
-        // fifty of them. Outbound cost per request is nothing like an ordinary write's.
+        // Fans a GOV.UK Notify email out to every reporting organisation that has not yet submitted — on a
+        // "submitted by all LAs" window that is around a hundred and fifty organisations, and more than one
+        // contact at each (BLUM-7571). Outbound cost per request is nothing like an ordinary write's.
         if (template.Contains("send-reminder", StringComparison.OrdinalIgnoreCase))
         {
             return true;

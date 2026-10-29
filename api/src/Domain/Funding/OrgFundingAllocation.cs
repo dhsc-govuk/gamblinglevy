@@ -40,7 +40,8 @@ public class OrgFundingAllocation : IEntity<OrgFundingAllocationId>
         OrganisationId organisationId,
         FundingWindowId fundingWindowId,
         decimal allocatedAmount,
-        UserId createdBy)
+        UserId createdBy,
+        DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(organisationId, nameof(organisationId));
@@ -48,16 +49,16 @@ public class OrgFundingAllocation : IEntity<OrgFundingAllocationId>
         Guard.NotNull(createdBy, nameof(createdBy));
         Guard.GreaterThan(allocatedAmount, 0m, nameof(allocatedAmount));
 
-        return new OrgFundingAllocation(id, organisationId, fundingWindowId, allocatedAmount, DateTime.UtcNow, createdBy, null, null);
+        return new OrgFundingAllocation(id, organisationId, fundingWindowId, allocatedAmount, utcNow, createdBy, null, null);
     }
 
-    public void UpdateAmount(decimal newAmount, UserId amendedBy)
+    public void UpdateAmount(decimal newAmount, UserId amendedBy, DateTime utcNow)
     {
         Guard.NotNull(amendedBy, nameof(amendedBy));
         Guard.GreaterThan(newAmount, 0m, nameof(newAmount));
 
         AllocatedAmount = newAmount;
-        AmendedAt = DateTime.UtcNow;
+        AmendedAt = utcNow;
         AmendedBy = amendedBy;
     }
 }

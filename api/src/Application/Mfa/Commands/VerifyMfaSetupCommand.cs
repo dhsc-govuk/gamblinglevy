@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Settings;
@@ -23,6 +24,8 @@ public class VerifyMfaSetupCommandHandler(
     IAuditLogRepository auditLogRepository,
     MfaAttemptGate attemptGate,
     MfaFailureRecorder failureRecorder,
+    IDateTimeProvider dateTimeProvider,
+    ITransactionRunner transactionRunner,
     ApplicationSettings settings)
     : IRequestHandler<VerifyMfaSetupCommand, Either<MfaException, MfaSetupCompleteResponseDto>>
 {
@@ -57,6 +60,8 @@ public class VerifyMfaSetupCommandHandler(
         VerifyMfaSetupCommand request,
         CancellationToken cancellationToken)
     {
+        var utcNow = dateTimeProvider.GetUtcNow();
+
         if (mfa.IsEnabled)
         {
             return new MfaAlreadyEnabledException(request.UserId);
@@ -71,15 +76,27 @@ public class VerifyMfaSetupCommandHandler(
         // enrolled, is the second factor — so an attacker holding a stolen token for a user who is mid-setup
         // has the same oracle as anywhere else, and leaving it out would make the lock avoidable by simply
         // attacking whoever has not finished enrolling yet.
-        if (mfa.IsLockedOut())
+        if (mfa.IsLockedOut(utcNow))
         {
             return new MfaLockedOutException(
                 request.UserId,
                 mfa.LockedUntil!.Value,
-                MfaRetryAfter.Seconds(mfa.LockedUntil, DateTime.UtcNow, settings.Mfa.LockoutMinutes * 60));
+                MfaRetryAfter.Seconds(mfa.LockedUntil, utcNow, settings.Mfa.LockoutMinutes * 60));
         }
 
-        var secret = encryptionService.Decrypt(mfa.EncryptedSecret);
+        string secret;
+        try
+        {
+            secret = encryptionService.Decrypt(mfa.EncryptedSecret);
+        }
+        catch (CryptographicException ex)
+        {
+            // A lost or rotated Data Protection key (see IMfaEncryptionService.Decrypt) would otherwise
+            // surface as an unhandled 500 with no MFA_* envelope — UnhandledExceptionBehaviour rethrows
+            // anything that is not part of this handler's Either.
+            return new MfaUnknownException(request.UserId, ex);
+        }
+
         if (!totpService.ValidateCode(secret, request.Code))
         {
             // Until this was added, the one endpoint whose success hands the attacker the authenticator was
@@ -99,11 +116,19 @@ public class VerifyMfaSetupCommandHandler(
         var recoveryCodes = recoveryCodeService.GenerateRecoveryCodes();
         var hashedCodes = recoveryCodes.Select(recoveryCodeService.HashRecoveryCode).ToList();
 
-        mfa.Enable(hashedCodes);
-        await userMfaRepository.UpdateAsync(mfa, cancellationToken);
+        // The enrolment and its audit row commit together (BLUM-8748); the session is created once they have.
+        await transactionRunner.RunAsync(
+            async token =>
+            {
+                // Read again rather than reusing the instant the lock was judged against: hashing the recovery codes
+                // above is deliberately slow, and EnabledAt records when enrolment completed.
+                mfa.Enable(hashedCodes, dateTimeProvider.GetUtcNow());
+                await userMfaRepository.UpdateAsync(mfa, token);
 
-        await auditLogRepository.AppendAsync(
-            AuditLog.Create(request.UserId, AuditTargetType.User, request.UserId.Value, AuditAction.MfaEnrolled, before: null, after: null),
+                await auditLogRepository.AppendAsync(
+                    AuditLog.Create(request.UserId, AuditTargetType.User, request.UserId.Value, AuditAction.MfaEnrolled, before: null, after: null),
+                    token);
+            },
             cancellationToken);
 
         var session = await sessionService.CreateSessionAsync(

@@ -27,12 +27,13 @@ public class CollectionLocalAuthority : IEntity<CollectionLocalAuthorityId>
     public static CollectionLocalAuthority Create(
         CollectionLocalAuthorityId id,
         CollectionId collectionId,
-        OrganisationId localAuthorityId)
+        OrganisationId localAuthorityId,
+        DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(collectionId, nameof(collectionId));
         Guard.NotNull(localAuthorityId, nameof(localAuthorityId));
 
-        return new CollectionLocalAuthority(id, collectionId, localAuthorityId, DateTime.UtcNow);
+        return new CollectionLocalAuthority(id, collectionId, localAuthorityId, utcNow);
     }
 }

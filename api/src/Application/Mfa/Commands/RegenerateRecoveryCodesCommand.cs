@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Settings;
@@ -20,6 +21,7 @@ public class RegenerateRecoveryCodesCommandHandler(
     IUserMfaRepository userMfaRepository,
     MfaAttemptGate attemptGate,
     MfaFailureRecorder failureRecorder,
+    IDateTimeProvider dateTimeProvider,
     ApplicationSettings settings)
     : IRequestHandler<RegenerateRecoveryCodesCommand, Either<MfaException, MfaRecoveryCodesDto>>
 {
@@ -51,11 +53,13 @@ public class RegenerateRecoveryCodesCommandHandler(
 
     private Either<MfaException, UserMfa> ValidateNotLockedOut(UserMfa mfa, UserId userId)
     {
-        return mfa.IsLockedOut()
+        var utcNow = dateTimeProvider.GetUtcNow();
+
+        return mfa.IsLockedOut(utcNow)
             ? new MfaLockedOutException(
                 userId,
                 mfa.LockedUntil!.Value,
-                MfaRetryAfter.Seconds(mfa.LockedUntil, DateTime.UtcNow, settings.Mfa.LockoutMinutes * 60))
+                MfaRetryAfter.Seconds(mfa.LockedUntil, utcNow, settings.Mfa.LockoutMinutes * 60))
             : mfa;
     }
 
@@ -64,7 +68,19 @@ public class RegenerateRecoveryCodesCommandHandler(
         RegenerateRecoveryCodesCommand request,
         CancellationToken cancellationToken)
     {
-        var secret = encryptionService.Decrypt(mfa.EncryptedSecret);
+        string secret;
+        try
+        {
+            secret = encryptionService.Decrypt(mfa.EncryptedSecret);
+        }
+        catch (CryptographicException ex)
+        {
+            // A lost or rotated Data Protection key (see IMfaEncryptionService.Decrypt) would otherwise
+            // surface as an unhandled 500 with no MFA_* envelope — UnhandledExceptionBehaviour rethrows
+            // anything that is not part of this handler's Either.
+            return new MfaUnknownException(request.UserId, ex);
+        }
+
         if (totpService.ValidateCode(secret, request.Code))
         {
             rateLimitService.ResetAttempts(request.UserId);
@@ -97,7 +113,7 @@ public class RegenerateRecoveryCodesCommandHandler(
         var recoveryCodes = recoveryCodeService.GenerateRecoveryCodes();
         var hashedCodes = recoveryCodes.Select(recoveryCodeService.HashRecoveryCode).ToList();
 
-        mfa.UpdateRecoveryCodes(hashedCodes);
+        mfa.UpdateRecoveryCodes(hashedCodes, dateTimeProvider.GetUtcNow());
         await userMfaRepository.UpdateAsync(mfa, cancellationToken);
 
         return new MfaRecoveryCodesDto(recoveryCodes);

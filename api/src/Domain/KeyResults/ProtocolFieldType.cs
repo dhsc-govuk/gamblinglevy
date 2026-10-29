@@ -10,6 +10,11 @@ public static class ProtocolFieldTypes
     public const string Percentage = "percentage";
     public const string Text = "text";
     public const string List = "list";
+
+    // Single-select with seeded options (BLUM-7620). Distinct from Boolean, whose yes/no options the resolver
+    // synthesises: a Radio question carries its own option list, e.g. the advertising-restriction question's
+    // "Yes, on all council-owned property" / "Yes, on some property" / "No".
+    public const string Radio = "radio";
 }
 
 // The Question Protocol's field vocabulary for quarterly-report questions. Kept separate from Domain.Forms.QuestionType
@@ -42,10 +47,12 @@ public class ProtocolFieldType : ValueObject
     public static ProtocolFieldType Percentage => new(ProtocolFieldTypes.Percentage);
     public static ProtocolFieldType Text => new(ProtocolFieldTypes.Text);
     public static ProtocolFieldType List => new(ProtocolFieldTypes.List);
+    public static ProtocolFieldType Radio => new(ProtocolFieldTypes.Radio);
 
     public bool IsBoolean => Value == ProtocolFieldTypes.Boolean;
     public bool IsNumeric => Value is ProtocolFieldTypes.Integer or ProtocolFieldTypes.Percentage;
     public bool IsList => Value == ProtocolFieldTypes.List;
+    public bool IsRadio => Value == ProtocolFieldTypes.Radio;
 
     public string ToRendererQuestionType() => Value switch
     {
@@ -53,6 +60,7 @@ public class ProtocolFieldType : ValueObject
         ProtocolFieldTypes.Integer => QuestionTypes.Number,
         ProtocolFieldTypes.Percentage => QuestionTypes.Number,
         ProtocolFieldTypes.List => QuestionTypes.Checkbox,
+        ProtocolFieldTypes.Radio => QuestionTypes.Radio,
         _ => QuestionTypes.Textarea,
     };
 
@@ -75,6 +83,7 @@ public class ProtocolFieldType : ValueObject
             yield return Percentage;
             yield return Text;
             yield return List;
+            yield return Radio;
         }
     }
 }

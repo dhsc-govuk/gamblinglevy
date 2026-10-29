@@ -1,3 +1,4 @@
+using Application.DataCollectionForms.Versions;
 using Domain.DataCollectionForms;
 
 namespace Api.Dtos;
@@ -136,6 +137,12 @@ public record FormModuleWithChildrenDto(
     IReadOnlyList<DcFormSectionDto> Sections,
     IReadOnlyList<DcFormQuestionDto> Questions)
 {
+    // BLUM-9102: set only on a publish while BLUM_9087 is on — the version this publish saved, or (VersionCreated
+    // false) the unchanged version it matched. Null everywhere else.
+    public int? LatestVersionNumber { get; init; }
+
+    public bool? VersionCreated { get; init; }
+
     public static FormModuleWithChildrenDto FromDomainModel(FormModule module) =>
         new(
             module.Id.Value,
@@ -155,4 +162,42 @@ public record FormModuleWithChildrenDto(
                 .OrderBy(q => q.DisplayOrder)
                 .Select(DcFormQuestionDto.FromDomainModel)
                 .ToList());
+}
+
+// BLUM-9102: a saved, unchangeable version of a form module. PublishedByName is null when the publisher's account no
+// longer exists.
+public record FormModuleVersionSummaryDto(Guid Id, int VersionNumber, DateTime PublishedAt, Guid PublishedBy, string? PublishedByName)
+{
+    public static FormModuleVersionSummaryDto FromDomainModel(FormModuleVersion version, string? publishedByName) =>
+        new(version.Id.Value, version.VersionNumber, version.PublishedAt, version.PublishedBy.Value, publishedByName);
+}
+
+// BLUM-9086: one version of a form module and the collections that record it, empty when none does.
+public record FormModuleVersionCollectionsDto(Guid VersionId, int VersionNumber, IReadOnlyList<CollectionSummaryDto> Collections);
+
+// One version with the content it saved, read back from its stored definition.
+public record FormModuleVersionDto(
+    Guid Id,
+    int VersionNumber,
+    DateTime PublishedAt,
+    Guid PublishedBy,
+    string? PublishedByName,
+    string Code,
+    string Name,
+    string? Description,
+    IReadOnlyList<FormSectionDefinition> Sections,
+    IReadOnlyList<FormQuestionDefinition> Questions)
+{
+    public static FormModuleVersionDto FromDomainModel(FormModuleVersion version, FormModuleDefinitionDocument definition, string? publishedByName) =>
+        new(
+            version.Id.Value,
+            version.VersionNumber,
+            version.PublishedAt,
+            version.PublishedBy.Value,
+            publishedByName,
+            definition.Code,
+            definition.Name,
+            definition.Description,
+            definition.Sections.OrderBy(s => s.SectionNumber).ToList(),
+            definition.Questions.OrderBy(q => q.DisplayOrder).ToList());
 }

@@ -1,5 +1,4 @@
 import React from 'react';
-import { Box } from '@mui/material';
 import { GovUKBreadcrumbs, GovUKBackLink, GovUKNotificationDisplay } from '../../../components/GovUKComponents';
 import './styles.css';
 
@@ -11,9 +10,11 @@ interface Props extends React.PropsWithChildren {
 }
 
 const Content = ({ children, breadcrumbs, endContent, backLink, isMainContentTarget = true }: Props): React.ReactElement => {
+  const hasBreadcrumbsAndBackLink = Boolean(breadcrumbs?.length && backLink);
+
   return (
-    <Box component="main" className="govuk-main-wrapper" role="main">
-      <Box className="govuk-width-container">
+    <main className="govuk-main-wrapper" role="main">
+      <div className={`govuk-width-container${hasBreadcrumbsAndBackLink ? ' govuk-width-container--breadcrumb-back-link' : ''}`}>
         {breadcrumbs && breadcrumbs.length > 0 && <GovUKBreadcrumbs items={breadcrumbs.map((item) => ({ label: item.label, href: item.link }))} />}
         {backLink && (
           <GovUKBackLink
@@ -40,8 +41,8 @@ const Content = ({ children, breadcrumbs, endContent, backLink, isMainContentTar
         <div className="content-body" id={isMainContentTarget ? 'main-content' : undefined} tabIndex={isMainContentTarget ? -1 : undefined}>
           {children}
         </div>
-      </Box>
-    </Box>
+      </div>
+    </main>
   );
 };
 

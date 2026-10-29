@@ -1,16 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { PageLoading } from '../../../../components/GovUKComponents';
 import { ManagementLayout } from '../../../../layouts';
 import { GovUKButton, GovUKFieldset, ErrorSummary, H1, H2, Paragraph } from '../../../../components/GovUKComponents';
 import { EnumUserRole, ROLE_LABELS } from '../../../../components/AuthProvider';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import { organisationUsersListKey } from '../../../../helpers/queriesParams';
+import { localAuthorityKey, organisationUsersListKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
 import { validateEmailAddress } from '../../../../helpers/validators';
 import { getOrganisationUserList, type OrganisationUserDto } from '../../../../components/Global/OrganisationUsers/api';
+import { getLocalAuthority, type LocalAuthorityDto } from '../queries';
 import { JOB_ROLE_OPTIONS, JOB_ROLE_OTHER, splitFullName } from '../contactJobRole';
 import type { EditOrganisationDetailsState } from './index';
 import './styles.css';
@@ -35,6 +35,18 @@ export interface EditOrganisationContactsState {
   removedContactIds: string[];
 }
 
+// The stored details exactly as they are: entering at this step is not an edit of them, so nothing is
+// trimmed or cleared here the way the details step does for values the user has just typed.
+const organisationStateFromDto = (organisation: LocalAuthorityDto): EditOrganisationDetailsState => ({
+  organisationId: organisation.id,
+  name: organisation.name,
+  onsCode: organisation.onsCode ?? '',
+  region: organisation.region,
+  type: organisation.type,
+  eCode: organisation.eCode ?? '',
+  originalOnsCode: organisation.onsCode ?? '',
+});
+
 const contactFromUser = (user: OrganisationUserDto): ContactForm => ({
   id: user.id,
   originalRole: user.role,
@@ -51,11 +63,33 @@ const LocalAuthoritiesEditContacts = (): React.ReactElement => {
   const location = useLocation();
 
   const state = location.state as EditOrganisationDetailsState | EditOrganisationContactsState | null;
-  const organisationState = state && 'organisation' in state ? state.organisation : state;
+  const routeOrganisationState = state && 'organisation' in state ? state.organisation : state;
+  const hasRouteOrganisation = !!routeOrganisationState?.organisationId;
   const incomingContacts = state && 'contacts' in state ? state.contacts : undefined;
+  const hasIncomingContacts = !!incomingContacts;
   const incomingRemovedIds = state && 'removedContactIds' in state ? state.removedContactIds : undefined;
 
-  const { data: usersData, isLoading: loadingUsers } = useQuery(organisationUsersListKey(organisationId), () => getOrganisationUserList(organisationId), {
+  // The organisation page links straight to this step (BLUM-8734), so there may be no details-step state to
+  // carry forward. Review saves the organisation details along with the contacts, so they are read here and
+  // taken only from a fetch that succeeded while this page is open, never from the query's cached `data`: that
+  // still holds the old copy when a refetch fails, and it could write back details someone has since changed.
+  //
+  // dataUpdatedAt is what tells the two apart. It moves only when data is written, so after a failed refetch it
+  // still has the value it had when this page mounted, and after a successful fetch it has a later one —
+  // including a fetch the previous page started and this one joined, which is why this is not done inside the
+  // query function. (useQuery's own onSuccess, which this used to be, went in react-query v5.)
+  const organisationQuery = useQuery({
+    queryKey: localAuthorityKey(organisationId),
+    queryFn: () => getLocalAuthority(organisationId),
+    enabled: !!organisationId && !hasRouteOrganisation,
+  });
+  const [organisationUpdatedAtOnMount] = useState(organisationQuery.dataUpdatedAt);
+  const fetchedOrganisation = organisationQuery.dataUpdatedAt !== organisationUpdatedAtOnMount ? organisationQuery.data?.data ?? null : null;
+  const organisationState = hasRouteOrganisation ? routeOrganisationState : fetchedOrganisation ? organisationStateFromDto(fetchedOrganisation) : null;
+
+  const { data: usersData, isLoading: loadingUsers } = useQuery({
+    queryKey: organisationUsersListKey(organisationId),
+    queryFn: () => getOrganisationUserList(organisationId),
     enabled: !!organisationId && !incomingContacts,
   });
 
@@ -65,25 +99,15 @@ const LocalAuthoritiesEditContacts = (): React.ReactElement => {
   const [submitAttempts, setSubmitAttempts] = useState(0);
 
   usePageTitle(`${Object.keys(errors).length > 0 ? 'Error: ' : ''}Contacts`);
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
 
   useEffect(() => {
-    if (!incomingContacts && usersData?.data) {
+    if (!hasIncomingContacts && usersData?.data) {
       setContacts(usersData.data.map(contactFromUser));
     }
     // Only seed from the fetched users list when the user hasn't already brought edits back from Review.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usersData]);
+  }, [usersData, hasIncomingContacts]);
 
-  useEffect(() => {
-    if (!organisationState?.organisationId) {
-      navigate(ROUTES.admin.organisations.edit(organisationId), { replace: true });
-    }
-  }, [organisationState, organisationId, navigate]);
-
-  if (!organisationState?.organisationId) return <></>;
-
-  if (!incomingContacts && loadingUsers) {
+  if (!organisationState || (!incomingContacts && loadingUsers)) {
     return (
       <ManagementLayout>
         <PageLoading />
@@ -97,16 +121,16 @@ const LocalAuthoritiesEditContacts = (): React.ReactElement => {
     contacts.forEach((contact, index) => {
       const { firstName, lastName } = splitFullName(contact.fullName);
       if (!contact.fullName.trim()) {
-        next[`contacts-${index}-fullName`] = "Enter the contact person's full name";
+        next[`contacts-${index}-fullName`] = "Enter the contact's full name";
       } else if (!firstName || !lastName) {
-        next[`contacts-${index}-fullName`] = "Enter the contact person's first and last name";
+        next[`contacts-${index}-fullName`] = "Enter the contact's first and last name";
       }
-      if (!contact.jobRole) next[`contacts-${index}-jobRole`] = 'Select a job role';
-      if (contact.jobRole === JOB_ROLE_OTHER && !contact.jobRoleTitle.trim()) next[`contacts-${index}-jobRoleTitle`] = 'Enter the job role title';
+      if (!contact.jobRole) next[`contacts-${index}-jobRole`] = "Select a contact's job role";
+      if (contact.jobRole === JOB_ROLE_OTHER && !contact.jobRoleTitle.trim()) next[`contacts-${index}-jobRoleTitle`] = "Enter the contact's job title, for example assistant";
       if (!contact.email.trim()) {
-        next[`contacts-${index}-email`] = "Enter the contact person's email address";
+        next[`contacts-${index}-email`] = "Enter the contact's work email address";
       } else if (!validateEmailAddress(contact.email.trim())) {
-        next[`contacts-${index}-email`] = 'Enter a valid email address';
+        next[`contacts-${index}-email`] = 'Enter the email address in the correct format, like name@example.com';
       }
     });
 
@@ -151,7 +175,7 @@ const LocalAuthoritiesEditContacts = (): React.ReactElement => {
   return (
     <ManagementLayout backLink={{ href: ROUTES.admin.organisations.edit(organisationId), onClick: goBackToDetails }}>
       <div className="organisations-edit-page organisations-edit-page--contacts">
-        {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+        <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
         <div className="organisations-edit-page__heading">
           <span className="govuk-caption-l">Edit organisation</span>
@@ -206,7 +230,7 @@ const LocalAuthoritiesEditContacts = (): React.ReactElement => {
                     <GovUKFieldset.Input
                       id={`contacts-${index}-jobRoleTitle`}
                       name={`contacts-${index}-jobRoleTitle`}
-                      label="Job role title"
+                      label="What is their job title?"
                       value={contact.jobRoleTitle}
                       error={errors[`contacts-${index}-jobRoleTitle`]}
                       onChange={(e) => updateContact(index, 'jobRoleTitle', e.target.value)}

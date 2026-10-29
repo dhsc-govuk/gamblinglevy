@@ -41,7 +41,8 @@ public class MfaAttemptGate(
             return null;
         }
 
-        var lockedUntil = await this.GetLiveLockAsync(userId, cancellationToken);
+        var utcNow = dateTimeProvider.GetUtcNow();
+        var lockedUntil = await this.GetLiveLockAsync(userId, utcNow, cancellationToken);
 
         if (lockedUntil is null)
         {
@@ -51,10 +52,10 @@ public class MfaAttemptGate(
         return new MfaLockedOutException(
             userId,
             lockedUntil.Value,
-            MfaRetryAfter.Seconds(lockedUntil, dateTimeProvider.GetUtcNow(), settings.Mfa.LockoutMinutes * 60));
+            MfaRetryAfter.Seconds(lockedUntil, utcNow, settings.Mfa.LockoutMinutes * 60));
     }
 
-    private async Task<DateTime?> GetLiveLockAsync(UserId userId, CancellationToken cancellationToken)
+    private async Task<DateTime?> GetLiveLockAsync(UserId userId, DateTime utcNow, CancellationToken cancellationToken)
     {
         // 0 disables the lockout, which is how several test classes reach the damper on its own. There is no
         // lock to find, so do not pay for the read.
@@ -72,6 +73,6 @@ public class MfaAttemptGate(
 
         var mfa = userMfaOption.ValueUnsafe();
 
-        return mfa.IsLockedOut() ? mfa.LockedUntil : null;
+        return mfa.IsLockedOut(utcNow) ? mfa.LockedUntil : null;
     }
 }

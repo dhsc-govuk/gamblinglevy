@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useMemo, useReducer, useState } from 'react';
+import useFeature from '../../../../hooks/useFeature';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GovUKBackLink, GovUKButton, GovUKErrorSummary, H1 } from '../../../GovUKComponents';
 import StepDetails from '../StepDetails';
 import StepWindow from '../StepWindow';
@@ -16,13 +17,15 @@ import {
   buildCreateInput,
   buildUpdateInput,
   collectionFormReducer,
-  datePartsValidationIssue,
+  formOptionsForType,
   initialCollectionFormState,
+  validateCollectionSection,
   type CollectionFormState,
 } from '../../../../views/Admin/Collections/reducer';
 import { getCollectionFormOptions, getReportingLas } from '../../../../views/Admin/Collections/queries';
 import { createCollection, updateCollection } from '../../../../views/Admin/Collections/mutations';
-import { mapCollectionError } from '../../../../views/Admin/Collections/messages';
+import { isCollectionNameTakenError, mapCollectionError } from '../../../../views/Admin/Collections/messages';
+import { useDefaultCollectionForms } from '../useDefaultCollectionForms';
 import './styles.css';
 
 type StepKind = 'details' | 'window' | 'forms' | 'reportingLas' | 'reminders' | 'check';
@@ -57,10 +60,14 @@ const CollectionWizard = ({ mode, collectionId, initialState, initialStep = 0, a
 
   const [step, setStep] = useState(initialStep);
   const [state, dispatch] = useReducer(collectionFormReducer, { ...initialCollectionFormState, ...initialState });
+  // BLUM-9103: the per-form version choice is offered, and so sent, only while form versioning is on.
+  const formVersionsEnabled = useFeature('BLUM_9087');
 
-  const formOptionsQuery = useQuery(collectionFormOptionsKey, getCollectionFormOptions, { staleTime: defaultStaleTime });
-  const formOptions = formOptionsQuery.data?.data ?? [];
-  const reportingLasQuery = useQuery(collectionReportingLasKey, getReportingLas, { staleTime: defaultStaleTime });
+  const formOptionsQuery = useQuery({ queryKey: collectionFormOptionsKey, queryFn: getCollectionFormOptions, staleTime: defaultStaleTime });
+  // Only the chosen type's forms are offered (BLUM-7943), and all of them start ticked.
+  const formOptions = useMemo(() => formOptionsForType(formOptionsQuery.data?.data ?? [], state.type), [formOptionsQuery.data, state.type]);
+  useDefaultCollectionForms(state, dispatch, formOptions, formOptionsQuery.isSuccess);
+  const reportingLasQuery = useQuery({ queryKey: collectionReportingLasKey, queryFn: getReportingLas, staleTime: defaultStaleTime });
   const reportingLas = reportingLasQuery.data?.data ?? [];
 
   const steps = useMemo<StepKind[]>(() => ['details', 'window', 'forms', 'reportingLas', 'reminders', 'check'], []);
@@ -79,117 +86,58 @@ const CollectionWizard = ({ mode, collectionId, initialState, initialStep = 0, a
     document.getElementById('collection-wizard-heading')?.focus({ preventScroll: true });
   }, [step]);
 
-  const validateCurrent = (): Record<string, string> => {
-    const errors: Record<string, string> = {};
-    const validateDate = (key: 'open-date' | 'deadline-date', day: string, month: string, year: string, missingMessage: string) => {
-      const issue = datePartsValidationIssue(day, month, year);
-      if (!issue) {
-        return;
-      }
-      const issueMessages = {
-        missing: missingMessage,
-        day: 'Enter a valid day',
-        month: 'Enter a valid month',
-        year: 'Enter a valid year',
-      };
-      errors[issue === 'missing' ? key : `${key}-${issue}`] = issueMessages[issue];
-    };
+  // A draft resume (mode 'edit' here reaches Update, but the collection hasn't opened yet) is validated
+  // the same as create: the collection open date must be today or in the future. No savedOpenDate is
+  // passed — only CollectionEditor (an already scheduled/open collection) exempts its saved open date.
+  const validateCurrent = (): Record<string, string> => (current === 'check' ? {} : validateCollectionSection(current, state));
 
-    switch (current) {
-      case 'details': {
-        if (!state.name.trim()) {
-          errors['name'] = 'Enter a name for this data collection';
-        }
-        if (!state.type) {
-          errors['type'] = 'Select a type';
-        }
-        if (state.type && !state.financialYear) {
-          errors['financialYear'] = 'Select a financial year';
-        }
-        if (state.type === 'quarterly_report' && !state.quarter) {
-          errors['quarter'] = 'Select a quarter';
-        }
-        return errors;
-      }
-      case 'window': {
-        if (!state.windowSameAsReportingPeriod) {
-          errors['window-same'] = 'Select an option';
-        }
-        if (state.windowSameAsReportingPeriod === 'no') {
-          validateDate('open-date', state.opensDay, state.opensMonth, state.opensYear, 'Enter when the data collection will open');
-          validateDate('deadline-date', state.deadlineDay, state.deadlineMonth, state.deadlineYear, 'Enter the deadline for submissions');
-        }
-        return errors;
-      }
-      case 'forms': {
-        if (state.formModuleIds.length === 0) {
-          errors['forms'] = 'Select at least one form';
-        }
-        return errors;
-      }
-      case 'reportingLas': {
-        if (!state.isSubmittedByAllLas) {
-          errors['all-las'] = 'Select an option';
-        }
-        if (state.isSubmittedByAllLas === 'no' && state.selectedLaIds.length === 0) {
-          errors['selected-las'] = 'Select at least one organisation';
-        }
-        return errors;
-      }
-      case 'reminders': {
-        state.reminders.forEach((reminder, index) => {
-          if (!reminder.offsetType) {
-            errors[`reminder-${index}-trigger`] = 'Select when to send the reminder';
-          }
-          if (reminder.offsetType && !reminder.days.trim()) {
-            errors[`reminder-${index}-days`] = 'Enter the number of days';
-          }
-        });
-        return errors;
-      }
-      default:
-        return errors;
+  // A taken name only surfaces once the server checks it, so it needs the user routed back to the
+  // details step to see it as an inline field error — the Name input doesn't render on any other step.
+  const handleSubmitError = (error: unknown) => {
+    dispatch({ type: 'BUMP_ATTEMPTS' });
+    if (isCollectionNameTakenError(error)) {
+      dispatch({ type: 'SET_ERRORS', errors: { name: 'Name must not match the name of another data collection' } });
+      setStep(0);
+      return;
     }
+    dispatch({ type: 'SET_ERRORS', errors: { submit: mapCollectionError(error) } });
   };
 
-  const createMutation = useMutation(createCollection, {
+  const createMutation = useMutation({
+    mutationFn: createCollection,
     onSuccess: () => {
-      queryClient.invalidateQueries(collectionsListKey);
+      queryClient.invalidateQueries({ queryKey: collectionsListKey });
       navigate('/admin/collections', {
-        state: { banner: { title: 'Edits saved', body: `'${state.name}' is now on your list of data collections.` } },
+        state: { banner: { title: 'Data collection added', body: `'${state.name}' is now on your list of data collections.` } },
       });
     },
-    onError: (error) => {
-      // BUMP_ATTEMPTS drives GovUKErrorSummary's focusTrigger — without it a server-side error reached
-      // via "Save and come back later" (which skips goNext) renders the summary unfocused.
-      dispatch({ type: 'BUMP_ATTEMPTS' });
-      dispatch({ type: 'SET_ERRORS', errors: { submit: mapCollectionError(error) } });
-    },
+    // BUMP_ATTEMPTS (inside handleSubmitError) drives GovUKErrorSummary's focusTrigger — without it a
+    // server-side error reached via "Save and come back later" (which skips goNext) renders the summary
+    // unfocused.
+    onError: handleSubmitError,
   });
 
-  const updateMutation = useMutation(updateCollection, {
+  const updateMutation = useMutation({
+    mutationFn: updateCollection,
     onSuccess: () => {
       if (collectionId) {
-        queryClient.invalidateQueries(collectionKey(collectionId));
+        queryClient.invalidateQueries({ queryKey: collectionKey(collectionId) });
       }
-      queryClient.invalidateQueries(collectionsListKey);
+      queryClient.invalidateQueries({ queryKey: collectionsListKey });
       navigate('/admin/collections', {
         state: { banner: { title: 'Edits saved', body: 'The data collection is now up to date.' } },
       });
     },
-    onError: (error) => {
-      dispatch({ type: 'BUMP_ATTEMPTS' });
-      dispatch({ type: 'SET_ERRORS', errors: { submit: mapCollectionError(error) } });
-    },
+    onError: handleSubmitError,
   });
 
-  const isSubmitting = createMutation.isLoading || updateMutation.isLoading;
+  const isSubmitting = createMutation.isPending || updateMutation.isPending;
 
   const submit = (saveAsDraft: boolean) => {
     if (mode === 'edit') {
-      updateMutation.mutate({ ...buildUpdateInput(state, saveAsDraft), id: collectionId as string });
+      updateMutation.mutate({ ...buildUpdateInput(state, saveAsDraft, formVersionsEnabled), id: collectionId as string });
     } else {
-      createMutation.mutate(buildCreateInput(state, saveAsDraft));
+      createMutation.mutate(buildCreateInput(state, saveAsDraft, formVersionsEnabled));
     }
   };
 

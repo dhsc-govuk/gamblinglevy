@@ -1,5 +1,6 @@
 using Application.Activities.Audit;
 using Application.Activities.Exceptions;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
@@ -23,8 +24,10 @@ public class SoftDeleteActivityCommandHandler(
     IActivityRepository activityRepository,
     IActivityQueries activityQueries,
     IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner,
     SubmissionReviewService submissionReviewService,
-    PermissionsService permissionsService)
+    PermissionsService permissionsService,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<SoftDeleteActivityCommand, Either<ActivityException, Activity>>
 {
     public async Task<Either<ActivityException, Activity>> Handle(
@@ -59,34 +62,44 @@ public class SoftDeleteActivityCommandHandler(
         var activity = lookup.ValueUnsafe();
         var before = ActivitySnapshot.Serialize(activity);
 
-        try
-        {
-            activity.SoftDelete(actorId);
-            var saved = await activityRepository.UpdateAsync(activity, cancellationToken);
-
-            await auditLogRepository.AppendAsync(
-                AuditLog.Create(
-                    actorId,
-                    AuditTargetType.Activity,
-                    saved.Id.Value,
-                    AuditAction.ActivityDeleted,
-                    before: before,
-                    after: ActivitySnapshot.Serialize(saved),
-                    organisationId: organisationId),
-                cancellationToken);
-
-            // Deleting a completed record changes the reportable activity list — in-flight quarterly reports must
-            // be reviewed (BLUM-6611).
-            if (saved.IsComplete)
+        // The change and its audit row commit together (BLUM-8748).
+        var result = await transactionRunner.RunAsync<ActivityException, Activity>(
+            async token =>
             {
-                await submissionReviewService.FlagOpenSubmissionsAsync(organisationId, cancellationToken);
-            }
+                try
+                {
+                    activity.SoftDelete(actorId, dateTimeProvider.GetUtcNow());
+                    var saved = await activityRepository.UpdateAsync(activity, token);
 
-            return saved;
-        }
-        catch (Exception exception)
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            actorId,
+                            AuditTargetType.Activity,
+                            saved.Id.Value,
+                            AuditAction.ActivityDeleted,
+                            before: before,
+                            after: ActivitySnapshot.Serialize(saved),
+                            organisationId: organisationId),
+                        token);
+
+                    return saved;
+                }
+                catch (Exception exception)
+                {
+                    return new ActivityUnknownException(activityId, exception);
+                }
+            },
+            cancellationToken);
+
+        // Deleting a completed record changes the reportable activity list — in-flight quarterly reports must
+        // be reviewed (BLUM-6611).
+        // After the commit: it is best-effort and swallows its own failures, which inside the transaction would
+        // abort it and take the change with it.
+        if (result.Match(saved => saved.IsComplete, _ => false))
         {
-            return new ActivityUnknownException(activityId, exception);
+            await submissionReviewService.FlagOpenSubmissionsAsync(organisationId, cancellationToken);
         }
+
+        return result;
     }
 }

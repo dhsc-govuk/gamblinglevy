@@ -22,7 +22,8 @@ public class OrganisationTests
             Region.London,
             type,
             "E1000001",
-            OnboardingStatus.Invited);
+            OnboardingStatus.Invited,
+            DateTime.UtcNow);
 
     [Fact]
     public void New_KeepsTheOnsCode_WhenSupplied()
@@ -45,7 +46,7 @@ public class OrganisationTests
     {
         var organisation = Build("E06000001", OrgType.Vcse);
 
-        organisation.UpdateDetails("Test Organisation", Region.London, OrgType.Vcse, "E1000001", null);
+        organisation.UpdateDetails("Test Organisation", Region.London, OrgType.Vcse, "E1000001", null, DateTime.UtcNow);
 
         organisation.OnsCode.Should().BeNull();
     }
@@ -68,7 +69,8 @@ public class OrganisationTests
             Region.London,
             OrgType.LocalAuthority,
             eCode!,
-            OnboardingStatus.Invited);
+            OnboardingStatus.Invited,
+            DateTime.UtcNow);
 
         act.Should().Throw<ArgumentException>();
     }
@@ -81,7 +83,7 @@ public class OrganisationTests
     {
         var organisation = Build("E06000001", OrgType.LocalAuthority);
 
-        var act = () => organisation.UpdateDetails("Test Organisation", Region.London, OrgType.LocalAuthority, eCode!, "E06000001");
+        var act = () => organisation.UpdateDetails("Test Organisation", Region.London, OrgType.LocalAuthority, eCode!, "E06000001", DateTime.UtcNow);
 
         act.Should().Throw<ArgumentException>();
         organisation.ECode.Should().Be("E1000001");

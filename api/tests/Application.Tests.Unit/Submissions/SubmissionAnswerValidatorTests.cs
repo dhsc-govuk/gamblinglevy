@@ -44,9 +44,9 @@ public class SubmissionAnswerValidatorTests
     {
         var child = Question("CHILD", conditionalQuestionCode: "PARENT", conditionalValue: "other");
 
-        SubmissionAnswerValidator.IsVisible(child, Answers()).Should().BeFalse();
-        SubmissionAnswerValidator.IsVisible(child, Answers(("PARENT", "something"))).Should().BeFalse();
-        SubmissionAnswerValidator.IsVisible(child, Answers(("PARENT", "other"))).Should().BeTrue();
+        SubmissionAnswerValidator.Visibility([child], Answers(), transitive: false).IsVisible("CHILD").Should().BeFalse();
+        SubmissionAnswerValidator.Visibility([child], Answers(("PARENT", "something")), transitive: false).IsVisible("CHILD").Should().BeFalse();
+        SubmissionAnswerValidator.Visibility([child], Answers(("PARENT", "other")), transitive: false).IsVisible("CHILD").Should().BeTrue();
     }
 
     [Fact]
@@ -54,8 +54,8 @@ public class SubmissionAnswerValidatorTests
     {
         var child = Question("CHILD", conditionalQuestionCode: "PARENT", conditionalValue: "a,b");
 
-        SubmissionAnswerValidator.IsVisible(child, Answers(("PARENT", "b"))).Should().BeTrue();
-        SubmissionAnswerValidator.IsVisible(child, Answers(("PARENT", "c"))).Should().BeFalse();
+        SubmissionAnswerValidator.Visibility([child], Answers(("PARENT", "b")), transitive: false).IsVisible("CHILD").Should().BeTrue();
+        SubmissionAnswerValidator.Visibility([child], Answers(("PARENT", "c")), transitive: false).IsVisible("CHILD").Should().BeFalse();
     }
 
     [Fact]
@@ -63,8 +63,8 @@ public class SubmissionAnswerValidatorTests
     {
         var child = Question("CHILD", conditionalQuestionCode: "PARENT", conditionalValue: "other");
 
-        SubmissionAnswerValidator.IsVisible(child, Answers(("PARENT", "licensing,other"))).Should().BeTrue();
-        SubmissionAnswerValidator.IsVisible(child, Answers(("PARENT", "licensing,planning"))).Should().BeFalse();
+        SubmissionAnswerValidator.Visibility([child], Answers(("PARENT", "licensing,other")), transitive: false).IsVisible("CHILD").Should().BeTrue();
+        SubmissionAnswerValidator.Visibility([child], Answers(("PARENT", "licensing,planning")), transitive: false).IsVisible("CHILD").Should().BeFalse();
     }
 
     [Fact]
@@ -72,9 +72,9 @@ public class SubmissionAnswerValidatorTests
     {
         var questions = new[] { Question("Q1", errorMessage: "Select who is contributing evidence") };
 
-        SubmissionAnswerValidator.Validate(questions, Answers(), enforceRequired: false).Should().BeEmpty();
+        SubmissionAnswerValidator.Validate(questions, Answers(), enforceRequired: false, transitive: false).Should().BeEmpty();
 
-        var errors = SubmissionAnswerValidator.Validate(questions, Answers(), enforceRequired: true);
+        var errors = SubmissionAnswerValidator.Validate(questions, Answers(), enforceRequired: true, transitive: false);
         errors.Should().ContainSingle();
         errors[0].QuestionCode.Should().Be("Q1");
         errors[0].Message.Should().Be("Select who is contributing evidence");
@@ -88,7 +88,7 @@ public class SubmissionAnswerValidatorTests
             Question("CHILD", conditionalQuestionCode: "PARENT", conditionalValue: "other"),
         };
 
-        SubmissionAnswerValidator.Validate(questions, Answers(), enforceRequired: true).Should().BeEmpty();
+        SubmissionAnswerValidator.Validate(questions, Answers(), enforceRequired: true, transitive: false).Should().BeEmpty();
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public class SubmissionAnswerValidatorTests
     {
         var questions = new[] { Question("Q_NUM", QuestionTypes.Number) };
 
-        var errors = SubmissionAnswerValidator.Validate(questions, Answers(("Q_NUM", "12.5")), enforceRequired: false);
+        var errors = SubmissionAnswerValidator.Validate(questions, Answers(("Q_NUM", "12.5")), enforceRequired: false, transitive: false);
 
         errors.Should().ContainSingle();
         errors[0].Message.Should().Be("“Label for Q_NUM” must be a whole number.");
@@ -107,7 +107,7 @@ public class SubmissionAnswerValidatorTests
     {
         var questions = new[] { Question("Q_PCT", QuestionTypes.Number, min: 0, max: 100, isPercentage: true) };
 
-        var errors = SubmissionAnswerValidator.Validate(questions, Answers(("Q_PCT", "abc")), enforceRequired: false);
+        var errors = SubmissionAnswerValidator.Validate(questions, Answers(("Q_PCT", "abc")), enforceRequired: false, transitive: false);
 
         errors.Should().ContainSingle();
         errors[0].Message.Should().Be("Enter a percentage, like 25");
@@ -118,7 +118,7 @@ public class SubmissionAnswerValidatorTests
     {
         var questions = new[] { Question("Q_PCT", QuestionTypes.Number, min: 0, max: 100, isPercentage: true) };
 
-        var errors = SubmissionAnswerValidator.Validate(questions, Answers(("Q_PCT", "150")), enforceRequired: false);
+        var errors = SubmissionAnswerValidator.Validate(questions, Answers(("Q_PCT", "150")), enforceRequired: false, transitive: false);
 
         errors.Should().ContainSingle();
         errors[0].Message.Should().Be("Enter a percentage between 0 and 100");
@@ -129,7 +129,7 @@ public class SubmissionAnswerValidatorTests
     {
         var questions = new[] { Question("Q_NUM", QuestionTypes.Number, min: 1) };
 
-        var errors = SubmissionAnswerValidator.Validate(questions, Answers(("Q_NUM", "0")), enforceRequired: false);
+        var errors = SubmissionAnswerValidator.Validate(questions, Answers(("Q_NUM", "0")), enforceRequired: false, transitive: false);
 
         errors.Should().ContainSingle();
         errors[0].Message.Should().Be("Enter a number of 1 or more");
@@ -141,9 +141,9 @@ public class SubmissionAnswerValidatorTests
         var options = new List<ResolvedQuestionOption> { new("yes", "Yes"), new("no", "No") };
         var questions = new[] { Question("Q_RADIO", QuestionTypes.Radio, options: options) };
 
-        SubmissionAnswerValidator.Validate(questions, Answers(("Q_RADIO", "yes")), enforceRequired: false).Should().BeEmpty();
+        SubmissionAnswerValidator.Validate(questions, Answers(("Q_RADIO", "yes")), enforceRequired: false, transitive: false).Should().BeEmpty();
 
-        var errors = SubmissionAnswerValidator.Validate(questions, Answers(("Q_RADIO", "maybe")), enforceRequired: false);
+        var errors = SubmissionAnswerValidator.Validate(questions, Answers(("Q_RADIO", "maybe")), enforceRequired: false, transitive: false);
         errors.Should().ContainSingle();
         errors[0].QuestionCode.Should().Be("Q_RADIO");
     }
@@ -154,11 +154,35 @@ public class SubmissionAnswerValidatorTests
         var options = new List<ResolvedQuestionOption> { new("a", "A"), new("b", "B") };
         var questions = new[] { Question("Q_CHECK", QuestionTypes.Checkbox, options: options) };
 
-        SubmissionAnswerValidator.Validate(questions, Answers(("Q_CHECK", "a,b")), enforceRequired: false).Should().BeEmpty();
+        SubmissionAnswerValidator.Validate(questions, Answers(("Q_CHECK", "a,b")), enforceRequired: false, transitive: false).Should().BeEmpty();
 
-        var errors = SubmissionAnswerValidator.Validate(questions, Answers(("Q_CHECK", "a,c")), enforceRequired: false);
+        var errors = SubmissionAnswerValidator.Validate(questions, Answers(("Q_CHECK", "a,c")), enforceRequired: false, transitive: false);
         errors.Should().ContainSingle();
         errors[0].QuestionCode.Should().Be("Q_CHECK");
+    }
+
+    // BLUM-8955: the client's validateCurrencyAnswer holds a Currency answer to whatever minValue its question
+    // arrives with, so this validator has to as well or the two disagree on what may be saved.
+    [Theory]
+    [InlineData("0", "Enter an amount of 1 or more for “Label for Q_MONEY”")]
+    [InlineData("-5", "Enter an amount of 1 or more for “Label for Q_MONEY”")]
+    [InlineData("5,10", "“Label for Q_MONEY” must be a whole number and not include pence")]
+    public void Validate_CurrencyQuestion_IsHeldToItsMinimum(string value, string expected)
+    {
+        var questions = new[] { Question("Q_MONEY", QuestionTypes.Currency, min: 1) };
+
+        SubmissionAnswerValidator.Validate(questions, Answers(("Q_MONEY", value)), enforceRequired: false, transitive: false)
+            .Should().ContainSingle().Which.Message.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("0", null)]
+    [InlineData("1,500", 1)]
+    public void Validate_CurrencyQuestion_AcceptsAnAmountAtOrAboveItsMinimum(string value, int? min)
+    {
+        var questions = new[] { Question("Q_MONEY", QuestionTypes.Currency, min: min) };
+
+        SubmissionAnswerValidator.Validate(questions, Answers(("Q_MONEY", value)), enforceRequired: false, transitive: false).Should().BeEmpty();
     }
 
     [Fact]
@@ -175,7 +199,7 @@ public class SubmissionAnswerValidatorTests
             ("CHILD", "should be dropped — parent is not 'other'"),
             ("BLANK", "   "));
 
-        var persistable = SubmissionAnswerValidator.CollectPersistable(questions, answers);
+        var persistable = SubmissionAnswerValidator.CollectPersistable(questions, answers, transitive: false);
 
         persistable.Should().ContainSingle();
         persistable[0].Question.Code.Should().Be("PARENT");

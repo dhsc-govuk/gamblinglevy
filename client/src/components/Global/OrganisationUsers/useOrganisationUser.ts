@@ -1,7 +1,8 @@
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthProvider } from '../../AuthProvider';
 import { organisationUserKey } from '../../../helpers/queriesParams';
-import { isAccessDeniedError, isNotFoundError, isRateLimitedError } from '../../../helpers/httpErrors';
+import { isAccessDeniedError, isNotFoundError } from '../../../helpers/httpErrors';
+import { shouldRetryQuery } from '../../../helpers/queryRetry';
 import { getOrganisationUser, type OrganisationUserDto } from './api';
 import { SERVICE_PROBLEM_HEADING } from './UserLoadFailed';
 
@@ -22,14 +23,16 @@ export interface OrganisationUserState {
 export const useOrganisationUser = (userId: string): OrganisationUserState => {
   const { organisationId, isAuthLoading } = useAuthProvider();
 
-  const { data, isError, error } = useQuery(organisationUserKey(organisationId ?? '', userId), () => getOrganisationUser(organisationId!, userId), {
+  const { data, isError, error } = useQuery({
+    queryKey: organisationUserKey(organisationId ?? '', userId),
+    queryFn: () => getOrganisationUser(organisationId!, userId),
     enabled: !!organisationId && !!userId,
     // A 404 is retry-proof, and a 429 is retry-hostile — retrying a rate limit spends the budget that has to drain
     // before the caller can get back in (BLUM-7239). A 403 keeps its retries on purpose: the axios interceptor
     // deliberately lets an MFA_REQUIRED 403 through inside its 5-second post-verify guard, and the retry backoff is
     // what carries the last attempt past that window so the interceptor can redirect. Failing fast on 403 would
     // strand the user instead.
-    retry: (failureCount, requestError) => !isNotFoundError(requestError) && !isRateLimitedError(requestError) && failureCount < 3,
+    retry: (failureCount, requestError) => !isNotFoundError(requestError) && shouldRetryQuery(failureCount, requestError),
   });
 
   const user = data?.data;

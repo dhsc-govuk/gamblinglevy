@@ -1,0 +1,8 @@
+P:System.DateTime.Now;Read the clock through IDateTimeProvider; Domain takes a utcNow parameter (BLUM-8753)
+P:System.DateTime.UtcNow;Read the clock through IDateTimeProvider; Domain takes a utcNow parameter (BLUM-8753)
+P:System.DateTime.Today;Read the clock through IDateTimeProvider; Domain takes a utcNow parameter (BLUM-8753)
+P:System.DateTimeOffset.Now;Read the clock through IDateTimeProvider; Domain takes a utcNow parameter (BLUM-8753)
+P:System.DateTimeOffset.UtcNow;Read the clock through IDateTimeProvider; Domain takes a utcNow parameter (BLUM-8753)
+P:System.TimeProvider.System;Read the clock through IDateTimeProvider; Domain takes a utcNow parameter (BLUM-8753)
+M:System.TimeProvider.GetUtcNow;Read the clock through IDateTimeProvider; Domain takes a utcNow parameter (BLUM-8753)
+M:System.TimeProvider.GetLocalNow;Read the clock through IDateTimeProvider; Domain takes a utcNow parameter (BLUM-8753)

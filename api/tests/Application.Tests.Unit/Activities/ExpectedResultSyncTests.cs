@@ -17,10 +17,10 @@ public class ExpectedResultSyncTests
 
     private static ActivityExpectedResult Standard(string code, int order, string? label = null) =>
         ActivityExpectedResult.Record(
-            ActivityExpectedResultId.New(), ActivityRef, label ?? $"Label for {code}", order, Actor, code);
+            ActivityExpectedResultId.New(), ActivityRef, label ?? $"Label for {code}", order, Actor, DateTime.UtcNow, code);
 
     private static ActivityExpectedResult Custom(string text, int order) =>
-        ActivityExpectedResult.Record(ActivityExpectedResultId.New(), ActivityRef, text, order, Actor);
+        ActivityExpectedResult.Record(ActivityExpectedResultId.New(), ActivityRef, text, order, Actor, DateTime.UtcNow);
 
     [Fact]
     public void Plan_WithIdenticalResend_ReturnsEmptyPlan()
@@ -34,7 +34,8 @@ public class ExpectedResultSyncTests
             [standard, custom],
             [("kr_a", "Label for kr_a"), (null, "My custom result")],
             ActivityRef,
-            Actor);
+            Actor,
+            DateTime.UtcNow);
 
         // Assert
         plan.ToAdd.Should().BeEmpty();
@@ -49,7 +50,7 @@ public class ExpectedResultSyncTests
         var custom = Custom("Old text", 0);
 
         // Act
-        var plan = ExpectedResultSync.Plan([custom], [(null, "New text")], ActivityRef, Actor);
+        var plan = ExpectedResultSync.Plan([custom], [(null, "New text")], ActivityRef, Actor, DateTime.UtcNow);
 
         // Assert
         plan.ToAdd.Should().BeEmpty();
@@ -68,7 +69,7 @@ public class ExpectedResultSyncTests
 
         // Act
         var plan = ExpectedResultSync.Plan(
-            [custom], [(null, "Existing"), (null, "Brand new")], ActivityRef, Actor);
+            [custom], [(null, "Existing"), (null, "Brand new")], ActivityRef, Actor, DateTime.UtcNow);
 
         // Assert
         plan.ToUpdate.Should().BeEmpty();
@@ -87,7 +88,7 @@ public class ExpectedResultSyncTests
         var remove = Custom("Remove", 1);
 
         // Act
-        var plan = ExpectedResultSync.Plan([keep, remove], [(null, "Keep")], ActivityRef, Actor);
+        var plan = ExpectedResultSync.Plan([keep, remove], [(null, "Keep")], ActivityRef, Actor, DateTime.UtcNow);
 
         // Assert
         plan.ToAdd.Should().BeEmpty();
@@ -105,7 +106,7 @@ public class ExpectedResultSyncTests
 
         // Act
         var plan = ExpectedResultSync.Plan(
-            [deleted, kept], [(null, "Keep this one"), (null, "Publish a newsletter")], ActivityRef, Actor);
+            [deleted, kept], [(null, "Keep this one"), (null, "Publish a newsletter")], ActivityRef, Actor, DateTime.UtcNow);
 
         // Assert
         plan.ToRemove.Should().ContainSingle().Which.Id.Should().Be(deleted.Id);
@@ -123,7 +124,7 @@ public class ExpectedResultSyncTests
 
         // Act
         var plan = ExpectedResultSync.Plan(
-            [first, second], [(null, "Second"), (null, "First")], ActivityRef, Actor);
+            [first, second], [(null, "Second"), (null, "First")], ActivityRef, Actor, DateTime.UtcNow);
 
         // Assert
         plan.ToAdd.Should().BeEmpty();
@@ -140,7 +141,7 @@ public class ExpectedResultSyncTests
         var standard = Standard("kr_a", 0);
 
         // Act
-        var plan = ExpectedResultSync.Plan([standard], [("kr_b", "Label for kr_b")], ActivityRef, Actor);
+        var plan = ExpectedResultSync.Plan([standard], [("kr_b", "Label for kr_b")], ActivityRef, Actor, DateTime.UtcNow);
 
         // Assert
         plan.ToUpdate.Should().BeEmpty();
@@ -157,7 +158,7 @@ public class ExpectedResultSyncTests
         var standard = Standard("kr_a", 0, "Old label");
 
         // Act
-        var plan = ExpectedResultSync.Plan([standard], [("kr_a", "New label")], ActivityRef, Actor);
+        var plan = ExpectedResultSync.Plan([standard], [("kr_a", "New label")], ActivityRef, Actor, DateTime.UtcNow);
 
         // Assert
         plan.ToAdd.Should().BeEmpty();
@@ -177,7 +178,7 @@ public class ExpectedResultSyncTests
 
         // Act
         var plan = ExpectedResultSync.Plan(
-            [original, duplicate], [("kr_a", "Label for kr_a")], ActivityRef, Actor);
+            [original, duplicate], [("kr_a", "Label for kr_a")], ActivityRef, Actor, DateTime.UtcNow);
 
         // Assert
         plan.ToAdd.Should().BeEmpty();
@@ -194,7 +195,7 @@ public class ExpectedResultSyncTests
 
         // Act
         var plan = ExpectedResultSync.Plan(
-            [firstDupe, secondDupe], [(null, "Same"), (null, "Same"), (null, "Same")], ActivityRef, Actor);
+            [firstDupe, secondDupe], [(null, "Same"), (null, "Same"), (null, "Same")], ActivityRef, Actor, DateTime.UtcNow);
 
         // Assert
         plan.ToUpdate.Should().BeEmpty();
@@ -214,7 +215,7 @@ public class ExpectedResultSyncTests
 
         // Act
         var plan = ExpectedResultSync.Plan(
-            [kept, reworded], [(null, "New name"), (null, "Kept")], ActivityRef, Actor);
+            [kept, reworded], [(null, "New name"), (null, "Kept")], ActivityRef, Actor, DateTime.UtcNow);
 
         // Assert
         plan.ToRemove.Should().ContainSingle().Which.Id.Should().Be(reworded.Id);
@@ -235,7 +236,7 @@ public class ExpectedResultSyncTests
 
         // Act
         var plan = ExpectedResultSync.Plan(
-            [reworded, kept], [(null, "New name"), (null, "Kept")], ActivityRef, Actor);
+            [reworded, kept], [(null, "New name"), (null, "Kept")], ActivityRef, Actor, DateTime.UtcNow);
 
         // Assert
         plan.ToAdd.Should().BeEmpty();

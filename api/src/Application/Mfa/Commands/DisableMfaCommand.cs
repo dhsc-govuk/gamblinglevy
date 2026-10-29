@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Settings;
@@ -20,6 +21,8 @@ public class DisableMfaCommandHandler(
     IAuditLogRepository auditLogRepository,
     MfaAttemptGate attemptGate,
     MfaFailureRecorder failureRecorder,
+    IDateTimeProvider dateTimeProvider,
+    ITransactionRunner transactionRunner,
     ApplicationSettings settings)
     : IRequestHandler<DisableMfaCommand, Either<MfaException, bool>>
 {
@@ -51,11 +54,13 @@ public class DisableMfaCommandHandler(
 
     private Either<MfaException, UserMfa> ValidateNotLockedOut(UserMfa mfa, UserId userId)
     {
-        return mfa.IsLockedOut()
+        var utcNow = dateTimeProvider.GetUtcNow();
+
+        return mfa.IsLockedOut(utcNow)
             ? new MfaLockedOutException(
                 userId,
                 mfa.LockedUntil!.Value,
-                MfaRetryAfter.Seconds(mfa.LockedUntil, DateTime.UtcNow, settings.Mfa.LockoutMinutes * 60))
+                MfaRetryAfter.Seconds(mfa.LockedUntil, utcNow, settings.Mfa.LockoutMinutes * 60))
             : mfa;
     }
 
@@ -64,7 +69,19 @@ public class DisableMfaCommandHandler(
         DisableMfaCommand request,
         CancellationToken cancellationToken)
     {
-        var secret = encryptionService.Decrypt(mfa.EncryptedSecret);
+        string secret;
+        try
+        {
+            secret = encryptionService.Decrypt(mfa.EncryptedSecret);
+        }
+        catch (CryptographicException ex)
+        {
+            // A lost or rotated Data Protection key (see IMfaEncryptionService.Decrypt) would otherwise
+            // surface as an unhandled 500 with no MFA_* envelope — UnhandledExceptionBehaviour rethrows
+            // anything that is not part of this handler's Either.
+            return new MfaUnknownException(request.UserId, ex);
+        }
+
         if (totpService.ValidateCode(secret, request.Code))
         {
             rateLimitService.ResetAttempts(request.UserId);
@@ -95,14 +112,20 @@ public class DisableMfaCommandHandler(
         UserId userId,
         CancellationToken cancellationToken)
     {
-        mfa.Disable();
-        await userMfaRepository.UpdateAsync(mfa, cancellationToken);
-        await sessionService.RevokeAllUserSessionsAsync(userId);
+        // The disable, the session revocation and the audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<MfaException, bool>(
+            async token =>
+            {
+                mfa.Disable(dateTimeProvider.GetUtcNow());
+                await userMfaRepository.UpdateAsync(mfa, token);
+                await sessionService.RevokeAllUserSessionsAsync(userId);
 
-        await auditLogRepository.AppendAsync(
-            AuditLog.Create(userId, AuditTargetType.User, userId.Value, AuditAction.MfaDisabled, before: null, after: null),
+                await auditLogRepository.AppendAsync(
+                    AuditLog.Create(userId, AuditTargetType.User, userId.Value, AuditAction.MfaDisabled, before: null, after: null),
+                    token);
+
+                return true;
+            },
             cancellationToken);
-
-        return true;
     }
 }

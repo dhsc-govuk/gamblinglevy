@@ -1,7 +1,11 @@
+using Application.Common.Features;
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
+using Application.DataCollectionForms.Audit;
 using Application.DataCollectionForms.Exceptions;
+using Domain.AuditLogs;
 using Domain.DataCollectionForms;
 using LanguageExt;
 using LanguageExt.UnsafeValueAccess;
@@ -19,7 +23,11 @@ public record UpdateFormModuleCommand : IRequest<Either<FormModuleException, For
 public class UpdateFormModuleCommandHandler(
     IFormModuleRepository moduleRepository,
     IFormModuleQueries moduleQueries,
-    PermissionsService permissionsService)
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner,
+    IFeatureFlags featureFlags,
+    PermissionsService permissionsService,
+    IDateTimeProvider dateTimeProvider)
     : IRequestHandler<UpdateFormModuleCommand, Either<FormModuleException, FormModule>>
 {
     public async Task<Either<FormModuleException, FormModule>> Handle(
@@ -46,15 +54,40 @@ public class UpdateFormModuleCommandHandler(
 
         var module = lookup.ValueUnsafe();
 
-        try
+        // BLUM-9102: with versioning on, a published form changes only through a draft, so its name and description
+        // are part of the next version rather than an untracked edit to the live form. Like the other structural edits.
+        if (featureFlags.IsEnabled(Feature.BLUM_9087) && module.Status.IsPublished)
         {
-            module.UpdateDetails(request.Name!, request.Description, actorId);
-            await moduleRepository.UpdateAsync(module, cancellationToken);
-            return module;
+            return new FormModuleNotEditableException(moduleId);
         }
-        catch (Exception exception)
-        {
-            return new FormModuleUnknownException(moduleId, exception);
-        }
+
+        // The change and its audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<FormModuleException, FormModule>(
+            async token =>
+            {
+                try
+                {
+                    var before = DataCollectionFormSnapshot.Serialize(module);
+                    module.UpdateDetails(request.Name!, request.Description, actorId, dateTimeProvider.GetUtcNow());
+                    await moduleRepository.UpdateAsync(module, token);
+
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            actorId,
+                            AuditTargetType.DataCollectionForm,
+                            moduleId.Value,
+                            AuditAction.DataCollectionFormModuleUpdated,
+                            before,
+                            DataCollectionFormSnapshot.Serialize(module)),
+                        token);
+
+                    return module;
+                }
+                catch (Exception exception)
+                {
+                    return new FormModuleUnknownException(moduleId, exception);
+                }
+            },
+            cancellationToken);
     }
 }

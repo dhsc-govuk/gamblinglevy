@@ -11,4 +11,5 @@ export { default as UserLoadFailed, SERVICE_PROBLEM_HEADING } from './UserLoadFa
 export type { UserLoadFailedProps } from './UserLoadFailed';
 export { useOrganisationUser, organisationUserPageTitle } from './useOrganisationUser';
 export type { OrganisationUserState } from './useOrganisationUser';
+export { laAccessLevelFilterOptions } from './accessLevels';
 export * from './api';

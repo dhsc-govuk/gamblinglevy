@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation, useParams } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ManagementLayout } from '../../../../layouts';
 import { GovUKInsetText, H1, LoadingBox } from '../../../../components/GovUKComponents';
 import CollectionWizard, { type CollectionWizardDiscardState } from '../../../../components/Global/Collections/CollectionWizard';
@@ -21,9 +21,7 @@ const CollectionsEdit = (): React.ReactElement => {
   const location = useLocation();
   const restoredWizardState = location.state as CollectionWizardDiscardState | null;
 
-  const { data, isLoading } = useQuery(collectionKey(collectionId), () => getCollection(collectionId), {
-    enabled: !!collectionId,
-  });
+  const { data, isLoading } = useQuery({ queryKey: collectionKey(collectionId), queryFn: () => getCollection(collectionId), enabled: !!collectionId });
   const c = data?.data;
 
   // CollectionWizard/CollectionEditor set their own step-specific title once rendered — this only

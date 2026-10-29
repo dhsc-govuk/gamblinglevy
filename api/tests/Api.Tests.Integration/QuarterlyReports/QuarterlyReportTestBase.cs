@@ -1,6 +1,10 @@
 using System.Net.Http.Json;
 using Api.Dtos;
+using Application.MaturityAssessments.Protocol;
+using Domain.Collections;
+using Domain.DataCollectionForms;
 using Domain.Organisations;
+using Domain.Submissions;
 using Domain.ValueObjects;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -22,8 +26,18 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
     protected const string FundingModuleCode = "funding_spent";
     protected const string FeedbackModuleCode = "strategic_feedback";
 
+    // strategic-feedback.csv's header behind BLUM_8329 (one row per organisation, a column per question), spelled out
+    // rather than built from ReportSnapshotCsv so the tests pin the ticket's wording, not whatever production says.
+    protected const string WideStrategicFeedbackHeader =
+        "Local authority,"
+        + "What other gambling harms prevention work have you focused on this quarter?,"
+        + "What challenges have you encountered?,"
+        + "Do you have any feedback for the Department of Health and Social Care (DHSC) on gambling harms prevention?,"
+        + "Do you have any learnings you’d like to share with other local authorities?";
+
     protected const string RnaTaskName = "Contributing to a regional needs assessment";
     protected const string SteeringGroupTaskName = "Setting up and running a local steering group";
+    protected const string ScreeningTaskName = "Using screening tools to better assess gambling harms";
     protected const string PeopleTaskName = "Public Health Officer";
 
     protected static readonly Organisation MainOrg = OrganisationsData.MainOrganisation;
@@ -32,7 +46,7 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
     // A non-LA (VCSE) organisation, used to prove "submitted by all LAs" collections are gated to Local
     // Authorities and never reach VCSE-type orgs.
     protected static readonly Organisation VcseOrg = Organisation.New(
-        OrganisationId.New(), "VCSE Test Org", "E06000099", Region.London, OrgType.Vcse, "E1000001", OnboardingStatus.Active);
+        OrganisationId.New(), "VCSE Test Org", "E06000099", Region.London, OrgType.Vcse, "E1000001", OnboardingStatus.Active, DateTime.UtcNow);
 
     protected static readonly Guid MainOrgLeadUserId = Guid.Parse("b0000000-0000-0000-0000-000000000001");
     protected static readonly Guid SecondOrgLeadUserId = Guid.Parse("b0000000-0000-0000-0000-000000000004");
@@ -89,6 +103,10 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
     // protocol, activity taxonomy, category form schema) must survive between tests.
     private async Task ClearOwnedRowsAsync()
     {
+        Context.MaturityAssessmentAnswers.RemoveRange(Context.MaturityAssessmentAnswers);
+        Context.MaturityAssessmentSections.RemoveRange(Context.MaturityAssessmentSections);
+        Context.MaturityAssessments.RemoveRange(Context.MaturityAssessments);
+        Context.MaturityBaselineAnswers.RemoveRange(Context.MaturityBaselineAnswers);
         Context.SubmissionActivityAnswers.RemoveRange(Context.SubmissionActivityAnswers);
         Context.SubmissionFeedbackAnswers.RemoveRange(Context.SubmissionFeedbackAnswers);
         Context.SubmissionActivityReports.RemoveRange(Context.SubmissionActivityReports);
@@ -128,15 +146,22 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
         IReadOnlyList<Guid>? localAuthorityIds = null,
         bool isSubmittedByAllLas = false,
         int quarter = 1,
-        string financialYear = "2026/27")
+        string? financialYear = null,
+        IReadOnlyList<Guid>? formModuleIds = null)
     {
         AuthenticateAsAdmin();
+
+        // Defaults to the year the app itself calls current, never a literal. A hardcoded year is stable only until
+        // it stops being this year: from then on the fixture is a PAST year, and past years are no longer inert —
+        // spend in one carries forward into the next report's "Total spent so far" (BLUM-7703). A test that needs a
+        // specific year passes one.
+        var year = financialYear ?? TestFinancialYears.Current;
 
         var request = new CreateCollectionRequestDto(
             Name: name,
             Purpose: "Quarterly report tests",
             Type: "quarterly_report",
-            FinancialYear: financialYear,
+            FinancialYear: year,
             Quarter: quarter,
             WindowSameAsReportingPeriod: false,
             OpenDate: openDate,
@@ -144,7 +169,7 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
             IsSubmittedByAllLas: isSubmittedByAllLas,
             SaveAsDraft: false,
             LocalAuthorityIds: isSubmittedByAllLas ? [] : localAuthorityIds ?? [MainOrg.Id.Value],
-            FormModuleIds: _formModuleIds,
+            FormModuleIds: formModuleIds ?? _formModuleIds,
             Reminders: null);
 
         var response = await Client.PostAsJsonAsync("data-collections", request);
@@ -154,27 +179,55 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
         return dto.Id;
     }
 
+    // The published modules minus one. A quarterly collection can be published with any subset of them, and a
+    // submission's sections are snapshotted from that choice at start — so an omitted module means the report has
+    // no section for it at all.
+    protected async Task<IReadOnlyList<Guid>> FormModuleIdsExceptAsync(string moduleCode)
+    {
+        var modules = await Context.FormModules.AsNoTracking().ToListAsync();
+        return modules
+            .Where(m => m.Code != moduleCode)
+            .OrderBy(m => m.DisplayOrder)
+            .Select(m => m.Id.Value)
+            .ToList();
+    }
+
+    // Every published module as the (id, code) sections Submission.Start takes — what a report started against a
+    // collection offering all of them has. Tests that seed a submitted submission straight through the domain factory
+    // need these, not an empty list: the report ZIP only writes a section's file when the submission has that section
+    // (BLUM-8106), and the report flow can never submit one with no sections at all.
+    protected async Task<IReadOnlyList<(FormModuleId ModuleId, string ModuleCode)>> AllModuleSectionsAsync()
+    {
+        var modules = await Context.FormModules.AsNoTracking().ToListAsync();
+        return modules
+            .OrderBy(m => m.DisplayOrder)
+            .Select(m => (m.Id, m.Code))
+            .ToList();
+    }
+
     protected Task<Guid> CreateOpenCollectionAsync(
-        string name = "2026 Q1 quarterly report",
+        string name = "Q1 quarterly report",
         IReadOnlyList<Guid>? localAuthorityIds = null) =>
         CreateQuarterlyCollectionAsync(name, Today.AddDays(-1), Today.AddDays(60), localAuthorityIds);
 
     // An open quarterly collection published with "submitted by all LAs" = Yes and no explicit assignment rows.
-    protected Task<Guid> CreateOpenAllLasCollectionAsync(string name = "2026 Q1 all-LAs quarterly report") =>
+    protected Task<Guid> CreateOpenAllLasCollectionAsync(string name = "Q1 all-LAs quarterly report") =>
         CreateQuarterlyCollectionAsync(name, Today.AddDays(-1), Today.AddDays(60), isSubmittedByAllLas: true);
 
     // An open quarterly collection for a specific quarter / financial year (the "Record funding spent" tests need
-    // distinct quarters in the same year to exercise the "spend to date" accumulation).
-    protected Task<Guid> CreateOpenQuarterCollectionAsync(int quarter, string name, string financialYear = "2026/27") =>
+    // distinct quarters in the same year to exercise the "spend to date" accumulation). A null year means the
+    // current one — see CreateQuarterlyCollectionAsync.
+    protected Task<Guid> CreateOpenQuarterCollectionAsync(int quarter, string name, string? financialYear = null) =>
         CreateQuarterlyCollectionAsync(name, Today.AddDays(-1), Today.AddDays(60), quarter: quarter, financialYear: financialYear);
 
-    // A published maturity-assessment collection (no quarter — it covers the whole financial year). Maturity
-    // assessments have no submission flow, so they must be excluded from the DHSC submission-visibility surfaces.
+    // A published maturity-assessment collection (no quarter — it covers the whole financial year). Its submission
+    // flow is the maturity-assessment surface (BLUM-7855+), driven by MaturityAssessmentTestBase.
     protected async Task<Guid> CreateMaturityAssessmentCollectionAsync(
-        string name = "2026/27 maturity assessment",
+        string name = "Maturity assessment",
         DateOnly? openDate = null,
         DateOnly? deadline = null,
-        IReadOnlyList<Guid>? localAuthorityIds = null)
+        IReadOnlyList<Guid>? localAuthorityIds = null,
+        string? financialYear = null)
     {
         AuthenticateAsAdmin();
 
@@ -182,7 +235,7 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
             Name: name,
             Purpose: "Maturity assessment tests",
             Type: "maturity_assessment",
-            FinancialYear: "2026/27",
+            FinancialYear: financialYear ?? TestFinancialYears.Current,
             Quarter: null,
             WindowSameAsReportingPeriod: false,
             OpenDate: openDate ?? Today.AddDays(-1),
@@ -190,7 +243,7 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
             IsSubmittedByAllLas: false,
             SaveAsDraft: false,
             LocalAuthorityIds: localAuthorityIds ?? [MainOrg.Id.Value],
-            FormModuleIds: _formModuleIds,
+            FormModuleIds: MaturityCollectionForms.Ids,
             Reminders: null);
 
         var response = await Client.PostAsJsonAsync("data-collections", request);
@@ -251,7 +304,8 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
             isActive ? 2026 : null,
             false,
             expectedResults ?? DefaultExpectedResults,
-            await WithRequiredDetailAnswersAsync(categoryId, taskId, answers));
+            await WithRequiredDetailAnswersAsync(categoryId, taskId, answers),
+            ClosureReason: status == "closed" ? "No longer needed" : null);
 
         var response = await Client.PostAsJsonAsync("activities", request);
         response.IsSuccessStatusCode.Should().BeTrue(
@@ -300,13 +354,23 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
 
             var value = question.Options.Count > 0
                 ? question.Options.OrderBy(o => o.DisplayOrder).First().Value
-                : $"{question.Code} test answer";
+                : DefaultAnswerFor(question);
             result.Add(new ActivityAnswerInputDto(question.Code, value));
             map[question.Code] = value;
         }
 
         return result;
     }
+
+    // A free-text placeholder is not a valid answer to every type. Currency (BLUM-7860) is whole pounds only, so
+    // the generic string would 422 and take every Joint partnership activity this helper builds with it.
+    private static string DefaultAnswerFor(FormQuestionDto question) =>
+        question.QuestionType switch
+        {
+            "Currency" => "1000",
+            "Number" => "5",
+            _ => $"{question.Code} test answer",
+        };
 
     // Mirrors ActivityAnswerValidator.IsVisible — a question is visible unless a conditional rule's parent answer
     // does not match. Kept in step with it deliberately: a narrower rule here silently yields a 422 for a question
@@ -384,23 +448,60 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
     protected Task<HttpResponseMessage> CompleteActivityAsync(Guid collectionId, Guid activityId) =>
         Client.PostAsync($"quarterly-report/{collectionId}/activities/{activityId}/complete", null);
 
-    // Completes an activity's report the way the frontend does: draft-save an answer for every required
-    // unconditional question, then complete via the check-your-answers endpoint (a save alone never completes).
+    // Completes an activity's report the way the frontend does: draft-save an answer for every required question
+    // that is visible, then complete via the check-your-answers endpoint (a save alone never completes).
+    //
+    // Visibility is resolved in one ordered pass over the answers this helper is itself building, mirroring the
+    // client's isQuestionVisible — a conditional question is answered only once the value given to its parent
+    // actually reveals it, and children always follow their parent in DisplayOrder. Answering only unconditional
+    // questions was equivalent until BLUM-7788 put required conditional questions behind options this helper picks
+    // (the steering group's per-member engagement questions): those would be revealed and then never answered,
+    // failing the complete with a 422 that named no cause.
     protected async Task CompleteActivityReportAsync(Guid collectionId, Guid activityId)
     {
         var questions = await GetActivityQuestionsAsync(collectionId, activityId);
-        var answers = questions.Questions
-            .Where(q => q.IsRequired && string.IsNullOrEmpty(q.ConditionalQuestionCode))
-            .Select(q => (q.Code, (string?)AnswerValueFor(q)))
-            .ToArray();
+        var answers = new List<(string Code, string? Value)>();
+        var given = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        var save = await SaveAnswersAsync(collectionId, activityId, saveAsDraft: true, answers);
+        foreach (var question in questions.Questions.OrderBy(q => q.DisplayOrder))
+        {
+            if (!question.IsRequired || !IsQuestionVisible(question, given))
+            {
+                continue;
+            }
+
+            var value = AnswerValueFor(question);
+            given[question.Code] = value;
+            answers.Add((question.Code, value));
+        }
+
+        var save = await SaveAnswersAsync(collectionId, activityId, saveAsDraft: true, [.. answers]);
         save.IsSuccessStatusCode.Should().BeTrue(
             "saving the report answers for activity {0} failed: {1}", activityId, await save.Content.ReadAsStringAsync());
 
         var complete = await CompleteActivityAsync(collectionId, activityId);
         complete.IsSuccessStatusCode.Should().BeTrue(
             "completing the report for activity {0} failed: {1}", activityId, await complete.Content.ReadAsStringAsync());
+    }
+
+    // Port of SubmissionAnswerValidator.IsVisible: both sides are comma-separated allow-lists, so a checkbox parent
+    // holding several values reveals any child naming one of them.
+    private static bool IsQuestionVisible(ReportQuestionDto question, IReadOnlyDictionary<string, string> answers)
+    {
+        if (string.IsNullOrWhiteSpace(question.ConditionalQuestionCode) || string.IsNullOrWhiteSpace(question.ConditionalValue))
+        {
+            return true;
+        }
+
+        if (!answers.TryGetValue(question.ConditionalQuestionCode, out var parent) || string.IsNullOrWhiteSpace(parent))
+        {
+            return false;
+        }
+
+        var allowed = question.ConditionalValue.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parent
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(allowed.Contains);
     }
 
     private static string AnswerValueFor(ReportQuestionDto question)
@@ -485,8 +586,9 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
         (await CompleteStrategicFeedbackAsync(collectionId)).EnsureSuccessStatusCode();
     }
 
-    // Fills every reportable activity + the "other" lines (both screens) with plausible amounts and completes the
-    // section. The caller must already be authenticated as a Main-org activity manager.
+    // Fills every activity row + the "other" lines (both screens) with plausible amounts and completes the section:
+    // actuals for the rows "Activity spending" shows, forecasts for every row, Planned (forecast-only) ones included
+    // (BLUM-7672). The caller must already be authenticated as a Main-org activity manager.
     protected async Task CompleteFundingSpendSectionAsync(
         Guid collectionId,
         decimal perActivityActual = 100m,
@@ -496,7 +598,10 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
     {
         var funding = await GetFundingSpendAsync(collectionId);
 
-        var actuals = funding.Activities.Select(a => (a.ActivityId, (decimal?)perActivityActual)).ToArray();
+        var actuals = funding.Activities
+            .Where(a => !a.ForecastOnly)
+            .Select(a => (a.ActivityId, (decimal?)perActivityActual))
+            .ToArray();
         (await SaveFundingActualsAsync(collectionId, saveAsDraft: true, otherActual, actuals)).EnsureSuccessStatusCode();
 
         var forecastActivities = funding.Activities
@@ -510,5 +615,66 @@ public abstract class QuarterlyReportTestBase(IntegrationTestWebFactory factory)
         (await SaveFundingForecastAsync(collectionId, saveAsDraft: true, forecastActivities, otherForecastList)).EnsureSuccessStatusCode();
 
         (await CompleteFundingSpendAsync(collectionId)).EnsureSuccessStatusCode();
+    }
+
+    // --- Finalising the report ---
+
+    protected Task<HttpResponseMessage> SubmitReportAsync(Guid collectionId) =>
+        Client.PostAsync($"quarterly-report/{collectionId}/submission/submit", null);
+
+    // Answers a finished RNA activity's report with recognisable values and completes it. Deliberately does not
+    // use CompleteActivityReportAsync: that fills every required question with the same generic value, and
+    // RNA_CONTRIBUTORS is prefilled from the activity record anyway (WithRequiredDetailAnswersAsync answers
+    // NA_WHO_WITH), so an assertion on it would pass even with no carry-forward at all. RNA_PUBLISHED,
+    // RNA_PUBLISHED_URL and the AKR_DELIVERY_* narratives have no prefill source, so only carry-forward can
+    // supply them. nextQuarter is optional and unconditional — the code the carry-forward tests clear.
+    protected async Task CompleteFinishedRnaReportAsync(
+        Guid collectionId,
+        Guid activityId,
+        string publishedUrl,
+        string progress,
+        string? nextQuarter = null)
+    {
+        var answers = new List<(string Code, string? Value)>
+        {
+            ("RNA_CONTRIBUTORS", "licensing"),
+            ("RNA_PUBLISHED", "yes"),
+            ("RNA_PUBLISHED_URL", publishedUrl),
+            ("AKR_DELIVERY_PROGRESS", progress),
+        };
+
+        if (nextQuarter is not null)
+        {
+            answers.Add(("AKR_DELIVERY_NEXT_QUARTER", nextQuarter));
+        }
+
+        var save = await SaveAnswersAsync(collectionId, activityId, saveAsDraft: true, answers.ToArray());
+        save.IsSuccessStatusCode.Should().BeTrue("saving the answers failed: {0}", await save.Content.ReadAsStringAsync());
+
+        var complete = await CompleteActivityAsync(collectionId, activityId);
+        complete.IsSuccessStatusCode.Should().BeTrue("completing the report failed: {0}", await complete.Content.ReadAsStringAsync());
+    }
+
+    // Completes the remaining two sections and finalises the report. The activity report is completed by the
+    // caller so it can choose the answer values.
+    protected async Task SubmitStartedReportAsync(Guid collectionId)
+    {
+        await CompleteFundingSpendSectionAsync(collectionId);
+        await CompleteStrategicFeedbackSectionAsync(collectionId);
+
+        var submit = await SubmitReportAsync(collectionId);
+        submit.IsSuccessStatusCode.Should().BeTrue("submitting the report failed: {0}", await submit.Content.ReadAsStringAsync());
+    }
+
+    // The organisation's submission against one collection, for asserting on the answer rows the carry-forward
+    // writes at confirm time.
+    protected async Task<SubmissionId> GetSubmissionIdAsync(Guid collectionId, Organisation? organisation = null)
+    {
+        var organisationId = (organisation ?? MainOrg).Id;
+        var submission = await Context.Submissions
+            .AsNoTracking()
+            .FirstAsync(s => s.CollectionId == new CollectionId(collectionId) && s.OrganisationId == organisationId);
+
+        return submission.Id;
     }
 }

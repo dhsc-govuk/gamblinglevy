@@ -2,6 +2,7 @@ import React from 'react';
 import { GovUKFieldset, GovUKButton } from '../../../GovUKComponents';
 import ReorderControls from '../../FormDesigner/ReorderControls';
 import type { QuestionFormState, QuestionFormAction } from '../../../../views/Admin/Forms';
+import { govukColors } from '../../../../styles/govuk-global';
 
 interface Props {
   state: QuestionFormState;
@@ -12,7 +13,11 @@ interface Props {
 // Driven by the data-collection question reducer; reuses the Form Designer's keyboard-accessible
 // ReorderControls (no drag-drop, per WCAG 2.2 AA).
 const OptionsManager = ({ state, dispatch }: Props): React.ReactElement => (
-  <fieldset className={`govuk-form-group ${state.errors['admin-forms-question-options'] ? 'govuk-form-group--error' : ''}`} data-testid="admin-forms-options">
+  <fieldset
+    className={`govuk-form-group ${state.errors['admin-forms-question-options'] ? 'govuk-form-group--error' : ''}`}
+    id="admin-forms-question-options"
+    tabIndex={-1}
+    data-testid="admin-forms-options">
     <legend className="govuk-fieldset__legend govuk-fieldset__legend--m">Answer options</legend>
 
     {state.errors['admin-forms-question-options'] && (
@@ -22,7 +27,11 @@ const OptionsManager = ({ state, dispatch }: Props): React.ReactElement => (
     )}
 
     {state.options.map((option, index) => (
-      <div key={index} className="govuk-!-margin-bottom-4 govuk-!-padding-3" style={{ border: '1px solid #b1b4b6' }} data-testid={`admin-forms-options-option-${index}`}>
+      <div
+        key={index}
+        className="govuk-!-margin-bottom-4 govuk-!-padding-3"
+        style={{ border: `1px solid ${govukColors.grey2}` }}
+        data-testid={`admin-forms-options-option-${index}`}>
         <div className="govuk-!-margin-bottom-2">
           <ReorderControls
             label={`option ${index + 1}`}
@@ -33,12 +42,7 @@ const OptionsManager = ({ state, dispatch }: Props): React.ReactElement => (
             testId={`admin-forms-options-option-${index}`}
           />
           {state.options.length > 1 && (
-            <button
-              type="button"
-              className="govuk-link"
-              style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
-              onClick={() => dispatch({ type: 'REMOVE_OPTION', index })}
-              data-testid={`admin-forms-options-option-${index}-remove`}>
+            <button type="button" className="govuk-link" onClick={() => dispatch({ type: 'REMOVE_OPTION', index })} data-testid={`admin-forms-options-option-${index}-remove`}>
               Remove<span className="govuk-visually-hidden"> option {index + 1}</span>
             </button>
           )}

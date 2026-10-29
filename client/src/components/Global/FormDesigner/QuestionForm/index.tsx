@@ -20,13 +20,11 @@ const TYPE_LABELS: Record<QuestionType, string> = {
   Radio: 'Radio buttons (choose one)',
   Checkbox: 'Checkboxes (choose several)',
   Select: 'Dropdown (choose one)',
+  Currency: 'Money (£, whole pounds)',
 };
 
 const QuestionForm = ({ state, dispatch, sections, availableParents, isEdit }: Props): React.ReactElement => {
-  const sectionOptions = [
-    { value: '', label: 'Select a section' },
-    ...sections.map((section) => ({ value: section.id, label: section.title })),
-  ];
+  const sectionOptions = [{ value: '', label: 'Select a section' }, ...sections.map((section) => ({ value: section.id, label: section.title }))];
 
   const typeOptions = QUESTION_TYPES.map((type) => ({ value: type, label: TYPE_LABELS[type] }));
 

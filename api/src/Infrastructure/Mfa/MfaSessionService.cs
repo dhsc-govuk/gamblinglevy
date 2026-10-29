@@ -5,9 +5,12 @@ using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Settings;
+using Application.Common.Telemetry;
 using Domain.AuditLogs;
 using Domain.Users;
 using LanguageExt.UnsafeValueAccess;
+using Microsoft.ApplicationInsights;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Mfa;
@@ -17,12 +20,20 @@ public class MfaSessionService(
     IAuditLogRepository auditLogRepository,
     IUserQueries userQueries,
     Lazy<INewSignInEmailService> newSignInEmailService,
+    IMfaDeviceMismatchRecorder deviceMismatchRecorder,
+    IMemoryCache memoryCache,
+    TelemetryClient telemetryClient,
     ILogger<MfaSessionService> logger,
-    ApplicationSettings settings)
+    IDateTimeProvider dateTimeProvider,
+    ApplicationSettings settings,
+    ITransactionRunner transactionRunner)
     : IMfaSessionService
 {
     // How stale LastActivityAt has to be before a validated request writes it back. See ValidateSessionAsync.
     private const int ActivityWriteThresholdSeconds = 60;
+
+    // Namespaces the per-session "addresses already recorded" entries. See RecordIpTransitionAsync.
+    private const string SeenAddressCacheScope = "mfa_session_seen_ip";
 
     public string HashIpAddress(string ipAddress) => ComputeHash(ipAddress);
 
@@ -57,13 +68,47 @@ public class MfaSessionService(
             HashUserAgent(userAgent),
             IpAddressNormaliser.Normalise(ipAddress),
             DeviceLabelResolver.Resolve(userAgent),
+            dateTimeProvider.GetUtcNow(),
             settings.Mfa.SessionExpiryHours);
 
-        await sessionRepository.AddAsync(session);
+        // The session and its audit row commit together (BLUM-8748). Only those two: the housekeeping below
+        // swallows its own failures, and a failed statement inside a PostgreSQL transaction would sink the commit.
+        await transactionRunner.RunAsync(
+            async _ =>
+            {
+                await sessionRepository.AddAsync(session);
 
-        await auditLogRepository.AppendAsync(
-            AuditLog.Create(userId, AuditTargetType.MfaSession, session.Id.Value, AuditAction.MfaSessionCreated, before: null, after: null),
+                // The address and device deliberately stay OUT of this row. audit_logs has no retention sweep, so
+                // copying them here would keep personal data indefinitely that mfa_sessions holds for only
+                // SessionRetentionDays — and show it to every DHSC admin. The row's target is the session id,
+                // which leads to them for as long as the retention period allows.
+                await auditLogRepository.AppendAsync(
+                    AuditLog.Create(userId, AuditTargetType.MfaSession, session.Id.Value, AuditAction.MfaSessionCreated, before: null, after: null),
+                    CancellationToken.None);
+            },
             CancellationToken.None);
+
+        // The sign-in's session details go to the log and to telemetry instead (BLUM-7848), both of which have
+        // their own retention, so a later ip_changed or device_mismatch event can be read against where the
+        // user actually signed in from. Both values are already normalised / resolved labels, never raw headers.
+        telemetryClient.TrackEventIfEnabled(
+            "mfa_session_created",
+            new Dictionary<string, string>
+            {
+                ["sessionId"] = session.Id.Value.ToString(),
+                ["userId"] = userId.Value.ToString(),
+                ["ip"] = session.IpAddress,
+                ["device"] = session.DeviceLabel,
+                ["expiresAt"] = session.ExpiresAt.ToString("O"),
+            });
+
+        logger.LogInformation(
+            "MFA session {SessionId} created for user {UserId}: ip {IpAddress}, device {DeviceLabel}, expires {ExpiresAt:O}",
+            session.Id.Value,
+            userId.Value,
+            session.IpAddress,
+            session.DeviceLabel,
+            session.ExpiresAt);
 
         // Read AFTER the insert, deliberately. Reading first meant two simultaneous sign-ins each judged a set
         // that was missing the other's row, so both concluded they were inside the cap and the user ended up
@@ -174,14 +219,20 @@ public class MfaSessionService(
             // Conditional, so two sign-ins racing to evict the same session produce one revocation and one
             // audit line rather than two — and so a row another request already revoked cannot throw a
             // concurrency exception out of the sign-in path.
-            var revokedRows = await sessionRepository.TryRevokeSessionAsync(session.Id);
-            if (revokedRows == 0)
-            {
-                continue;
-            }
+            // Each eviction commits with its audit row (BLUM-8748).
+            await transactionRunner.RunAsync(
+                async _ =>
+                {
+                    var revokedRows = await sessionRepository.TryRevokeSessionAsync(session.Id);
+                    if (revokedRows == 0)
+                    {
+                        return;
+                    }
 
-            await auditLogRepository.AppendAsync(
-                AuditLog.Create(session.UserId, AuditTargetType.MfaSession, session.Id.Value, AuditAction.MfaSessionEvicted, before: null, after: null),
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(session.UserId, AuditTargetType.MfaSession, session.Id.Value, AuditAction.MfaSessionEvicted, before: null, after: null),
+                        CancellationToken.None);
+                },
                 CancellationToken.None);
         }
     }
@@ -289,12 +340,15 @@ public class MfaSessionService(
             return MfaSessionStatus.NotOwned;
         }
 
-        var now = DateTime.UtcNow;
+        var now = dateTimeProvider.GetUtcNow();
+        var ipAddressHash = HashIpAddress(ipAddress);
+        var userAgentHash = HashUserAgent(userAgent);
         var status = session.Evaluate(
-            HashIpAddress(ipAddress),
-            HashUserAgent(userAgent),
+            ipAddressHash,
+            userAgentHash,
             now,
-            settings.Mfa.IdleTimeoutMinutes);
+            settings.Mfa.IdleTimeoutMinutes,
+            settings.Mfa.BindSessionToIpAddress);
 
         // A session already destroyed by a timeout keeps reporting that timeout. Without this, only the one
         // request that happened to detect it gets the SESSION_* answer and every other request in the same
@@ -314,27 +368,50 @@ public class MfaSessionService(
                 ? MfaSessionEndReason.Expired
                 : MfaSessionEndReason.IdleTimeout;
 
-            var revokedRows = await sessionRepository.TryRevokeTimedOutSessionAsync(sessionId, reason);
+            // The revocation commits with its audit row (BLUM-8748).
+            await transactionRunner.RunAsync(
+                async _ =>
+                {
+                    var revokedRows = await sessionRepository.TryRevokeTimedOutSessionAsync(sessionId, reason);
 
-            // Zero rows means a concurrent request destroyed the same session first. It already wrote the
-            // audit entry, so staying quiet here is what keeps one timeout worth one log line.
-            if (revokedRows > 0)
-            {
-                var action = status == MfaSessionStatus.Expired
-                    ? AuditAction.MfaSessionExpired
-                    : AuditAction.MfaSessionIdleTimeout;
+                    // Zero rows means a concurrent request destroyed the same session first. It already wrote the
+                    // audit entry, so staying quiet here is what keeps one timeout worth one log line.
+                    if (revokedRows > 0)
+                    {
+                        var action = status == MfaSessionStatus.Expired
+                            ? AuditAction.MfaSessionExpired
+                            : AuditAction.MfaSessionIdleTimeout;
 
-                await auditLogRepository.AppendAsync(
-                    AuditLog.Create(session.UserId, AuditTargetType.MfaSession, session.Id.Value, action, before: null, after: null),
-                    CancellationToken.None);
-            }
+                        await auditLogRepository.AppendAsync(
+                            AuditLog.Create(session.UserId, AuditTargetType.MfaSession, session.Id.Value, action, before: null, after: null),
+                            CancellationToken.None);
+                    }
+                },
+                CancellationToken.None);
 
+            return status;
+        }
+
+        // The refusal itself is unchanged; this only records it. It used to leave no trace at all, which is
+        // how DAC users could be sent back to the code-entry screen every few minutes with nothing server-side
+        // able to say whether their address or their browser had moved (BLUM-8321).
+        if (status == MfaSessionStatus.DeviceMismatch)
+        {
+            await deviceMismatchRecorder.RecordAsync(DescribeBindingChange(session, ipAddress, ipAddressHash, userAgent, userAgentHash, now));
             return status;
         }
 
         if (status != MfaSessionStatus.Valid)
         {
             return status;
+        }
+
+        // Valid from somewhere other than where the session was last seen means the IP half of the binding
+        // is switched off and the address moved (BLUM-7848). The request goes through; this keeps the move
+        // visible — on the trail and on the user's own sessions list.
+        if (session.LatestIpAddressHash() != ipAddressHash)
+        {
+            await RecordIpTransitionAsync(session, ipAddress, ipAddressHash, userAgent, userAgentHash, now);
         }
 
         // Slide the idle window. This runs inside the gate, so every authenticated request would otherwise
@@ -348,6 +425,89 @@ public class MfaSessionService(
 
         return MfaSessionStatus.Valid;
     }
+
+    /// <summary>
+    /// Records a tolerated address move once per transition, not once per request (BLUM-7848 review).
+    ///
+    /// Comparing every request against the sign-in address re-fired ip_changed for the rest of an 8-hour
+    /// session after a single office-to-home move, so the user's hourly audit budget went on identical rows —
+    /// and a replay from a third address that hour was the one suppressed. Comparing against the last-seen
+    /// address, moved by a conditional update, makes one move worth one row across every instance.
+    ///
+    /// The in-process set of addresses already recorded for this session covers the other shape: a proxy
+    /// pool that alternates between two addresses on every request is a transition each time. Remembering
+    /// what this session has already been seen on means each address is recorded once, and the repeat
+    /// requests cost a cache lookup — no UPDATE, no telemetry, no throttle reservation. A relative TTL only,
+    /// as FixedWindowCounter explains; the session cannot outlive SessionExpiryHours anyway.
+    ///
+    /// Best-effort throughout: the request is already allowed, and failing to record the move must not fail it.
+    /// </summary>
+    private async Task RecordIpTransitionAsync(
+        MfaSession session,
+        string ipAddress,
+        string ipAddressHash,
+        string userAgent,
+        string userAgentHash,
+        DateTime now)
+    {
+        var cacheKey = (SeenAddressCacheScope, session.Id.Value, ipAddressHash);
+        if (memoryCache.TryGetValue(cacheKey, out _))
+        {
+            return;
+        }
+
+        try
+        {
+            memoryCache.Set(cacheKey, true, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(Math.Max(1, settings.Mfa.SessionExpiryHours)),
+                Size = 1,
+            });
+
+            var changed = await sessionRepository.TryUpdateLastSeenIpAsync(
+                session.Id,
+                session.LastSeenIpAddressHash,
+                ipAddressHash,
+                IpAddressNormaliser.Normalise(ipAddress));
+
+            // Zero rows: a concurrent request moved it first and recorded the transition itself.
+            if (changed == 0)
+            {
+                return;
+            }
+
+            // "Recorded" is where the session was last seen, so Before shows the address it moved from.
+            var change = DescribeBindingChange(session, ipAddress, ipAddressHash, userAgent, userAgentHash, now) with
+            {
+                RecordedIpAddress = session.LatestIpAddress(),
+            };
+
+            await deviceMismatchRecorder.RecordToleratedIpChangeAsync(change);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Could not record an IP change for MFA session {SessionId}; the request is unaffected.", session.Id.Value);
+        }
+    }
+
+    private static MfaDeviceMismatch DescribeBindingChange(
+        MfaSession session,
+        string ipAddress,
+        string ipAddressHash,
+        string userAgent,
+        string userAgentHash,
+        DateTime now) =>
+        new(
+            session.Id,
+            session.UserId,
+            session.IpAddress,
+            IpAddressNormaliser.Normalise(ipAddress),
+            session.DeviceLabel,
+            DeviceLabelResolver.Resolve(userAgent),
+            IpAddressMatches: session.IpAddressHash == ipAddressHash,
+            UserAgentMatches: session.UserAgentHash == userAgentHash,
+            SessionAgeSeconds: (long)(now - session.CreatedAt).TotalSeconds,
+            IdleSeconds: (long)(now - session.LastActivityAt).TotalSeconds);
 
     public async Task<MfaSessionRevocationResult> RevokeSessionAsync(MfaSessionId sessionId, UserId userId)
     {
@@ -365,10 +525,17 @@ public class MfaSessionService(
         }
 
         session.Revoke();
-        await sessionRepository.UpdateAsync(session);
 
-        await auditLogRepository.AppendAsync(
-            AuditLog.Create(session.UserId, AuditTargetType.MfaSession, session.Id.Value, AuditAction.MfaSessionRevoked, before: null, after: null),
+        // The revocation commits with its audit row (BLUM-8748).
+        await transactionRunner.RunAsync(
+            async _ =>
+            {
+                await sessionRepository.UpdateAsync(session);
+
+                await auditLogRepository.AppendAsync(
+                    AuditLog.Create(session.UserId, AuditTargetType.MfaSession, session.Id.Value, AuditAction.MfaSessionRevoked, before: null, after: null),
+                    CancellationToken.None);
+            },
             CancellationToken.None);
 
         return MfaSessionRevocationResult.Revoked;
@@ -376,15 +543,22 @@ public class MfaSessionService(
 
     public async Task RevokeAllUserSessionsAsync(UserId userId)
     {
-        var sessions = await sessionRepository.GetByUserIdAsync(userId);
-        foreach (var session in sessions)
-        {
-            session.Revoke();
-            await sessionRepository.UpdateAsync(session);
+        // Every revocation and its audit row in one transaction (BLUM-8748) — or in the caller's, which this joins
+        // when one is open: a deactivation, an MFA reset or a lockout revokes as part of its own change.
+        await transactionRunner.RunAsync(
+            async _ =>
+            {
+                var sessions = await sessionRepository.GetByUserIdAsync(userId);
+                foreach (var session in sessions)
+                {
+                    session.Revoke();
+                    await sessionRepository.UpdateAsync(session);
 
-            await auditLogRepository.AppendAsync(
-                AuditLog.Create(userId, AuditTargetType.MfaSession, session.Id.Value, AuditAction.MfaSessionRevoked, before: null, after: null),
-                CancellationToken.None);
-        }
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(userId, AuditTargetType.MfaSession, session.Id.Value, AuditAction.MfaSessionRevoked, before: null, after: null),
+                        CancellationToken.None);
+                }
+            },
+            CancellationToken.None);
     }
 }

@@ -19,7 +19,8 @@ public static class OrganisationUsersData
             email: "main.organisation.admin@org.com",
             new SubId(Guid.NewGuid()),
             status: UserStatus.Active,
-            role: UserRole.OrganisationAdmin);
+            role: UserRole.OrganisationAdmin,
+            utcNow: DateTime.UtcNow);
 
         return OrganisationUser.New(
             id: new OrganisationUserId(user.Id.Value),
@@ -36,7 +37,28 @@ public static class OrganisationUsersData
             email: "second.organisation.admin@org.com",
             new SubId(Guid.NewGuid()),
             status: UserStatus.Active,
-            role: UserRole.OrganisationAdmin);
+            role: UserRole.OrganisationAdmin,
+            utcNow: DateTime.UtcNow);
+
+        return OrganisationUser.New(
+            id: new OrganisationUserId(user.Id.Value),
+            userId: user.Id,
+            organisationId: organisationId,
+            user: user);
+    }
+
+    // Any LA member, for tests that need several users in one organisation — the two above share fixed emails
+    // and are both LA Admins. The email doubles as the name so a failing assertion says which user it was.
+    public static OrganisationUser Member(OrganisationId organisationId, UserRole role, string email, UserStatus? status = null)
+    {
+        var user = User.New(
+            id: UserId.New(),
+            name: new Name(email, "member"),
+            email: email,
+            new SubId(Guid.NewGuid()),
+            status: status ?? UserStatus.Active,
+            role: role,
+            utcNow: DateTime.UtcNow);
 
         return OrganisationUser.New(
             id: new OrganisationUserId(user.Id.Value),

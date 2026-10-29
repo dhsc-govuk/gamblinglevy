@@ -4,6 +4,16 @@ interface GovUKInputWithSuffixProps {
   id: string;
   name: string;
   label: string;
+  // Defaults to the small label every existing caller was built against; a one-question page passes 'm' so its label
+  // matches the other question types on the same kind of page (GovUKDynamicQuestionRenderer's questionSize).
+  labelSize?: 's' | 'm';
+  // Appended to the label for assistive tech only, GDS-style ("Change <hidden>activity spending</hidden>").
+  // For a screen that repeats one visible label down the page, this is what makes each accessible name
+  // unique without changing what is on screen. Phrase it to read on from the label ("for Outreach") —
+  // appended, not prepended, so the visible string stays the leading substring of the accessible name
+  // (2.5.3 Label in Name, and speech-input matching). Ignored when `label` is empty, which is how
+  // GovUKGroupedInputs calls this component: it renders its own <label>, so hidden text belongs there.
+  visuallyHiddenText?: string;
   suffix?: string;
   prefix?: string;
   hint?: string;
@@ -22,6 +32,8 @@ const GovUKInputWithSuffix: React.FC<GovUKInputWithSuffixProps> = ({
   id,
   name,
   label,
+  labelSize = 's',
+  visuallyHiddenText,
   suffix,
   prefix,
   hint,
@@ -77,7 +89,7 @@ const GovUKInputWithSuffix: React.FC<GovUKInputWithSuffixProps> = ({
             type={type}
             value={value}
             disabled={disabled}
-            aria-label={label}
+            aria-label={visuallyHiddenText ? `${label} ${visuallyHiddenText}` : label}
             onChange={onChange}
             style={{
               borderRight: suffix ? 'none' : undefined,
@@ -121,8 +133,9 @@ const GovUKInputWithSuffix: React.FC<GovUKInputWithSuffixProps> = ({
         </span>
       )}
       {label && (
-        <label className="govuk-label govuk-label--s" htmlFor={id} style={{ paddingRight: questionCode ? '100px' : undefined }}>
+        <label className={`govuk-label govuk-label--${labelSize}`} htmlFor={id} style={{ paddingRight: questionCode ? '100px' : undefined }}>
           {label}
+          {visuallyHiddenText && <span className="govuk-visually-hidden"> {visuallyHiddenText}</span>}
         </label>
       )}
 
@@ -138,20 +151,12 @@ const GovUKInputWithSuffix: React.FC<GovUKInputWithSuffixProps> = ({
         </p>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+      {/* A prefix is govuk-frontend's own affix (BLUM-8113): a 40px box whose missing right border leaves the input's
+          left border as the divider, and which stacks above the input on the narrowest screens. The suffix keeps
+          its hand-drawn box, so a suffix-only input keeps the plain flex row. */}
+      <div className={prefix ? 'govuk-input__wrapper' : undefined} style={prefix ? undefined : { display: 'flex', alignItems: 'stretch' }}>
         {prefix && (
-          <div
-            style={{
-              backgroundColor: '#f3f2f1',
-              border: '2px solid #0b0c0c',
-              borderRight: 'none',
-              padding: '5px 10px',
-              fontSize: '19px',
-              lineHeight: '25px',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-            aria-hidden="true">
+          <div className="govuk-input__prefix" aria-hidden="true">
             {prefix}
           </div>
         )}
@@ -167,7 +172,6 @@ const GovUKInputWithSuffix: React.FC<GovUKInputWithSuffixProps> = ({
           onChange={onChange}
           style={{
             borderRight: suffix ? 'none' : undefined,
-            borderLeft: prefix ? 'none' : undefined,
           }}
         />
         {suffix && (

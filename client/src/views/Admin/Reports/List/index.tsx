@@ -1,6 +1,6 @@
 import React from 'react';
 import { PageLoading } from '../../../../components/GovUKComponents';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Link as RouterLink } from 'react-router-dom';
 import { GeneralLayout } from '../../../../layouts';
 import { GovUKTable, GovUKInsetText, GovUKTag, H1, H2, Paragraph, type Column, type FilterOption } from '../../../../components/GovUKComponents';
@@ -79,7 +79,7 @@ const isReportableCollection = (collection: CollectionSummaryDto): collection is
 const ReportsList = (): React.ReactElement => {
   usePageTitle('Reports');
 
-  const { data, isLoading } = useQuery(collectionsListKey, getCollections);
+  const { data, isLoading } = useQuery({ queryKey: collectionsListKey, queryFn: getCollections });
   const rows = (data?.data ?? []).filter(isReportableCollection);
 
   return (
@@ -102,6 +102,7 @@ const ReportsList = (): React.ReactElement => {
           <GovUKInsetText data-testid="admin-reports-list-empty">There are no data collections to report on yet. Once one has been published, it will appear here.</GovUKInsetText>
         ) : (
           <GovUKTable<CollectionSummaryDto>
+            label="Your data collections"
             testId="admin-reports-list"
             data={rows}
             columns={columns}

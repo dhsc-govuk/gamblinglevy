@@ -20,10 +20,7 @@ const ConditionalRuleBuilder = ({ state, dispatch, availableParents }: Props): R
     ...availableParents.map((question) => ({ value: question.code, label: `${question.label} (${question.code})` })),
   ];
 
-  const valueOptions = [
-    { value: '', label: 'Select an answer' },
-    ...(parent?.options ?? []).map((option) => ({ value: option.value, label: option.label })),
-  ];
+  const valueOptions = [{ value: '', label: 'Select an answer' }, ...(parent?.options ?? []).map((option) => ({ value: option.value, label: option.label }))];
 
   return (
     <fieldset className="govuk-form-group">
@@ -65,8 +62,7 @@ const ConditionalRuleBuilder = ({ state, dispatch, availableParents }: Props): R
           />
           {parent && state.conditionalValue && (
             <GovUKInsetText>
-              Shows only when “{parent.label}” is “
-              {parent.options.find((option) => option.value === state.conditionalValue)?.label ?? state.conditionalValue}”.
+              Shows only when “{parent.label}” is “{parent.options.find((option) => option.value === state.conditionalValue)?.label ?? state.conditionalValue}”.
             </GovUKInsetText>
           )}
         </>

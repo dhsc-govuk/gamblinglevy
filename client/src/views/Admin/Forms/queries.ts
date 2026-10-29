@@ -68,3 +68,60 @@ export const getFormModules = () => axios.get<FormModuleDto[]>(`${BASE}/modules`
 
 // A single module with its sections and questions, for the module editor.
 export const getFormModule = (moduleId: string) => axios.get<FormModuleWithChildrenDto>(`${BASE}/modules/${moduleId}`);
+
+// ---- Versions (BLUM-9102, behind BLUM_9087) ---------------------------------
+// Mirror FormModuleVersionSummaryDto / FormModuleVersionDto and the FormModuleDefinition records in
+// api/src/Api/Dtos/DataCollectionFormsDtos.cs and Application/DataCollectionForms/Versions/FormModuleDefinition.cs.
+
+export interface FormModuleVersionSummaryDto {
+  id: string;
+  versionNumber: number;
+  publishedAt: string;
+  publishedBy: string;
+  // Null when the publisher's account no longer exists.
+  publishedByName: string | null;
+}
+
+export interface FormVersionOptionDto {
+  value: string;
+  label: string;
+  displayOrder: number;
+  isActive: boolean;
+}
+
+export interface FormVersionSectionDto {
+  id: string;
+  sectionNumber: number;
+  title: string;
+  description: string | null;
+  helpText: string | null;
+  isActive: boolean;
+}
+
+export interface FormVersionQuestionDto {
+  id: string;
+  sectionId: string | null;
+  code: string;
+  label: string;
+  questionType: string;
+  displayOrder: number;
+  isRequired: boolean;
+  hint: string | null;
+  helpText: string | null;
+  isActive: boolean;
+  options: FormVersionOptionDto[];
+}
+
+export interface FormModuleVersionDto extends FormModuleVersionSummaryDto {
+  code: string;
+  name: string;
+  description: string | null;
+  sections: FormVersionSectionDto[];
+  questions: FormVersionQuestionDto[];
+}
+
+// A form's saved versions, newest first.
+export const getFormModuleVersions = (moduleId: string) => axios.get<FormModuleVersionSummaryDto[]>(`${BASE}/modules/${moduleId}/versions`);
+
+// One saved version with the questions it held.
+export const getFormModuleVersion = (moduleId: string, versionNumber: number) => axios.get<FormModuleVersionDto>(`${BASE}/modules/${moduleId}/versions/${versionNumber}`);

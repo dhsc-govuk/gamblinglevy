@@ -65,21 +65,28 @@
   margin-bottom: 0;
 }
 
-/* Force edge-to-edge width explicitly (not just relying on the auto-width block chain through the
-   radio conditional's indent) so the select's right edge lines up with the Purpose textarea's above it,
-   regardless of the select's own box-sizing/min-width defaults. */
+/* The panel and its form groups fill the conditional's content box. What lines the selects up with the
+   textarea is the pair of rules below, not this one. */
 .collection-wizard__type-fields,
 .collection-wizard__type-fields .govuk-form-group {
   width: 100%;
   box-sizing: border-box;
 }
 
-/* The conditional panel keeps GOV.UK's left inset, but Figma extends these selects back out to the
-   same right-hand column as the text input and textarea above. */
+/* Figma puts these selects on the same right-hand edge as the text input and textarea above. Content caps
+   every fieldset at 640px (layouts/General/Content/styles.css), so lift that cap for the type question
+   and let each select fill its conditional panel (GovUKFieldset.Select's own width: 100%). Never widen
+   the select past 100% instead: it starts inside the panel's left inset, so any extra width spills off
+   the page at narrow widths (BLUM-9356, WCAG 1.4.10 — 30px more gave a horizontal scrollbar at 320px).
+   min-width: 0 lifts govuk-frontend's 11.5em floor so the select can always shrink with the panel.
+   The .content-body prefix outranks Content's cap rather than tying with it, so the override does not
+   depend on which stylesheet the bundle emits first. */
+.content-body .collection-wizard__type .govuk-fieldset {
+  max-width: none;
+}
+
 .collection-wizard__type-fields .govuk-select {
-  box-sizing: border-box;
-  max-width: calc(100% + 30px);
-  width: calc(100% + 30px) !important;
+  min-width: 0;
 }
 
 .collection-wizard__window-fields {
@@ -109,16 +116,18 @@
   max-width: 100%;
 }
 
-.collection-wizard .collection-la-selector {
+.collection-wizard .collection-la-selector > .govuk-form-group {
   margin-bottom: 0;
 }
 
-/* Figma: 5px between the picker heading and its hint (not 8px). */
-.collection-wizard .collection-la-selector__heading {
-  margin-bottom: 5px;
+/* Figma: 5px between the picker heading and its hint (not 8px) — the legend's 10px less govuk-frontend's -5px pull
+   on a hint that follows a legend. */
+.collection-wizard .collection-la-selector .govuk-fieldset__legend {
+  margin-bottom: 10px;
 }
 
-.collection-wizard .collection-la-selector__hint {
+.collection-wizard .collection-la-selector .govuk-fieldset__legend + .govuk-hint {
+  margin-top: -5px;
   margin-bottom: 10px;
 }
 
@@ -138,11 +147,12 @@
 }
 
 /* Figma: 20px under the "All" row before the individual organisation rows start (not 24px). */
-.collection-wizard .collection-la-selector__checkboxes .collection-la-selector__all {
+.collection-wizard .collection-la-selector .govuk-checkboxes__item:first-child {
   margin-bottom: 20px;
 }
 
-.collection-wizard .collection-la-selector__all-input--indeterminate + .govuk-checkboxes__label::after {
+/* The dash a part-selected "All" shows (Figma). */
+.collection-wizard .collection-la-selector .govuk-checkboxes__input:indeterminate + .govuk-checkboxes__label::after {
   border: 0;
   background: #0b0c0c;
   height: 4px;
@@ -151,10 +161,6 @@
   top: 18px;
   transform: none;
   width: 12px;
-}
-
-.collection-wizard .collection-la-selector__checkboxes .collection-la-selector__option {
-  margin-bottom: 0;
 }
 
 .collection-wizard .govuk-checkboxes__hint {

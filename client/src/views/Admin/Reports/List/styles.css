@@ -1,7 +1,5 @@
-.reports-list-page {
-  padding-top: 60px;
-}
-
+/* No top padding on .reports-list-page: the layout's breadcrumb already carries the Figma 60px gap to the page
+   content (General/Content/styles.css), so padding here doubled it (BLUM-9017). */
 .reports-list-page .reports-list-page__title {
   max-width: 630px;
   margin-bottom: 20px;
@@ -48,29 +46,28 @@
   text-align: center;
 }
 
+/* Two columns until the page reaches its full 900px: search and sort on the first row, the type and status filters
+   on the second, placed by DOM order with no spanning (the Admin/Users/List idiom). The four-across row below needs
+   663px for its three dropdowns and gutters alone, so it overflowed the page under a 723px viewport — 1366px at
+   200% zoom — and squeezed the search box to nothing well above that (BLUM-9350).
+   The dropdown tracks are minmax(191px, max-content) so a user text-spacing stylesheet (WCAG 1.4.12) widens them
+   instead of clipping the chosen option, and the search track is minmax(0, 1fr) so that growth comes out of the
+   search box rather than overflowing the page. The gutter has to be a real column-gap: the previous
+   justify-content: space-between distributed leftover space, and grid resolves track sizes before it, so any
+   track exceeding 191px silently ate the gutters instead. */
 .reports-list-page .govuk-table-filter {
   display: grid;
-  /* The three dropdown tracks are minmax(191px, max-content) so a user text-spacing stylesheet (WCAG 1.4.12)
-     widens them instead of clipping the chosen option, and the search track is minmax(0, 1fr) so that growth
-     comes out of the search box rather than overflowing the 960px page. The gutter has to be a real
-     column-gap: the previous justify-content: space-between distributed leftover space, and grid resolves
-     track sizes before it, so any track exceeding 191px silently ate the gutters instead. */
-  grid-template-columns: minmax(0, 1fr) repeat(3, minmax(191px, max-content));
+  grid-template-columns: minmax(0, 1fr) minmax(191px, max-content);
   row-gap: 30px;
   column-gap: 30px;
-  margin-right: 0;
-  margin-bottom: 0;
-  margin-left: 0;
+  margin-bottom: 30px;
   align-items: end;
 }
 
-/* Widths come from the grid tracks above; pinning the children would re-impose the fixed sizes the tracks
-   exist to avoid, and a min-width here would survive the mobile block below (min-width beats width) and
-   push the row past a 320px viewport. */
-.reports-list-page .govuk-table-filter > div {
-  padding-right: 0;
-  padding-left: 0;
-  width: 100%;
+@media (min-width: 60em) {
+  .reports-list-page .govuk-table-filter {
+    grid-template-columns: minmax(0, 1fr) repeat(3, minmax(191px, max-content));
+  }
 }
 
 .reports-list-page .govuk-table-filter .govuk-label {
@@ -98,17 +95,12 @@
   color: #0b0c0c !important;
 }
 
-@media (max-width: 640px) {
-  .reports-list-page {
-    padding-top: 30px;
-  }
-
+@media (max-width: 40.0525em) {
   .reports-list-page .govuk-table-filter {
     display: grid;
     grid-template-columns: 1fr;
   }
 
-  .reports-list-page .govuk-table-filter > div,
   .reports-list-page .govuk-table-filter .govuk-select {
     width: 100% !important;
   }

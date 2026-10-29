@@ -32,7 +32,8 @@ public class MfaFailureRecorder(
     IMfaSessionService sessionService,
     IDateTimeProvider dateTimeProvider,
     ApplicationSettings settings,
-    ILogger<MfaFailureRecorder> logger)
+    ILogger<MfaFailureRecorder> logger,
+    ITransactionRunner transactionRunner)
 {
     /// <summary>
     /// Records one incorrect code and returns the exception the handler should answer with —
@@ -53,6 +54,19 @@ public class MfaFailureRecorder(
     /// cancel the write that records their attempt, so the counter would never reach the threshold, the
     /// lockout would never apply, and nothing would be audited. The sibling RateLimitEventRecorder passes
     /// CancellationToken.None for the same reason; this one used to take the request's token and did not.
+    /// <para>
+    /// Must be called outside any transaction, and throws if it is not. The handler that calls it then answers
+    /// with a Left, so a failure count recorded inside the handler's transaction would be rolled back with it —
+    /// the lock would never be reached.
+    /// </para>
+    /// <para>
+    /// The count is saved first and on its own, deliberately not in one transaction with its audit rows
+    /// (BLUM-8748 is the exception here, not the rule). Committing them together made the lock depend on the
+    /// audit insert: while inserts were failing, every wrong code rolled its own count back, so the lockout and
+    /// the session revocation never triggered and only the per-minute damper was left. The audit rows follow in a
+    /// transaction of their own, and a failure there is logged rather than thrown — the lock is the control, the
+    /// rows are the record of it. The session revocation runs last, in its own, for the same reason.
+    /// </para>
     /// </remarks>
     public async Task<MfaException> RecordAsync(
         UserId userId,
@@ -61,46 +75,84 @@ public class MfaFailureRecorder(
         string endpoint,
         MfaException invalidCode)
     {
-        var locked = mfa.RecordFailedAttempt(settings.Mfa.MaxFailedAttempts, settings.Mfa.LockoutMinutes);
+        if (transactionRunner.InTransaction)
+        {
+            throw new InvalidOperationException(
+                "MfaFailureRecorder must run outside the handler's transaction, or the failure count rolls back with the refusal.");
+        }
+
+        var utcNow = dateTimeProvider.GetUtcNow();
+
+        var locked = mfa.RecordFailedAttempt(settings.Mfa.MaxFailedAttempts, settings.Mfa.LockoutMinutes, utcNow);
+        var lockApplied = locked && mfa.LockedUntil is not null;
 
         await userMfaRepository.UpdateAsync(mfa, CancellationToken.None);
 
-        await auditLogRepository.AppendAsync(
-            AuditLog.Create(
-                userId,
-                AuditTargetType.User,
-                userId.Value,
-                failedAuditAction,
-                before: null,
-                after: JsonSerializer.Serialize(new { endpoint, failedAttempts = mfa.FailedAttempts })),
-            CancellationToken.None);
+        await this.AuditAsync(userId, mfa, failedAuditAction, endpoint, lockApplied);
 
-        if (!locked || mfa.LockedUntil is null)
+        if (!lockApplied)
         {
             return invalidCode;
         }
 
         await this.RevokeSessionsAsync(userId);
 
-        await auditLogRepository.AppendAsync(
-            AuditLog.Create(
-                userId,
-                AuditTargetType.User,
-                userId.Value,
-                AuditAction.MfaLockedOut,
-                before: null,
-                after: JsonSerializer.Serialize(new
-                {
-                    failedAttempts = mfa.FailedAttempts,
-                    lockedUntil = mfa.LockedUntil,
-                    endpoint,
-                })),
-            CancellationToken.None);
-
         return new MfaLockedOutException(
             userId,
             mfa.LockedUntil.Value,
-            MfaRetryAfter.Seconds(mfa.LockedUntil, dateTimeProvider.GetUtcNow(), settings.Mfa.LockoutMinutes * 60));
+            MfaRetryAfter.Seconds(mfa.LockedUntil, utcNow, settings.Mfa.LockoutMinutes * 60));
+    }
+
+    // The failure row and, on the attempt that locked, the lockout row commit together — but apart from the count,
+    // which is already saved, so a failed insert costs the trail and never the lock.
+    private async Task AuditAsync(UserId userId, UserMfa mfa, string failedAuditAction, string endpoint, bool lockApplied)
+    {
+        try
+        {
+            await transactionRunner.RunAsync(
+                async _ =>
+                {
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            userId,
+                            AuditTargetType.User,
+                            userId.Value,
+                            failedAuditAction,
+                            before: null,
+                            after: JsonSerializer.Serialize(new { endpoint, failedAttempts = mfa.FailedAttempts })),
+                        CancellationToken.None);
+
+                    if (lockApplied)
+                    {
+                        await auditLogRepository.AppendAsync(
+                            AuditLog.Create(
+                                userId,
+                                AuditTargetType.User,
+                                userId.Value,
+                                AuditAction.MfaLockedOut,
+                                before: null,
+                                after: JsonSerializer.Serialize(new
+                                {
+                                    failedAttempts = mfa.FailedAttempts,
+                                    lockedUntil = mfa.LockedUntil,
+                                    endpoint,
+                                })),
+                            CancellationToken.None);
+                    }
+                },
+                CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "Failed to audit MFA failure {Action} at {Endpoint} for user {UserId} (failed attempts {FailedAttempts}, lock applied {LockApplied})",
+                failedAuditAction,
+                endpoint,
+                userId.Value,
+                mfa.FailedAttempts,
+                lockApplied);
+        }
     }
 
     /// <summary>

@@ -1,11 +1,13 @@
 import React from 'react';
+import { composeTestId } from '../../../../helpers/testIds';
 import { PageLoading } from '../../../../components/GovUKComponents';
 import { Link as RouterLink } from 'react-router-dom';
-import { useQuery, useQueries } from 'react-query';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import { OrganisationManagementLayout } from '../../../../layouts';
 import { GovUKTable, GovUKInsetText, NameLink, H1, type Column, type FilterOption } from '../../../../components/GovUKComponents';
 import { HISTORICAL_ROLE_LABELS, useAuthProvider } from '../../../../components/AuthProvider';
 import usePageTitle from '../../../../hooks/usePageTitle';
+import { orgDeletedUserDetailKey, orgDeletedUsersListKey } from '../../../../helpers/queriesParams';
 import { getOrganisationAdminAuditLogs, getOrganisationAdminAuditLog, type AuditLogListItem, type AuditLogsResponse } from '../../../Admin/AuditLog/queries';
 
 interface DeletedUser {
@@ -26,7 +28,9 @@ const columns: Column<DeletedUser>[] = [
   {
     key: 'name',
     header: 'Name',
-    render: (u) => <NameLink name={u.name} href={`/organisation-admin/users/deleted/${u.targetId}`} />,
+    render: (u) => (
+      <NameLink name={u.name} href={`/organisation-admin/users/deleted/${u.targetId}`} testId={composeTestId('organisation-admin-deleted-users-table', 'row', u.id, 'name-link')} />
+    ),
   },
   {
     key: 'roleName',
@@ -61,21 +65,21 @@ const DeletedUsersList = (): React.ReactElement => {
   usePageTitle('Deleted users');
   const { organisationId } = useAuthProvider();
 
-  const { data: listData, isLoading: listLoading } = useQuery(
-    ['org-deleted-users-list', organisationId],
-    () => getOrganisationAdminAuditLogs({ action: 'user.deleted', pageSize: 200 }),
-    { enabled: !!organisationId }
-  );
+  const { data: listData, isLoading: listLoading } = useQuery({
+    queryKey: orgDeletedUsersListKey(organisationId),
+    queryFn: () => getOrganisationAdminAuditLogs({ action: 'user.deleted', pageSize: 200 }),
+    enabled: !!organisationId,
+  });
 
   const items = getAuditLogItems(listData?.data);
 
-  const detailQueries = useQueries(
-    items.map((item) => ({
-      queryKey: ['org-deleted-user-detail', item.id],
+  const detailQueries = useQueries({
+    queries: items.map((item) => ({
+      queryKey: orgDeletedUserDetailKey(item.id),
       queryFn: () => getOrganisationAdminAuditLog(item.id),
       enabled: items.length > 0,
-    }))
-  );
+    })),
+  });
 
   const deletedUsers: DeletedUser[] = items.map((item, i) => {
     const detail = detailQueries[i]?.data?.data;
@@ -114,6 +118,7 @@ const DeletedUsersList = (): React.ReactElement => {
       ) : (
         <>
           <GovUKTable<DeletedUser>
+            label="Deleted users"
             testId="organisation-admin-deleted-users-table"
             data={deletedUsers}
             columns={columns}

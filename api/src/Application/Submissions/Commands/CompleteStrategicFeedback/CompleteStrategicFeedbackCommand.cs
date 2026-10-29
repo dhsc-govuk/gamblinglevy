@@ -1,5 +1,8 @@
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
+using Application.Submissions.Audit;
 using Application.Submissions.Exceptions;
+using Domain.AuditLogs;
 using Domain.Submissions;
 using LanguageExt;
 using MediatR;
@@ -16,7 +19,9 @@ public record CompleteStrategicFeedbackCommand : IRequest<Either<SubmissionExcep
 
 public class CompleteStrategicFeedbackCommandHandler(
     StrategicFeedbackContextResolver resolver,
-    ISubmissionFeedbackAnswerRepository feedbackRepository)
+    ISubmissionFeedbackAnswerRepository feedbackRepository,
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner)
     : IRequestHandler<CompleteStrategicFeedbackCommand, Either<SubmissionException, SubmissionSectionStatus>>
 {
     public async Task<Either<SubmissionException, SubmissionSectionStatus>> Handle(
@@ -33,7 +38,7 @@ public class CompleteStrategicFeedbackCommandHandler(
         StrategicFeedbackContext context,
         CancellationToken cancellationToken)
     {
-        var questions = await resolver.GetQuestionsAsync(cancellationToken);
+        var questions = await resolver.GetQuestionsAsync(context.Collection, cancellationToken);
         var saved = await feedbackRepository.GetForSubmissionAsync(context.Submission.Id, cancellationToken);
         var answersMap = saved.ToDictionary(a => a.QuestionCode, a => (string?)a.Value, StringComparer.Ordinal);
 
@@ -43,14 +48,33 @@ public class CompleteStrategicFeedbackCommandHandler(
             return new StrategicFeedbackInvalidException(context.Submission.Id, errors);
         }
 
-        try
-        {
-            await resolver.SetSectionStatusAsync(context, SubmissionSectionStatus.Completed, cancellationToken);
-            return SubmissionSectionStatus.Completed;
-        }
-        catch (Exception exception)
-        {
-            return new SubmissionUnknownException(context.Submission.Id, exception);
-        }
+        // The section status and its audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<SubmissionException, SubmissionSectionStatus>(
+            async token =>
+            {
+                try
+                {
+                    var before = SubmissionSnapshot.Serialize(context.Submission);
+                    await resolver.SetSectionStatusAsync(context, SubmissionSectionStatus.Completed, token);
+
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            context.ActorId,
+                            AuditTargetType.Submission,
+                            context.Submission.Id.Value,
+                            AuditAction.SubmissionStrategicFeedbackCompleted,
+                            before,
+                            after: SubmissionSnapshot.Serialize(context.Submission),
+                            organisationId: context.OrganisationId),
+                        token);
+
+                    return SubmissionSectionStatus.Completed;
+                }
+                catch (Exception exception)
+                {
+                    return new SubmissionUnknownException(context.Submission.Id, exception);
+                }
+            },
+            cancellationToken);
     }
 }

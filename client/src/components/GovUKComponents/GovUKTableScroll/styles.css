@@ -1,0 +1,42 @@
+/* Reflow (WCAG 1.4.10, BLUM-9350). A table cannot shrink below its narrowest content — unbroken words, ONS codes,
+   status tags — and at 320px (1280px at 400% zoom) that is wider than the content column, so the table used to push
+   the whole page into horizontal scrolling. Inside this box only the table scrolls, the exception 1.4.10 makes for
+   data tables. A table that fits never scrolls, so nothing changes at desktop width.
+   The bottom margin moves from the table to this box, at the same 20px / 30px from 641px that govuk-frontend's
+   .govuk-table and govuk-react's table both use, because a scroll container stops its children's margins collapsing:
+   left on the table, it would add to the next element's top margin instead of overlapping it (60px rather than 30px
+   above "View deleted data collections").
+   overflow-x: auto makes overflow-y auto too, which would clip an absolutely positioned pop-up inside a cell.
+   GovUKActionMenu's menu is position: fixed for that reason, so row menus can sit in a table.
+   The 3px side padding, cancelled by the negative margins so the table does not move, is room for the 3px outline
+   forced-colours mode draws round a focused link: table cells have no left padding, so the box would otherwise cut
+   that outline off down the left of the first column.
+   position: relative makes the box the containing block of anything absolutely positioned in the table — chiefly
+   .govuk-visually-hidden header text ("Actions") — which would otherwise escape the box's clipping and widen the page
+   from wherever it sits in an overflowing table. */
+.app-table-scroll {
+  margin: 0 -3px 20px;
+  overflow-x: auto;
+  padding: 0 3px;
+  position: relative;
+}
+
+.app-table-scroll > table {
+  margin-bottom: 0;
+}
+
+@media (min-width: 40.0625em) {
+  .app-table-scroll {
+    margin-bottom: 30px;
+  }
+}
+
+/* The box is focusable only while the table overflows it (see index.tsx). GOV.UK's focused-box treatment: a yellow
+   ring inside a black one, with a transparent outline that forced-colours mode draws instead. :focus-visible rather
+   than :focus because a mouse click on plain cell text also focuses the box, and the ring is for keyboard users. */
+.app-table-scroll:focus-visible {
+  outline: 3px solid transparent;
+  box-shadow:
+    0 0 0 4px #ffdd00,
+    0 0 0 8px #0b0c0c;
+}

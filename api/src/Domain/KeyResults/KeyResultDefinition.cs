@@ -46,7 +46,8 @@ public class KeyResultDefinition : IEntity<KeyResultDefinitionId>
         string code,
         string label,
         int displayOrder,
-        UserId createdBy)
+        UserId createdBy,
+        DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(activityTaskId, nameof(activityTaskId));
@@ -62,6 +63,15 @@ public class KeyResultDefinition : IEntity<KeyResultDefinitionId>
             displayOrder,
             isActive: true,
             createdBy,
-            DateTime.UtcNow);
+            utcNow);
+    }
+
+    // The seeder's only edit to an existing key result: it puts a task's catalogued key results back in protocol
+    // order after it has inserted one among them (BLUM-8749).
+    public void SetDisplayOrder(int displayOrder)
+    {
+        Guard.GreaterThanOrEqual(displayOrder, 0, nameof(displayOrder));
+
+        DisplayOrder = displayOrder;
     }
 }

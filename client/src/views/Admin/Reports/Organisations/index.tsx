@@ -1,15 +1,16 @@
-import React, { useEffect, useId, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { NotAuthorised, PageLoading } from '../../../../components/GovUKComponents';
-import { useQuery, useMutation } from 'react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import { GeneralLayout } from '../../../../layouts';
-import { GovUKWarningText, H1, H2, Paragraph, type FilterOption } from '../../../../components/GovUKComponents';
-import { SearchIcon, SpreadsheetIcon } from '../../../../components/Icons';
+import { GovUKFieldset, GovUKSearchInput, GovUKWarningText, H1, H2, Paragraph, type FilterOption } from '../../../../components/GovUKComponents';
+import { SpreadsheetIcon } from '../../../../components/Icons';
 import usePageTitle from '../../../../hooks/usePageTitle';
 import { reportSubmissionsKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
 import { getReportSubmissions, type CollectionSubmissionSummaryDto, type OrgSubmissionStatusDto, type SubmissionStatus } from '../queries';
 import { downloadWindowSubmissionsExport } from '../mutations';
+import { REGIONS } from '../../Organisations/queries';
 import { formatGovUkDate, REPORT_COLLECTION_STATUS_LABEL } from '../display';
 import { reportBreadcrumbs } from '../navigation';
 import { reportFailureMessage, reportLoadVerdict, reportPageTitle, reportQueryRetry, REPORT_NOT_FOUND_MESSAGE } from '../messages';
@@ -28,6 +29,11 @@ const statusFilterOptions: FilterOption[] = [
   { value: 'completed', label: 'Completed' },
   { value: 'overdue', label: 'Overdue' },
 ];
+
+// The consolidated export's region scope. '' is every organisation — the shape the download had before BLUM-7682, and
+// still the default. REGIONS is the client mirror of the backend's Region value object and already feeds the
+// organisation create/edit selects; importing it keeps one list rather than a second copy that can drift.
+const exportRegionOptions = [{ value: '', label: 'All regions' }, ...REGIONS.map((region) => ({ value: region, label: region }))];
 
 const displayStatusLabel: Record<SubmissionStatus, string> = {
   not_started: 'Not started',
@@ -53,8 +59,17 @@ const submittedLine = (org: OrgSubmissionStatusDto): string | null => {
 // after the quarter it reports on — the normal shape whenever "window same as reporting period" is No — that named
 // the wrong quarter over the wrong dates. Absent values now collapse the clause rather than emitting the
 // "{quarterStartDate}" design placeholders, which a draft collection rendered into live link text.
-const consolidatedReportTitle = (summary: CollectionSubmissionSummaryDto): string => {
-  const quarterText = summary.quarter == null ? 'Consolidated quarterly report' : `Consolidated quarterly report for Quarter ${summary.quarter}`;
+//
+// The region is appended to the same clause rather than added as a separate caption, because this string IS the download
+// button's accessible name — a screen-reader user who has changed the select has to hear what they are about to
+// download, not just see it. '' (all regions) leaves the text exactly as it was.
+const consolidatedReportTitle = (summary: CollectionSubmissionSummaryDto, region: string): string => {
+  const scope = region ? ` — ${region}` : '';
+  // A maturity window is one file per year, named by the financial year rather than a quarter (BLUM-7859 AC4).
+  if (summary.collectionType === 'maturity_assessment') {
+    return summary.financialYear ? `Consolidated maturity assessment${scope},\n${summary.financialYear}` : `Consolidated maturity assessment${scope}`;
+  }
+  const quarterText = summary.quarter == null ? `Consolidated quarterly report${scope}` : `Consolidated quarterly report for Quarter ${summary.quarter}${scope}`;
   // Both ends required: one date alone would render "1 July 2026 to —" inside the download link text.
   if (!summary.reportingPeriodStart || !summary.reportingPeriodEnd) {
     return quarterText;
@@ -84,21 +99,22 @@ const NOT_FOUND_HEADING = 'Report not found';
 const ReportOrganisations = (): React.ReactElement => {
   const navigate = useNavigate();
   const { collectionId = '' } = useParams<{ collectionId: string }>();
-  const { data, isError, error, refetch } = useQuery(reportSubmissionsKey(collectionId), () => getReportSubmissions(collectionId), {
+  const { data, isError, error, refetch } = useQuery({
+    queryKey: reportSubmissionsKey(collectionId),
+    queryFn: () => getReportSubmissions(collectionId),
     enabled: !!collectionId,
     retry: reportQueryRetry,
   });
   const summary = data?.data;
 
-  // Suppressed while a record is in hand — react-query v3 keeps cached data when a background refetch fails.
+  // Suppressed while a record is in hand — react-query keeps cached data when a background refetch fails.
   const errorKind = reportLoadVerdict(!!summary, !!collectionId, isError, error);
 
   usePageTitle(reportPageTitle(errorKind, NOT_FOUND_HEADING, summary?.collectionName ?? 'Report'));
 
-  const downloadMutation = useMutation(() => downloadWindowSubmissionsExport(collectionId));
-  const searchFieldId = useId();
-  const sortFieldId = useId();
-  const statusFieldId = useId();
+  const downloadMutation = useMutation({ mutationFn: (region: string) => downloadWindowSubmissionsExport(collectionId, region || undefined) });
+  const [exportRegion, setExportRegion] = useState('');
+  const [exportScopeAnnouncement, setExportScopeAnnouncement] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortValue, setSortValue] = useState(sortOptions[0].value);
   const [statusFilter, setStatusFilter] = useState('');
@@ -209,6 +225,46 @@ const ReportOrganisations = (): React.ReactElement => {
           <H2 className="reports-orgs-page__subheading">Files</H2>
         </div>
 
+        {/* Scopes the download only — deliberately NOT the organisations list below, which keeps its own search, sort
+            and status controls. It sits inside the Files section for that reason, and the hint says so: the list has its
+            own "Filter by status" control that DOES change what is on screen, so a region select that changes nothing
+            visible reads as broken without it. The hint is wired into the select's aria-describedby by the wrapper, so
+            it reaches screen readers too. */}
+        <div className="reports-orgs-file-region">
+          <GovUKFieldset.Select
+            id="admin-reports-orgs-files-region"
+            name="exportRegion"
+            label="Filter by region"
+            hint="This changes the file you download. It does not filter the list of organisations below."
+            labelSize="none"
+            width="two-thirds"
+            value={exportRegion}
+            options={exportRegionOptions}
+            // Held while a download is in flight, matching the button below: changing the scope mid-request would
+            // relabel the link while the file already on its way still carries the old scope.
+            disabled={downloadMutation.isPending}
+            onChange={(event) => {
+              const region = event.target.value;
+              setExportRegion(region);
+              setExportScopeAnnouncement(region ? `Download scoped to ${region}.` : 'Download scoped to all regions.');
+              // A failure from the previous scope must not linger next to a button that now means something else.
+              downloadMutation.reset();
+            }}
+          />
+        </div>
+
+        {/* The consequence of changing the select is invisible until the file lands, so say it. Mirrors the list's own
+            results announcement below rather than inventing a second pattern — and, like that one, it is named for what
+            it reports rather than for the control that drives it. Deliberately NOT "…-region-status": the select's own
+            testid root is admin-reports-orgs-files-region, and GovUKFieldset.Select derives children from that root
+            (…-error), so a "-status" suffix there would read as the field's validation state.
+
+            No clear-then-set debounce here, unlike the list's: a select fires onChange only when the value actually
+            changes, so two consecutive announcements are always different strings and a polite region will read both. */}
+        <div className="govuk-visually-hidden" role="status" aria-live="polite" aria-atomic="true" data-testid="admin-reports-orgs-files-scope-status">
+          {exportScopeAnnouncement}
+        </div>
+
         <div className="reports-orgs-file" data-testid="admin-reports-orgs-files">
           <span className="reports-orgs-file__icon" aria-hidden="true">
             <SpreadsheetIcon />
@@ -217,15 +273,15 @@ const ReportOrganisations = (): React.ReactElement => {
             <button
               type="button"
               className="reports-orgs-file__title"
-              onClick={() => downloadMutation.mutate()}
-              disabled={downloadMutation.isLoading}
+              onClick={() => downloadMutation.mutate(exportRegion)}
+              disabled={downloadMutation.isPending}
               /* The button is named by the report title alone, so associate the captions below it: the file format,
                  plus the incomplete-data warning when the window is still open — that is the more important thing to
                  hear BEFORE downloading. Block comment, not `//`: a line comment here silently comments out every
                  attribute after it if the tag is ever collapsed onto one line. */
               aria-describedby={summary.collectionStatus !== 'closed' ? 'admin-reports-orgs-files-meta admin-reports-orgs-files-warning' : 'admin-reports-orgs-files-meta'}
               data-testid="admin-reports-orgs-files-download">
-              {consolidatedReportTitle(summary)}
+              {consolidatedReportTitle(summary, exportRegion)}
             </button>
             {/* The consolidated window export is a ZIP of per-section CSVs (summary + activity/funding/feedback,
                 aggregated across every org), mirroring the per-organisation report download. No size is shown: there is
@@ -254,74 +310,49 @@ const ReportOrganisations = (): React.ReactElement => {
         </div>
 
         <div className="reports-orgs-filter" data-testid="admin-reports-orgs-list-filters">
-          <div className="reports-orgs-filter__search">
-            <label htmlFor={searchFieldId} className="govuk-label">
-              Search by name
-            </label>
-            <div className="reports-orgs-filter__search-control">
-              <input
-                id={searchFieldId}
-                className="govuk-input reports-orgs-filter__input"
-                type="search"
-                value={searchTerm}
-                onChange={(event) => {
-                  setSearchTerm(event.target.value);
-                  requestResultsAnnouncement();
-                }}
-                data-testid="admin-reports-orgs-list-search"
-              />
-              <button
-                type="button"
-                className="reports-orgs-filter__search-button"
-                aria-label="Search"
-                data-testid="admin-reports-orgs-list-search-button"
-                onClick={requestResultsAnnouncement}>
-                <SearchIcon />
-              </button>
-            </div>
-          </div>
+          <GovUKSearchInput
+            className="reports-orgs-filter__search"
+            id="admin-reports-orgs-list-search"
+            label="Search by name"
+            value={searchTerm}
+            onChange={(value) => {
+              setSearchTerm(value);
+              requestResultsAnnouncement();
+            }}
+            onSearch={requestResultsAnnouncement}
+            testId="admin-reports-orgs-list-search"
+          />
 
           <div className="reports-orgs-filter__select">
-            <label htmlFor={sortFieldId} className="govuk-label">
-              Sort by
-            </label>
-            <select
-              id={sortFieldId}
-              className="govuk-select"
+            <GovUKFieldset.Select
+              id="admin-reports-orgs-list-sort"
+              name="sort"
+              label="Sort by"
+              labelSize="none"
               value={sortValue}
+              options={sortOptions}
               onChange={(event) => {
                 setSortValue(event.target.value);
                 requestResultsAnnouncement();
               }}
-              data-testid="admin-reports-orgs-list-sort">
-              {sortOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              testId="admin-reports-orgs-list-sort"
+            />
           </div>
 
           <div className="reports-orgs-filter__select">
-            <label htmlFor={statusFieldId} className="govuk-label">
-              Filter by status
-            </label>
-            <select
-              id={statusFieldId}
-              className="govuk-select"
+            <GovUKFieldset.Select
+              id="admin-reports-orgs-list-filter"
+              name="status"
+              label="Filter by status"
+              labelSize="none"
               value={statusFilter}
+              options={[{ value: '', label: 'Select status' }, ...statusFilterOptions]}
               onChange={(event) => {
                 setStatusFilter(event.target.value);
                 requestResultsAnnouncement();
               }}
-              data-testid="admin-reports-orgs-list-filter">
-              <option value="">Select status</option>
-              {statusFilterOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              testId="admin-reports-orgs-list-filter"
+            />
           </div>
         </div>
 

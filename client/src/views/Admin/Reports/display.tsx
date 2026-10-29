@@ -38,10 +38,10 @@ export const SUBMISSION_STATUS_TAG_COLOUR: Record<SubmissionStatus, TagColour> =
 // the two differ whenever a collection was published with "window same as reporting period" = No. Shared by the
 // DHSC submission detail and the LA report intro so the two surfaces cannot drift (BLUM-7079).
 //
-// Not the only reporting-period formatter: views/Reports/display.tsx keeps `reportingPeriodLabel`, a single-line
-// STRING ("Quarter 1 (1 April 2026 to 30 June 2026)") used by the LA check-your-answers page, and `reportName` for
-// a report's display name. Those stay separate because they are strings, not nodes — GovUKTable sorts and searches
-// over raw string fields, and a check-answers row is one line by design. Change the wording in all three together.
+// Not the only reporting-period formatter: views/Reports/display.tsx keeps `reportName`, the string form used for
+// a report's display name. That stays separate because it is a string, not a node — GovUKTable sorts and searches
+// over raw string fields. Change the wording in both together. (A third, `reportingPeriodLabel`, rendered the
+// single-line "Quarter 1 (1 April 2026 to 30 June 2026)" for the bold inline header line; it went with that line.)
 export const reportingPeriodValue = (quarter: number | null, start: string | null, end: string | null): React.ReactNode => {
   // Both ends required, deliberately: a half-known period would render "1 July 2026 to —", which reads as a real
   // range with a broken end rather than as missing data. The server derives start and end together from financial

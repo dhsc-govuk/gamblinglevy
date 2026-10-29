@@ -6,12 +6,22 @@ namespace Application.Common.Csv;
 // Centralises the escaping rules so every export quotes and neutralises cells the same way.
 public static class CsvWriter
 {
-    public static byte[] Build(IReadOnlyList<string> header, IEnumerable<IReadOnlyList<string>> rows)
+    private static readonly byte[] Utf8ByteOrderMark = [0xEF, 0xBB, 0xBF];
+
+    public static byte[] Build(IReadOnlyList<string> header, IEnumerable<IReadOnlyList<string>> rows) =>
+        Build(header, rows, byteOrderMark: false);
+
+    // byteOrderMark is for a file a person opens and edits in Excel and then gives back to us (the offline quarterly
+    // report, BLUM-8310): without the BOM Excel decodes the file in the machine's legacy code page, so "£" and curly
+    // quotes turn into mojibake before the user has typed anything. Exports stay BOM-less — their consumers are
+    // pinned byte for byte by the export tests.
+    public static byte[] Build(IReadOnlyList<string> header, IEnumerable<IReadOnlyList<string>> rows, bool byteOrderMark)
     {
         var lines = new List<string> { JoinRow(header) };
         lines.AddRange(rows.Select(JoinRow));
         var csv = string.Join("\r\n", lines);
-        return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(csv);
+        var content = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(csv);
+        return byteOrderMark ? [.. Utf8ByteOrderMark, .. content] : content;
     }
 
     private static string JoinRow(IReadOnlyList<string> fields) => string.Join(",", fields.Select(Escape));

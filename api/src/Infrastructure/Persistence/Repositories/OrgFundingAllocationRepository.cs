@@ -19,16 +19,28 @@ public class OrgFundingAllocationRepository(ApplicationDbContext dbContext)
         return entity ?? Option<OrgFundingAllocation>.None;
     }
 
-    public async Task<Option<OrgFundingAllocation>> FindLatestForOrganisationAsync(
-        OrganisationId organisationId,
+    public async Task<IReadOnlyList<OrgAllocationWithWindow>> ListWithWindowsForOrganisationsAsync(
+        IReadOnlyCollection<OrganisationId> organisationIds,
         CancellationToken cancellationToken = default)
     {
-        var entity = await Context.OrgFundingAllocations
+        if (organisationIds.Count == 0)
+        {
+            return [];
+        }
+
+        // Materialised as the strongly-typed ids rather than their Guid values: OrganisationId maps through
+        // HasConversion, so Contains over the id records translates to the same IN (...) on organisation_id.
+        var ids = organisationIds.Distinct().ToList();
+
+        return await Context.OrgFundingAllocations
             .AsNoTracking()
-            .Where(x => x.OrganisationId == organisationId)
-            .OrderByDescending(x => x.CreatedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-        return entity ?? Option<OrgFundingAllocation>.None;
+            .Where(allocation => ids.Contains(allocation.OrganisationId))
+            .Join(
+                Context.FundingWindows.AsNoTracking(),
+                allocation => allocation.FundingWindowId,
+                window => window.Id,
+                (allocation, window) => new OrgAllocationWithWindow(allocation, window))
+            .ToListAsync(cancellationToken);
     }
 
     public async Task RemoveByOrganisationAsync(OrganisationId organisationId, CancellationToken cancellationToken = default)

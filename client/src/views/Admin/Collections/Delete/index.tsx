@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
 import { LoadingBox } from '../../../../components/GovUKComponents';
 import ConfirmationPanel from '../../../../components/Global/Activities/ConfirmationPanel';
@@ -16,16 +16,15 @@ const CollectionsDelete = (): React.ReactElement => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery(collectionKey(collectionId), () => getCollection(collectionId), {
-    enabled: !!collectionId,
-  });
+  const { data, isLoading } = useQuery({ queryKey: collectionKey(collectionId), queryFn: () => getCollection(collectionId), enabled: !!collectionId });
   const name = data?.data?.name ?? 'this data collection';
 
-  const deleteMutation = useMutation(() => deleteCollection(collectionId), {
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteCollection(collectionId),
     onSuccess: () => {
-      queryClient.invalidateQueries(collectionsListKey);
-      queryClient.invalidateQueries(collectionsDeletedKey);
-      queryClient.invalidateQueries(collectionKey(collectionId));
+      queryClient.invalidateQueries({ queryKey: collectionsListKey });
+      queryClient.invalidateQueries({ queryKey: collectionsDeletedKey });
+      queryClient.invalidateQueries({ queryKey: collectionKey(collectionId) });
       navigate('/admin/collections', {
         state: {
           banner: {
@@ -62,7 +61,7 @@ const CollectionsDelete = (): React.ReactElement => {
           onConfirm={() => deleteMutation.mutate()}
           cancelLabel="Go back to data collection"
           onCancel={() => navigate(`/admin/collections/${collectionId}`)}
-          isLoading={deleteMutation.isLoading}
+          isLoading={deleteMutation.isPending}
         />
       </div>
     </GeneralLayout>

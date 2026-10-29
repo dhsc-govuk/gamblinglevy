@@ -1,7 +1,7 @@
 import React from 'react';
 import { PageLoading } from '../../../components/GovUKComponents';
 import { Link as RouterLink } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../layouts';
 import { GovUKTaskList, GovUKInsetText, Paragraph, type TaskListItem } from '../../../components/GovUKComponents';
 import { useAuthProvider } from '../../../components/AuthProvider';
@@ -11,7 +11,7 @@ import { myReportCollectionsKey } from '../../../helpers/queriesParams';
 import { ROUTES } from '../../../helpers/routes';
 import { formatGovUkDate } from '../../Admin/Collections/display';
 import { getMyReportCollections } from '../queries';
-import { overdueCollections, reportName, submissionTaskStatus } from '../display';
+import { collectionAuthoringHref, collectionDisplayName, overdueCollections, submissionTaskStatus } from '../display';
 import { reportsLandingBreadcrumbs } from '../navigation';
 import './styles.css';
 
@@ -22,12 +22,12 @@ const ReportsLanding = (): React.ReactElement => {
   usePageTitle('Reports');
   const { userRole } = useAuthProvider();
 
-  const { data, isLoading } = useQuery(myReportCollectionsKey, getMyReportCollections);
+  const { data, isLoading } = useQuery({ queryKey: myReportCollectionsKey, queryFn: getMyReportCollections });
   // "Open data collections" = the organisation's currently-open windows, whether or not it has reported yet — each
   // row carries its own derived status (Not started / In progress / Submitted), so a submitted report is shown as
   // Submitted rather than silently dropped (BLUM-6952). It also stays under the report history, and leaves this list
   // once its window closes — from then on it is either history or, if nothing was submitted, overdue below.
-  // Quarterly-only is enforced server-side.
+  // Both submission flows are listed (quarterly reports and the annual maturity assessment, BLUM-7859).
   const openCollections = (data?.data ?? []).filter((collection) => collection.collectionStatus === 'open');
 
   const items: TaskListItem[] = openCollections.map((collection) => {
@@ -37,12 +37,12 @@ const ReportsLanding = (): React.ReactElement => {
 
     return {
       id: collection.collectionId,
-      title: reportName(collection.quarter, collection.reportingPeriodStart, collection.reportingPeriodEnd),
+      title: collectionDisplayName(collection),
       hint: `Deadline is ${formatGovUkDate(collection.submissionDeadline)}`,
       // Collection-scoped: the row opens its own collection. An organisation can have two quarterly windows open at
       // once, and a collection-agnostic link opened whichever one the server resolved instead (BLUM-6950). A submitted
       // report is immutable, so its row goes to the read-only record rather than the authoring flow.
-      href: isSubmitted ? ROUTES.reports.submittedDetail(collection.collectionId) : ROUTES.reports.quarterly(collection.collectionId),
+      href: isSubmitted ? ROUTES.reports.submittedDetail(collection.collectionId) : collectionAuthoringHref(collection),
       status: submissionTaskStatus(collection.submissionStatus),
       // Stable testId from the collection id (not the date-derived title slug GovUKTaskList would otherwise fall back to).
       testId: composeTestId('la-reports-landing-collections', 'item', collection.collectionId),
@@ -55,7 +55,7 @@ const ReportsLanding = (): React.ReactElement => {
   // so each row goes to the read-only record rather than the authoring flow.
   const overdueItems: TaskListItem[] = overdueCollections(data?.data ?? []).map((collection) => ({
     id: collection.collectionId,
-    title: reportName(collection.quarter, collection.reportingPeriodStart, collection.reportingPeriodEnd),
+    title: collectionDisplayName(collection),
     hint: `Deadline was ${formatGovUkDate(collection.submissionDeadline)}`,
     href: ROUTES.reports.submittedDetail(collection.collectionId),
     status: submissionTaskStatus(collection.submissionStatus),

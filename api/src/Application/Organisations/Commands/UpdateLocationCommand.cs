@@ -1,7 +1,11 @@
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Permissions;
+using Application.Organisations.Audit;
 using Application.Organisations.Exceptions;
+using Domain.AuditLogs;
 using Domain.Locations;
+using Domain.Users;
 using LanguageExt;
 using MediatR;
 using Location = Domain.Locations.Location;
@@ -18,7 +22,9 @@ public record UpdateLocationCommand : IRequest<Either<LocationException, Locatio
 
 public class UpdateLocationCommandHandler(
     ILocationRepository locationRepository,
-    PermissionsService permissionsService)
+    PermissionsService permissionsService,
+    IAuditLogRepository auditLogRepository,
+    ITransactionRunner transactionRunner)
     : IRequestHandler<UpdateLocationCommand, Either<LocationException, Location>>
 {
     public async Task<Either<LocationException, Location>> Handle(
@@ -31,7 +37,7 @@ public class UpdateLocationCommandHandler(
         return await permissions.MatchAsync<Either<LocationException, Location>>(
             p => GetLocation(p, locationId, cancellationToken)
                 .BindAsync(l => FindDuplicate(l, request.Name!, cancellationToken)
-                .BindAsync(_ => UpdateLocation(l, request.Name!, request.IsActive, cancellationToken))),
+                .BindAsync(_ => UpdateLocation(p, l, request.Name!, request.IsActive, cancellationToken))),
             e => new LocationArgumentException(locationId, e.Message));
     }
 
@@ -51,20 +57,41 @@ public class UpdateLocationCommandHandler(
     }
 
     private async Task<Either<LocationException, Location>> UpdateLocation(
+        Permission permission,
         Location location,
         string name,
         bool isActive,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            location.UpdateDetails(name, isActive);
-            return await locationRepository.UpdateAsync(location, cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            return new LocationUnknownException(LocationId.Empty(), exception);
-        }
+        // The change and its audit row commit together (BLUM-8748).
+        return await transactionRunner.RunAsync<LocationException, Location>(
+            async token =>
+            {
+                try
+                {
+                    var before = LocationSnapshot.Serialize(location);
+                    location.UpdateDetails(name, isActive);
+                    var saved = await locationRepository.UpdateAsync(location, token);
+
+                    await auditLogRepository.AppendAsync(
+                        AuditLog.Create(
+                            permissionsService.GetUserId().IfLeft(UserId.Empty()),
+                            AuditTargetType.Location,
+                            saved.Id.Value,
+                            AuditAction.LocationUpdated,
+                            before,
+                            after: LocationSnapshot.Serialize(saved),
+                            saved.OrganisationId),
+                        token);
+
+                    return saved;
+                }
+                catch (Exception exception)
+                {
+                    return new LocationUnknownException(LocationId.Empty(), exception);
+                }
+            },
+            cancellationToken);
     }
 
     private async Task<Either<LocationException, Location>> GetLocation(

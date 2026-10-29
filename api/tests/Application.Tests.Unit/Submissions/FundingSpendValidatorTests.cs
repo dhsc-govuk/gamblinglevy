@@ -9,11 +9,13 @@ public class FundingSpendValidatorTests
 {
     private static readonly ActivityId Activity = ActivityId.New();
 
+    private static readonly FundingSpendSubject Subject = new(Activity, "Steering group");
+
     [Fact]
     public void ValidateActuals_AsDraft_WithMissingAmounts_HasNoErrors()
     {
         var errors = FundingSpendValidator.ValidateActuals(
-            [Activity],
+            [Subject],
             new Dictionary<Guid, decimal?>(),
             otherAmount: null,
             enforceRequired: false);
@@ -25,7 +27,7 @@ public class FundingSpendValidatorTests
     public void ValidateActuals_OnComplete_WithMissingAmounts_FlagsEachField()
     {
         var errors = FundingSpendValidator.ValidateActuals(
-            [Activity],
+            [Subject],
             new Dictionary<Guid, decimal?>(),
             otherAmount: null,
             enforceRequired: true);
@@ -38,7 +40,7 @@ public class FundingSpendValidatorTests
     public void ValidateActuals_WithNegativeAmount_FlagsEvenWhenNotEnforcingRequired()
     {
         var errors = FundingSpendValidator.ValidateActuals(
-            [Activity],
+            [Subject],
             new Dictionary<Guid, decimal?> { [Activity.Value] = -1m },
             otherAmount: 0m,
             enforceRequired: false);
@@ -51,7 +53,7 @@ public class FundingSpendValidatorTests
     public void ValidateActuals_WithAmountOverMax_FlagsTheField()
     {
         var errors = FundingSpendValidator.ValidateActuals(
-            [Activity],
+            [Subject],
             new Dictionary<Guid, decimal?> { [Activity.Value] = 1_000_000_001m },
             otherAmount: 0m,
             enforceRequired: false);
@@ -64,7 +66,7 @@ public class FundingSpendValidatorTests
     public void ValidateActuals_WithZeroAmounts_HasNoErrors()
     {
         var errors = FundingSpendValidator.ValidateActuals(
-            [Activity],
+            [Subject],
             new Dictionary<Guid, decimal?> { [Activity.Value] = 0m },
             otherAmount: 0m,
             enforceRequired: true);
@@ -76,7 +78,7 @@ public class FundingSpendValidatorTests
     public void ValidateForecast_OnComplete_WithMissingQuarters_FlagsEachActivityQuarterAndOther()
     {
         var errors = FundingSpendValidator.ValidateForecast(
-            [Activity],
+            [Subject],
             [2, 3, 4],
             new Dictionary<(Guid, int), decimal?>(),
             new Dictionary<int, decimal?>(),
@@ -92,7 +94,7 @@ public class FundingSpendValidatorTests
     {
         // A Q4 report has nothing left to forecast — completing the section must not require any forecast amount.
         var errors = FundingSpendValidator.ValidateForecast(
-            [Activity],
+            [Subject],
             [],
             new Dictionary<(Guid, int), decimal?>(),
             new Dictionary<int, decimal?>(),

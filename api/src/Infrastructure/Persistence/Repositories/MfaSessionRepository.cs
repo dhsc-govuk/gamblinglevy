@@ -1,3 +1,4 @@
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Queries;
 using Application.Common.Interfaces.Repositories;
 using Application.Common.Settings;
@@ -7,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Infrastructure.Persistence.Repositories;
 
-public class MfaSessionRepository(ApplicationDbContext dbContext, ApplicationSettings settings)
+public class MfaSessionRepository(ApplicationDbContext dbContext, IDateTimeProvider dateTimeProvider, ApplicationSettings settings)
     : IMfaSessionRepository, IMfaSessionQueries
 {
     public async Task<MfaSession?> GetByIdAsync(MfaSessionId sessionId, CancellationToken cancellationToken = default)
@@ -25,18 +26,19 @@ public class MfaSessionRepository(ApplicationDbContext dbContext, ApplicationSet
 
     public async Task<List<MfaSession>> GetActiveByUserIdAsync(UserId userId, CancellationToken cancellationToken = default)
     {
-        return await ActiveSessionsQuery(userId, DateTime.UtcNow)
+        return await ActiveSessionsQuery(userId, dateTimeProvider.GetUtcNow())
             .ToListAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<MfaSessionListItemDto>> GetActiveForUserAsync(UserId userId, CancellationToken cancellationToken = default)
     {
-        return await ActiveSessionsQuery(userId, DateTime.UtcNow)
+        return await ActiveSessionsQuery(userId, dateTimeProvider.GetUtcNow())
             .AsNoTracking()
             .Select(x => new MfaSessionListItemDto(
                 x.Id.Value,
                 x.DeviceLabel,
                 x.IpAddress,
+                x.LastSeenIpAddress,
                 x.CreatedAt,
                 x.LastActivityAt,
                 x.ExpiresAt,
@@ -110,6 +112,17 @@ public class MfaSessionRepository(ApplicationDbContext dbContext, ApplicationSet
             .Where(x => x.Id == sessionId && !x.IsRevoked)
             .ExecuteUpdateAsync(
                 setters => setters.SetProperty(x => x.LastActivityAt, lastActivityAt),
+                cancellationToken);
+    }
+
+    public async Task<int> TryUpdateLastSeenIpAsync(MfaSessionId sessionId, string? expectedHash, string newHash, string newIpAddress, CancellationToken cancellationToken = default)
+    {
+        return await dbContext.MfaSessions
+            .Where(x => x.Id == sessionId && !x.IsRevoked && x.LastSeenIpAddressHash == expectedHash)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(x => x.LastSeenIpAddressHash, newHash)
+                    .SetProperty(x => x.LastSeenIpAddress, newIpAddress),
                 cancellationToken);
     }
 

@@ -6,8 +6,8 @@ const AttachmentThumbnailIcon = (): React.ReactElement => (
   <svg width="103" height="144" viewBox="0 0 103 144" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <g filter="url(#attachment-thumbnail-shadow)">
       <rect width="99" height="140" transform="translate(2)" fill="white" />
-      <path d="M14 12H89V39H14V12ZM14 59H32.75V122H14V59ZM69 61V120H53V61H69ZM71 59H51V122H71V59Z" fill="#A8ABAD" />
-      <path d="M51 61.05V120H34.8V61.05H51ZM53 59.05H32.75V122.05H53V59V59.05ZM87 61.05V120H71.05V61.05H87ZM89 59.05H69V122.05H89V59V59.05Z" fill="#A8ABAD" />
+      <path d="M14 12H89V39H14V12ZM14 59H32.75V122H14V59ZM69 61V120H53V61H69ZM71 59H51V122H71V59Z" fill="#b1b4b6" />
+      <path d="M51 61.05V120H34.8V61.05H51ZM53 59.05H32.75V122.05H53V59V59.05ZM87 61.05V120H71.05V61.05H87ZM89 59.05H69V122.05H89V59V59.05Z" fill="#b1b4b6" />
     </g>
     <defs>
       <filter id="attachment-thumbnail-shadow" x="0" y="0" width="103" height="144" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">

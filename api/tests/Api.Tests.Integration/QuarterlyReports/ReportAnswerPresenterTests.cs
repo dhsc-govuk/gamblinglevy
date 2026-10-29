@@ -5,9 +5,10 @@ using Xunit;
 
 namespace Api.Tests.Integration.QuarterlyReports;
 
-// Pure unit tests for the shared answer presenter — the C# port of the frontend renderReportAnswer / isQuestionVisible
-// that the export relies on. These pin the rules the export must replicate (visibility filter, checkbox multi-label,
-// unit suffix) so the TS and C# sides cannot silently drift. No database, so they run without Docker.
+// Pure unit tests for the shared answer presenter — the C# port of the frontend renderReportAnswer that the export
+// relies on. These pin the rules the export must replicate (checkbox multi-label, unit suffix) so the TS and C# sides
+// cannot silently drift; the visibility filter is AnswerVisibility's, pinned by AnswerVisibilityTests. No database, so
+// they run without Docker.
 public class ReportAnswerPresenterTests
 {
     private static ReportQuestionDto Question(
@@ -32,50 +33,6 @@ public class ReportAnswerPresenterTests
             MaxValue: null,
             suffix,
             Section: "results");
-
-    private static Dictionary<string, string?> Answers(params (string Code, string? Value)[] answers) =>
-        answers.ToDictionary(a => a.Code, a => a.Value, StringComparer.Ordinal);
-
-    [Fact]
-    public void IsVisible_WhenNoConditionalRule_IsAlwaysVisible()
-    {
-        var question = Question("Q");
-
-        ReportAnswerPresenter.IsVisible(question, Answers()).Should().BeTrue();
-    }
-
-    [Fact]
-    public void IsVisible_WhenParentUnanswered_IsHidden()
-    {
-        var question = Question("CHILD", conditionalQuestionCode: "PARENT", conditionalValue: "yes");
-
-        ReportAnswerPresenter.IsVisible(question, Answers()).Should().BeFalse();
-    }
-
-    [Fact]
-    public void IsVisible_WhenParentValueNotInAllowList_IsHidden()
-    {
-        var question = Question("CHILD", conditionalQuestionCode: "PARENT", conditionalValue: "yes");
-
-        ReportAnswerPresenter.IsVisible(question, Answers(("PARENT", "no"))).Should().BeFalse();
-    }
-
-    [Fact]
-    public void IsVisible_WhenParentValueMatches_IsVisible()
-    {
-        var question = Question("CHILD", conditionalQuestionCode: "PARENT", conditionalValue: "yes");
-
-        ReportAnswerPresenter.IsVisible(question, Answers(("PARENT", "yes"))).Should().BeTrue();
-    }
-
-    [Fact]
-    public void IsVisible_WhenCheckboxParentSharesOneAllowedValue_IsVisible()
-    {
-        // conditionalValue is a comma-separated allow-list; a checkbox parent holds several comma-joined values.
-        var question = Question("CHILD", conditionalQuestionCode: "PARENT", conditionalValue: "other,extra");
-
-        ReportAnswerPresenter.IsVisible(question, Answers(("PARENT", "main, other"))).Should().BeTrue();
-    }
 
     [Fact]
     public void RenderAnswer_WhenEmpty_IsBlank()
@@ -114,5 +71,33 @@ public class ReportAnswerPresenterTests
         var question = Question("Q", "Radio", options: [("yes", "Yes")]);
 
         ReportAnswerPresenter.RenderAnswer(question, "maybe").Should().Be("maybe");
+    }
+
+    // Currency (BLUM-7860) is rendered the way the activity page's resolveAnswerDisplay shows it — pinned here because
+    // the activity-record export (BLUM-7648) is the first file to carry one.
+    [Theory]
+    [InlineData("25000", "£25,000")]
+    [InlineData("1000000000", "£1,000,000,000")]
+    [InlineData("0", "£0")]
+    [InlineData("£1,500", "£1,500")]
+    [InlineData("25 000", "£25,000")]
+    [InlineData("12.5", "£12.5")]
+    [InlineData("-40", "-£40")]
+    [InlineData("not a number", "not a number")]
+
+    // BLUM-8955: a separator that is not a thousands separator is not read through. These were stored while every
+    // comma was stripped, and used to come out as £510 and £10.
+    [InlineData("5,10", "5,10")]
+    [InlineData("0,10", "0,10")]
+
+    // A thousands separator is still one beside a sign or pence: these are amounts, and were shown as amounts.
+    [InlineData("-1,500", "-£1,500")]
+    [InlineData("1,500.50", "£1,500.5")]
+    [InlineData("-£1 500.25", "-£1,500.25")]
+    public void RenderAnswer_Currency_ShowsPoundsWithGrouping(string value, string expected)
+    {
+        var question = Question("Q", "Currency");
+
+        ReportAnswerPresenter.RenderAnswer(question, value).Should().Be(expected);
     }
 }

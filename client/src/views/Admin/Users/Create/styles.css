@@ -54,10 +54,10 @@
   gap: 10px;
 }
 
-.users-create-page__access-level > .govuk-link {
-  font-size: 19px;
-  line-height: 25px;
-  width: fit-content;
+/* The guidance disclosure is not a .govuk-form-group, so the page's margin reset above misses it and its own
+   20px bottom margin would make this the one 50px field gap on a form where every other pair is 30px. */
+.users-create-page__access-level > .govuk-details {
+  margin-bottom: 0;
 }
 
 .users-create-page .govuk-button {

@@ -11,9 +11,17 @@ using Application.Collections.Commands.SendManualReminder;
 using Application.Collections.Commands.SoftDeleteCollection;
 using Application.Collections.Commands.UpdateCollection;
 using Application.Collections.Exceptions;
+using Application.Common.Interfaces.Queries;
+using Application.Common.Permissions;
+using Application.MaturityAssessments.Commands.ExportMaturityAssessments;
+using Application.Submissions;
+using Application.Submissions.Commands.RegenerateReportSnapshot;
 using Domain.Collections;
+using Domain.Organisations;
+using Domain.Users;
 using Domain.ValueObjects;
 using LanguageExt;
+using LanguageExt.UnsafeValueAccess;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,7 +35,12 @@ public class DataCollectionsController(
     ISender sender,
     IDataCollectionsControllerService controllerService,
     IDhscSubmissionsControllerService submissionsService,
-    IQuarterlyReportExportService exportService)
+    IQuarterlyReportExportService exportService,
+    IMaturityAssessmentExportService maturityExportService,
+    IReportSnapshotService reportSnapshotService,
+    ICollectionQueries collectionQueries,
+    ISubmissionQueries submissionQueries,
+    PermissionsService permissionsService)
     : ControllerBase
 {
     [HttpGet]
@@ -86,12 +99,32 @@ public class DataCollectionsController(
 
     // DHSC submission export (BLUM-6100): a ZIP of per-section CSVs (summary + the three report sections) across all
     // orgs in the window. Audited inside the command (AC5). "export" cannot collide with the {organisationId:guid} route.
+    //
+    // ?region= narrows it to one English region (BLUM-7682). The route TEMPLATE is unchanged, so this endpoint keeps
+    // its RateLimitPolicy.Export bucket and its place in the authorisation/rate-limit coverage tests.
+    //
+    // The same URL serves a maturity-assessment window (BLUM-7859 AC4): one wide CSV of every submitted assessment
+    // plus a summary, produced by its own audited command. Branching on the collection's type here keeps one download
+    // link on the DHSC screens for both flows.
     [HttpGet("{collectionId:guid}/submissions/export")]
     public async Task<IActionResult> ExportSubmissions(
         [FromRoute] Guid collectionId,
+        [FromQuery] string? region,
         CancellationToken cancellationToken)
     {
-        var result = await sender.Send(new ExportSubmissionsCommand(collectionId), cancellationToken);
+        // An empty or whitespace region is the "All regions" option, not an unsupported one. Normalising here lets the
+        // validator treat any non-null value as a deliberate choice and reject it strictly.
+        var normalisedRegion = string.IsNullOrWhiteSpace(region) ? null : region;
+
+        if (await IsMaturityAssessmentAsync(collectionId, cancellationToken))
+        {
+            var assessmentsResult = await sender.Send(new ExportMaturityAssessmentsCommand(collectionId, normalisedRegion), cancellationToken);
+            return assessmentsResult.Match<IActionResult>(
+                file => File(file.Content, "application/zip", file.FileName),
+                error => error.ToObjectResult());
+        }
+
+        var result = await sender.Send(new ExportSubmissionsCommand(collectionId, normalisedRegion), cancellationToken);
         return result.Match<IActionResult>(
             file => File(file.Content, "application/zip", file.FileName),
             error => error.ToObjectResult());
@@ -106,10 +139,78 @@ public class DataCollectionsController(
         [FromRoute] Guid organisationId,
         CancellationToken cancellationToken)
     {
-        var result = await exportService.GenerateForOrganisationAsync(collectionId, organisationId, cancellationToken);
+        var result = await IsMaturityAssessmentAsync(collectionId, cancellationToken)
+            ? await maturityExportService.GenerateForOrganisationAsync(collectionId, organisationId, cancellationToken)
+            : await exportService.GenerateForOrganisationAsync(collectionId, organisationId, cancellationToken);
         return result.Match<IActionResult>(
             file => File(file.Content, "application/zip", file.FileName),
             () => NotFound());
+    }
+
+    // One-off admin repair (BLUM-7130 CSV review): re-freezes every already-submitted submission's report
+    // snapshot in this collection under today's rules and header shape. Fixes a collection whose DHSC-wide
+    // export silently drops funding-spend.csv/funding-summary.csv rows for organisations that submitted before
+    // a header-shape change — see ExportSubmissionsCommand.BuildFundingCsv's compatibleSources guard, which
+    // omits rather than risks misaligning cells. Safe to re-run: it only ever overwrites a submission's own
+    // snapshot with a freshly-built one, and never touches a draft (unsubmitted submissions are skipped).
+    [HttpPost("{collectionId:guid}/submissions/regenerate-snapshots")]
+    public async Task<ActionResult<RegenerateReportSnapshotsResultDto>> RegenerateSnapshots(
+        [FromRoute] Guid collectionId,
+        CancellationToken cancellationToken)
+    {
+        return await permissionsService.GetUserId().MatchAsync<ActionResult<RegenerateReportSnapshotsResultDto>>(
+            async actorId =>
+            {
+                var collectionLookup = await collectionQueries.GetByIdAsync(new CollectionId(collectionId), cancellationToken: cancellationToken);
+                if (collectionLookup.IsNone)
+                {
+                    return NotFound();
+                }
+
+                if (!SubmissionEligibility.IsQuarterly(collectionLookup.ValueUnsafe()))
+                {
+                    return NotFound();
+                }
+
+                var submissions = await submissionQueries.GetSubmissionsForCollectionAsync(new CollectionId(collectionId), cancellationToken);
+                var submitted = submissions.Where(s => s.SubmittedAt is not null).ToList();
+
+                var regenerated = 0;
+                var skipped = new List<RegenerateReportSnapshotsSkippedDto>();
+
+                foreach (var row in submitted)
+                {
+                    // A synthetic org-scoped permission, not the caller's own: this admin is rebuilding every
+                    // submitting organisation's snapshot in turn, not reading their own. Lead is an arbitrary
+                    // choice of a real LA role — the read paths this feeds (GetReportableActivitiesAsync,
+                    // GetFundingSpendAsync, GetStrategicFeedbackAsync) scope by OrganisationId/UserId only, never
+                    // by role.
+                    var permission = Permission.OrganisationPermission(UserRole.Lead, new OrganisationId(row.OrganisationId), actorId);
+                    var snapshotLookup = await reportSnapshotService.BuildAsync(permission, collectionId, cancellationToken);
+                    if (snapshotLookup.IsNone)
+                    {
+                        skipped.Add(new RegenerateReportSnapshotsSkippedDto(row.OrganisationId, "No reportable content to snapshot."));
+                        continue;
+                    }
+
+                    var json = reportSnapshotService.Serialize(snapshotLookup.ValueUnsafe());
+                    var result = await sender.Send(
+                        new RegenerateReportSnapshotCommand(collectionId, row.OrganisationId, json),
+                        cancellationToken);
+
+                    if (result.IsRight)
+                    {
+                        regenerated++;
+                    }
+                    else
+                    {
+                        result.IfLeft(error => skipped.Add(new RegenerateReportSnapshotsSkippedDto(row.OrganisationId, error.Message)));
+                    }
+                }
+
+                return Ok(new RegenerateReportSnapshotsResultDto(regenerated, skipped));
+            },
+            error => Task.FromResult<ActionResult<RegenerateReportSnapshotsResultDto>>(Forbid()));
     }
 
     [HttpPost]
@@ -227,4 +328,12 @@ public class DataCollectionsController(
 
     private static IReadOnlyList<ReminderInput> MapReminders(IReadOnlyList<ReminderRequestDto>? reminders) =>
         reminders?.Select(r => new ReminderInput(r.OffsetType, r.Days)).ToList() ?? [];
+
+    // The export URLs are shared by both submission flows; an unknown or deleted collection falls to the quarterly path,
+    // whose own lookup answers 404.
+    private async Task<bool> IsMaturityAssessmentAsync(Guid collectionId, CancellationToken cancellationToken)
+    {
+        var lookup = await collectionQueries.GetByIdAsync(new CollectionId(collectionId), includeDeleted: false, cancellationToken);
+        return lookup.IsSome && SubmissionEligibility.IsMaturityAssessment(lookup.ValueUnsafe());
+    }
 }

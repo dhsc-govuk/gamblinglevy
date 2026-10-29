@@ -1,3 +1,4 @@
+using Application.Common.Interfaces;
 using Application.Common.Interfaces.Repositories;
 using Domain.Forms;
 using LanguageExt;
@@ -5,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Infrastructure.Persistence.Repositories;
 
-public class FormSectionRepository(ApplicationDbContext dbContext)
+public class FormSectionRepository(ApplicationDbContext dbContext, IDateTimeProvider dateTimeProvider)
     : RepositoryBase<FormSection, FormSectionId>(dbContext), IFormSectionRepository
 {
     public async Task<Option<FormSection>> GetByIdAsync(FormSectionId id, CancellationToken cancellationToken = default)
@@ -36,7 +37,7 @@ public class FormSectionRepository(ApplicationDbContext dbContext)
         {
             if (orderById.TryGetValue(section.Id.Value, out var index))
             {
-                section.SetDisplayOrder(index);
+                section.SetDisplayOrder(index, dateTimeProvider.GetUtcNow());
             }
         }
 

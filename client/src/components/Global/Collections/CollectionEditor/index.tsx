@@ -1,6 +1,7 @@
-import React, { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useReducer, useState } from 'react';
+import useFeature from '../../../../hooks/useFeature';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout, ManagementLayout } from '../../../../layouts';
 import { GovUKBackLink, GovUKButton, GovUKErrorSummary, H1 } from '../../../GovUKComponents';
 import StepDetails from '../StepDetails';
@@ -13,10 +14,19 @@ import ConfirmationPanel from '../../Activities/ConfirmationPanel';
 import usePageTitle from '../../../../hooks/usePageTitle';
 import scrollToTop from '../../../../helpers/scrollToTop';
 import { collectionFormOptionsKey, collectionKey, collectionReportingLasKey, collectionsListKey, defaultStaleTime } from '../../../../helpers/queriesParams';
-import { buildCollectionErrorList, buildUpdateInput, collectionFormReducer, hydrateCollectionState, initialCollectionFormState } from '../../../../views/Admin/Collections/reducer';
+import {
+  buildCollectionErrorList,
+  buildUpdateInput,
+  collectionFormReducer,
+  formOptionsForType,
+  hydrateCollectionState,
+  initialCollectionFormState,
+  validateCollectionSection,
+} from '../../../../views/Admin/Collections/reducer';
 import { getCollectionFormOptions, getReportingLas, type CollectionDto } from '../../../../views/Admin/Collections/queries';
 import { updateCollection } from '../../../../views/Admin/Collections/mutations';
-import { mapCollectionError } from '../../../../views/Admin/Collections/messages';
+import { isCollectionNameTakenError, mapCollectionError } from '../../../../views/Admin/Collections/messages';
+import { useDefaultCollectionForms } from '../useDefaultCollectionForms';
 import './styles.css';
 
 type SectionKey = 'details' | 'window' | 'forms' | 'reportingLas' | 'reminders';
@@ -61,12 +71,19 @@ const CollectionEditor = ({ collection }: Props): React.ReactElement => {
   const [searchParams] = useSearchParams();
 
   const [state, dispatch] = useReducer(collectionFormReducer, { ...initialCollectionFormState, ...hydrateCollectionState(collection) });
+  // BLUM-9103: the per-form version choice is offered, and so sent, only while form versioning is on.
+  const formVersionsEnabled = useFeature('BLUM_9087');
 
-  const formOptionsQuery = useQuery(collectionFormOptionsKey, getCollectionFormOptions, { staleTime: defaultStaleTime });
-  const formOptions = formOptionsQuery.data?.data ?? [];
-  const reportingLasQuery = useQuery(collectionReportingLasKey, getReportingLas, { staleTime: defaultStaleTime });
+  const formOptionsQuery = useQuery({ queryKey: collectionFormOptionsKey, queryFn: getCollectionFormOptions, staleTime: defaultStaleTime });
+  // Only the collection type's forms are offered (BLUM-7943). The saved selection is kept; a type change here
+  // starts the new type with every form ticked, as in the create wizard.
+  const formOptions = useMemo(() => formOptionsForType(formOptionsQuery.data?.data ?? [], state.type), [formOptionsQuery.data, state.type]);
+  useDefaultCollectionForms(state, dispatch, formOptions, formOptionsQuery.isSuccess);
+  const reportingLasQuery = useQuery({ queryKey: collectionReportingLasKey, queryFn: getReportingLas, staleTime: defaultStaleTime });
   const reportingLas = reportingLasQuery.data?.data ?? [];
 
+  // The `?edit=` deep link is applied once, by the state initialiser below. The collection is already loaded when
+  // this component mounts, so unlike ActivityEditor there is nothing to wait for and re-resolve.
   const resolveInitial = (): Mode => {
     const param = searchParams.get('edit');
     if (!param) {
@@ -77,22 +94,6 @@ const CollectionEditor = ({ collection }: Props): React.ReactElement => {
 
   const [mode, setMode] = useState<Mode>(resolveInitial);
   const [discarding, setDiscarding] = useState(false);
-
-  // Apply the `?edit=` deep-link once on mount (the collection data is already present, so this simply
-  // guards against re-applying after the admin has navigated between sections — same pattern as
-  // ActivityEditor, kept for parity if the param resolution ever depends on async data).
-  const initialApplied = useRef(false);
-  useEffect(() => {
-    if (initialApplied.current) {
-      return;
-    }
-    initialApplied.current = true;
-    const target = resolveInitial();
-    if (target !== 'check') {
-      setMode(target);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const hasErrors = Object.keys(state.errors).length > 0;
   const currentPageTitle = discarding ? 'Discard changes' : mode === 'check' ? 'Check your answers' : HEADINGS[mode];
@@ -108,65 +109,31 @@ const CollectionEditor = ({ collection }: Props): React.ReactElement => {
     document.getElementById('collection-wizard-heading')?.focus({ preventScroll: true });
   }, [mode, discarding]);
 
-  // Per-section validation — mirrors the create wizard's validateCurrent for each section.
-  const validateSection = (section: SectionKey): Record<string, string> => {
-    const errors: Record<string, string> = {};
-    switch (section) {
-      case 'details': {
-        if (!state.name.trim()) {
-          errors['name'] = 'Enter a name for this data collection';
-        }
-        if (!state.type) {
-          errors['type'] = 'Select a type';
-        }
-        return errors;
-      }
-      case 'window': {
-        if (!state.windowSameAsReportingPeriod) {
-          errors['window-same'] = 'Select an option';
-        }
-        return errors;
-      }
-      case 'forms': {
-        if (state.formModuleIds.length === 0) {
-          errors['forms'] = 'Select at least one form';
-        }
-        return errors;
-      }
-      case 'reportingLas': {
-        if (!state.isSubmittedByAllLas) {
-          errors['all-las'] = 'Select an option';
-        }
-        if (state.isSubmittedByAllLas === 'no' && state.selectedLaIds.length === 0) {
-          errors['selected-las'] = 'Select at least one organisation';
-        }
-        return errors;
-      }
-      case 'reminders': {
-        state.reminders.forEach((reminder, index) => {
-          if (!reminder.offsetType) {
-            errors[`reminder-${index}-trigger`] = 'Select when to send the reminder';
-          }
-          if (reminder.offsetType && !reminder.days.trim()) {
-            errors[`reminder-${index}-days`] = 'Enter the number of days';
-          }
-        });
-        return errors;
-      }
-      default:
-        return errors;
-    }
-  };
+  // Per-section validation, shared with the create wizard. This collection is already scheduled/open, so
+  // its saved open date may legitimately be in the past by now — that one date is exempt from the
+  // today-or-future check, but any other past open date or deadline is refused (BLUM-8161).
+  const validateSection = (section: SectionKey): Record<string, string> => validateCollectionSection(section, state, { savedOpenDate: collection.opensDate });
 
-  const updateMutation = useMutation(updateCollection, {
+  const updateMutation = useMutation({
+    mutationFn: updateCollection,
     onSuccess: () => {
-      queryClient.invalidateQueries(collectionsListKey);
-      queryClient.invalidateQueries(collectionKey(collection.id));
+      queryClient.invalidateQueries({ queryKey: collectionsListKey });
+      queryClient.invalidateQueries({ queryKey: collectionKey(collection.id) });
       navigate(`/admin/collections/${collection.id}`, {
         state: { banner: { title: 'Edits saved', body: 'The data collection is now up to date.' } },
       });
     },
-    onError: (error) => dispatch({ type: 'SET_ERRORS', errors: { submit: mapCollectionError(error) } }),
+    // A taken name only surfaces once the server checks it, so it needs the user routed back to the
+    // details section to see it as an inline field error — the Name input doesn't render on 'check'.
+    onError: (error) => {
+      dispatch({ type: 'BUMP_ATTEMPTS' });
+      if (isCollectionNameTakenError(error)) {
+        dispatch({ type: 'SET_ERRORS', errors: { name: 'Name must not match the name of another data collection' } });
+        setMode('details');
+        return;
+      }
+      dispatch({ type: 'SET_ERRORS', errors: { submit: mapCollectionError(error) } });
+    },
   });
 
   // Validate a single section and return to the summary when it passes.
@@ -194,7 +161,7 @@ const CollectionEditor = ({ collection }: Props): React.ReactElement => {
       }
     }
     dispatch({ type: 'SET_ERRORS', errors: {} });
-    updateMutation.mutate({ ...buildUpdateInput(state, saveAsDraft), id: collection.id });
+    updateMutation.mutate({ ...buildUpdateInput(state, saveAsDraft, formVersionsEnabled), id: collection.id });
   };
 
   const handleSave = () => commit(false);
@@ -269,7 +236,7 @@ const CollectionEditor = ({ collection }: Props): React.ReactElement => {
             </H1>
             <StepCheckAnswers state={state} formOptions={formOptions} reportingLas={reportingLas} onChange={(stepIndex) => setMode(STEP_TO_SECTION[stepIndex])} />
             <div className="govuk-button-group">
-              <GovUKButton onClick={handleSave} isLoading={updateMutation.isLoading} disabled={optionsLoading} data-testid={`${TEST_ID}save`}>
+              <GovUKButton onClick={handleSave} isLoading={updateMutation.isPending} disabled={optionsLoading} data-testid={`${TEST_ID}save`}>
                 Save changes
               </GovUKButton>
               <GovUKButton className="govuk-button govuk-button--secondary" onClick={() => setDiscarding(true)} data-testid={`${TEST_ID}discard`}>
@@ -284,7 +251,7 @@ const CollectionEditor = ({ collection }: Props): React.ReactElement => {
             </H1>
             {renderSection(mode)}
             <div className="govuk-button-group">
-              <GovUKButton onClick={() => continueFromSection(mode)} disabled={optionsLoading || updateMutation.isLoading} data-testid={`${TEST_ID}continue`}>
+              <GovUKButton onClick={() => continueFromSection(mode)} disabled={optionsLoading || updateMutation.isPending} data-testid={`${TEST_ID}continue`}>
                 Continue
               </GovUKButton>
               <GovUKButton className="govuk-button govuk-button--secondary" onClick={() => setDiscarding(true)} data-testid={`${TEST_ID}discard`}>

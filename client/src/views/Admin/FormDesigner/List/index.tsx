@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { PageLoading } from '../../../../components/GovUKComponents';
+import { NotFound, PageLoading } from '../../../../components/GovUKComponents';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
 import {
   DeleteConfirmDialog,
@@ -9,6 +9,7 @@ import {
   GovUKButton,
   GovUKSummaryCard,
   GovUKTag,
+  GovUKTableScroll,
   H1,
   Paragraph,
   type ActionMenuItem,
@@ -18,21 +19,16 @@ import SectionForm from '../../../../components/Global/FormDesigner/SectionForm'
 import ReorderControls from '../../../../components/Global/FormDesigner/ReorderControls';
 import { useAuthProvider } from '../../../../components/AuthProvider';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import { activityFormSchemaKey, adminActivityFormSchemaKey, defaultStaleTime } from '../../../../helpers/queriesParams';
-import { slugifyTestId } from '../../../../helpers/testIds';
+import { activityFormSchemaKey, adminActivityFormCategoriesKey, adminActivityFormSchemaKey, defaultStaleTime } from '../../../../helpers/queriesParams';
+import { composeTestId, slugifyTestId } from '../../../../helpers/testIds';
+import { isNotFoundError } from '../../../../helpers/httpErrors';
+import { retryUnlessNotFound } from '../../../../helpers/queryRetry';
 import type { FormQuestionDto, FormSectionDto } from '../../../../types/formSchema';
 import { canManageFormDesigner, formDesignerBreadcrumbs } from '../navigation';
 import { getFormSchema, getFormCategories } from '../queries';
-import {
-  createSection,
-  deleteQuestion,
-  deleteSection,
-  reorderQuestions,
-  reorderSections,
-  updateSection,
-  type SectionInput,
-} from '../mutations';
+import { createSection, deleteQuestion, deleteSection, reorderQuestions, reorderSections, updateSection, type SectionInput } from '../mutations';
 import { mapFormDesignerError } from '../messages';
+import './styles.css';
 
 type SectionFormState = { mode: 'add' } | { mode: 'edit'; section: FormSectionDto } | null;
 
@@ -63,64 +59,116 @@ const FormQuestionsList = (): React.ReactElement => {
     }
   }, [userRole, navigate]);
 
-  const schemaQuery = useQuery(adminActivityFormSchemaKey, getFormSchema, { staleTime: defaultStaleTime });
-  const categoriesQuery = useQuery('admin-activity-form-categories', getFormCategories, { staleTime: defaultStaleTime });
+  const schemaQuery = useQuery({ queryKey: adminActivityFormSchemaKey, queryFn: getFormSchema, staleTime: defaultStaleTime, retry: retryUnlessNotFound });
+  const categoriesQuery = useQuery({ queryKey: adminActivityFormCategoriesKey, queryFn: getFormCategories, staleTime: defaultStaleTime, retry: retryUnlessNotFound });
   const categories = categoriesQuery.data?.data ?? [];
   const categoryName = (id: string | null): string => (id ? categories.find((category) => category.id === id)?.name ?? 'Unknown category' : 'All categories');
   const sections = (schemaQuery.data?.data.sections ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder);
   const allQuestions = schemaQuery.data?.data.questions ?? [];
   const questionsForSection = (sectionId: string): FormQuestionDto[] =>
-    allQuestions.filter((question) => question.sectionId === sectionId).slice().sort((a, b) => a.displayOrder - b.displayOrder);
+    allQuestions
+      .filter((question) => question.sectionId === sectionId)
+      .slice()
+      .sort((a, b) => a.displayOrder - b.displayOrder);
 
   const invalidate = () => {
-    queryClient.invalidateQueries(adminActivityFormSchemaKey);
-    queryClient.invalidateQueries(activityFormSchemaKey);
+    queryClient.invalidateQueries({ queryKey: adminActivityFormSchemaKey });
+    queryClient.invalidateQueries({ queryKey: activityFormSchemaKey });
   };
 
-  const createSectionM = useMutation((input: SectionInput) => createSection(input), {
-    onSuccess: () => { invalidate(); setSectionForm(null); },
+  const createSectionM = useMutation({
+    mutationFn: (input: SectionInput) => createSection(input),
+    onSuccess: () => {
+      invalidate();
+      setSectionForm(null);
+    },
     onError: (error) => setActionError(mapFormDesignerError(error)),
   });
-  const updateSectionM = useMutation((vars: { id: string; input: SectionInput }) => updateSection(vars.id, vars.input), {
-    onSuccess: () => { invalidate(); setSectionForm(null); },
+  const updateSectionM = useMutation({
+    mutationFn: (vars: { id: string; input: SectionInput }) => updateSection(vars.id, vars.input),
+    onSuccess: () => {
+      invalidate();
+      setSectionForm(null);
+    },
     onError: (error) => setActionError(mapFormDesignerError(error)),
   });
-  const deleteSectionM = useMutation((id: string) => deleteSection(id), {
-    onSuccess: () => { invalidate(); setConfirmSection(null); },
-    onError: (error) => { setActionError(mapFormDesignerError(error)); setConfirmSection(null); },
+  const deleteSectionM = useMutation({
+    mutationFn: (id: string) => deleteSection(id),
+    onSuccess: () => {
+      invalidate();
+      setConfirmSection(null);
+    },
+    onError: (error) => {
+      setActionError(mapFormDesignerError(error));
+      setConfirmSection(null);
+    },
   });
-  const deleteQuestionM = useMutation((id: string) => deleteQuestion(id), {
-    onSuccess: () => { invalidate(); setConfirmQuestion(null); },
-    onError: (error) => { setActionError(mapFormDesignerError(error)); setConfirmQuestion(null); },
+  const deleteQuestionM = useMutation({
+    mutationFn: (id: string) => deleteQuestion(id),
+    onSuccess: () => {
+      invalidate();
+      setConfirmQuestion(null);
+    },
+    onError: (error) => {
+      setActionError(mapFormDesignerError(error));
+      setConfirmQuestion(null);
+    },
   });
-  const reorderSectionsM = useMutation((orderedIds: string[]) => reorderSections(orderedIds), { onSuccess: invalidate });
-  const reorderQuestionsM = useMutation(
-    (vars: { sectionId: string; orderedIds: string[] }) => reorderQuestions(vars.sectionId, vars.orderedIds),
-    { onSuccess: invalidate },
-  );
+  const reorderSectionsM = useMutation({ mutationFn: (orderedIds: string[]) => reorderSections(orderedIds), onSuccess: invalidate });
+  const reorderQuestionsM = useMutation({
+    mutationFn: (vars: { sectionId: string; orderedIds: string[] }) => reorderQuestions(vars.sectionId, vars.orderedIds),
+    onSuccess: invalidate,
+  });
 
   const moveSection = (index: number, direction: 'up' | 'down') => {
     setActionError(null);
-    reorderSectionsM.mutate(move(sections.map((s) => s.id), index, direction));
+    reorderSectionsM.mutate(
+      move(
+        sections.map((s) => s.id),
+        index,
+        direction
+      )
+    );
   };
   const moveQuestion = (sectionId: string, index: number, direction: 'up' | 'down') => {
     setActionError(null);
-    const ordered = move(questionsForSection(sectionId).map((q) => q.id), index, direction);
+    const ordered = move(
+      questionsForSection(sectionId).map((q) => q.id),
+      index,
+      direction
+    );
     reorderQuestionsM.mutate({ sectionId, orderedIds: ordered });
   };
 
   const sectionActions = (section: FormSectionDto): SummaryCardAction[] => [
-    { label: 'Edit', visuallyHiddenText: `section ${section.title}`, onClick: () => { setActionError(null); setSectionForm({ mode: 'edit', section }); } },
-    { label: 'Delete', visuallyHiddenText: `section ${section.title}`, onClick: () => { setActionError(null); setConfirmSection({ id: section.id, title: section.title }); } },
+    {
+      label: 'Edit',
+      visuallyHiddenText: `section ${section.title}`,
+      onClick: () => {
+        setActionError(null);
+        setSectionForm({ mode: 'edit', section });
+      },
+    },
+    {
+      label: 'Delete',
+      visuallyHiddenText: `section ${section.title}`,
+      onClick: () => {
+        setActionError(null);
+        setConfirmSection({ id: section.id, title: section.title });
+      },
+    },
   ];
+
+  // The API answers a bodiless 404 only when BLUM_9395 has been switched off since this tab loaded.
+  if (isNotFoundError(schemaQuery.error)) {
+    return <NotFound goBack={navigate} />;
+  }
 
   return (
     <GeneralLayout breadcrumbs={formDesignerBreadcrumbs()} backLink={{ href: '/admin/home' }}>
       <div style={{ paddingTop: '20px' }}>
         <H1>Activity record questions</H1>
-        <Paragraph>
-          Manage the sections and questions that Local Authority and VCSE users answer when they create an activity record.
-        </Paragraph>
+        <Paragraph>Manage the sections and questions that Local Authority and VCSE users answer when they create an activity record.</Paragraph>
 
         {actionError && (
           <div className="govuk-error-summary" role="alert" tabIndex={-1} data-testid="admin-activity-questions-list-error">
@@ -140,23 +188,29 @@ const FormQuestionsList = (): React.ReactElement => {
                 heading="Add a section"
                 submitLabel="Add section"
                 categories={categories}
-                isLoading={createSectionM.isLoading}
-                onSubmit={(input) => { setActionError(null); createSectionM.mutate(input); }}
+                isLoading={createSectionM.isPending}
+                onSubmit={(input) => {
+                  setActionError(null);
+                  createSectionM.mutate(input);
+                }}
                 onCancel={() => setSectionForm(null)}
               />
             )}
 
             {!sectionForm && (
               <div className="govuk-button-group">
-                <GovUKButton onClick={() => { setActionError(null); setSectionForm({ mode: 'add' }); }} data-testid="admin-activity-questions-list-add-section">
+                <GovUKButton
+                  onClick={() => {
+                    setActionError(null);
+                    setSectionForm({ mode: 'add' });
+                  }}
+                  data-testid="admin-activity-questions-list-add-section">
                   Add section
                 </GovUKButton>
               </div>
             )}
 
-            {sections.length === 0 && !sectionForm && (
-              <Paragraph>No sections yet. Add a section to start building the form.</Paragraph>
-            )}
+            {sections.length === 0 && !sectionForm && <Paragraph>No sections yet. Add a section to start building the form.</Paragraph>}
 
             {sections.map((section, sectionIndex) => {
               const sectionSlug = slugifyTestId(section.title) || section.id;
@@ -173,8 +227,11 @@ const FormQuestionsList = (): React.ReactElement => {
                     initialDescription={section.description ?? ''}
                     initialCategoryId={section.categoryId}
                     categories={categories}
-                    isLoading={updateSectionM.isLoading}
-                    onSubmit={(input) => { setActionError(null); updateSectionM.mutate({ id: section.id, input }); }}
+                    isLoading={updateSectionM.isPending}
+                    onSubmit={(input) => {
+                      setActionError(null);
+                      updateSectionM.mutate({ id: section.id, input });
+                    }}
                     onCancel={() => setSectionForm(null)}
                   />
                 );
@@ -187,12 +244,19 @@ const FormQuestionsList = (): React.ReactElement => {
                   title={
                     <>
                       {section.title}
-                      <span className="govuk-!-margin-left-2"><GovUKTag colour="turquoise" className="govuk-tag--nowrap">{categoryName(section.categoryId)}</GovUKTag></span>
-                      {!section.isActive && <span className="govuk-!-margin-left-2"><GovUKTag colour="grey">Hidden</GovUKTag></span>}
+                      <span className="form-designer-section-category">
+                        <GovUKTag colour="turquoise" className="govuk-tag--uncapped">
+                          {categoryName(section.categoryId)}
+                        </GovUKTag>
+                      </span>
+                      {!section.isActive && (
+                        <span className="govuk-!-margin-left-2">
+                          <GovUKTag colour="grey">Hidden</GovUKTag>
+                        </span>
+                      )}
                     </>
                   }
-                  actions={sectionActions(section)}
-                >
+                  actions={sectionActions(section)}>
                   {section.description && <Paragraph>{section.description}</Paragraph>}
 
                   <div className="govuk-!-margin-bottom-3">
@@ -209,78 +273,93 @@ const FormQuestionsList = (): React.ReactElement => {
                   {questions.length === 0 ? (
                     <Paragraph>No questions in this section yet.</Paragraph>
                   ) : (
-                    <table className="govuk-table" data-testid={`${sectionTestId}-questions`}>
-                      <thead className="govuk-table__head">
-                        <tr className="govuk-table__row">
-                          <th scope="col" className="govuk-table__header">Question</th>
-                          <th scope="col" className="govuk-table__header">Type</th>
-                          <th scope="col" className="govuk-table__header">Code</th>
-                          <th scope="col" className="govuk-table__header">
-                            <span className="govuk-visually-hidden">Actions</span>
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="govuk-table__body">
-                        {questions.map((question, questionIndex) => {
-                          const questionTestId = `${sectionTestId}-question-${slugifyTestId(question.code) || question.id}`;
-                          const questionActions: ActionMenuItem[] = [
-                            ...(questionIndex > 0
-                              ? [{
-                                  label: 'Move up',
-                                  onClick: () => moveQuestion(section.id, questionIndex, 'up'),
-                                  testId: `${questionTestId}-move-up`,
-                                }]
-                              : []),
-                            ...(questionIndex < questions.length - 1
-                              ? [{
-                                  label: 'Move down',
-                                  onClick: () => moveQuestion(section.id, questionIndex, 'down'),
-                                  testId: `${questionTestId}-move-down`,
-                                }]
-                              : []),
-                            {
-                              label: 'Edit',
-                              href: `/admin/activity-record-questions/${question.id}/edit`,
-                              testId: `${questionTestId}-edit`,
-                            },
-                            {
-                              label: 'Delete',
-                              onClick: () => { setActionError(null); setConfirmQuestion({ id: question.id, label: question.label }); },
-                              testId: `${questionTestId}-delete`,
-                            },
-                          ];
-                          return (
-                            <tr className="govuk-table__row" key={question.id} data-testid={questionTestId}>
-                              <td className="govuk-table__cell">
-                                {question.label}
-                                {question.isRequired && <span className="govuk-!-margin-left-1"><GovUKTag colour="purple">Required</GovUKTag></span>}
-                                {!question.isActive && <span className="govuk-!-margin-left-1"><GovUKTag colour="grey">Hidden</GovUKTag></span>}
-                              </td>
-                              <td className="govuk-table__cell">
-                                <GovUKTag colour="blue">{question.questionType}</GovUKTag>
-                              </td>
-                              <td className="govuk-table__cell">
-                                <span className="govuk-hint govuk-!-margin-bottom-0">{question.code}</span>
-                              </td>
-                              <td className="govuk-table__cell govuk-table__cell--numeric">
-                                <GovUKActionMenu
-                                  items={questionActions}
-                                  buttonLabel="Actions"
-                                  testId={`${questionTestId}-actions`}
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                    <GovUKTableScroll label={`${section.title} questions`} testId={composeTestId(sectionTestId, 'questions', 'scroll')}>
+                      <table className="govuk-table" data-testid={`${sectionTestId}-questions`}>
+                        <thead className="govuk-table__head">
+                          <tr className="govuk-table__row">
+                            <th scope="col" className="govuk-table__header">
+                              Question
+                            </th>
+                            <th scope="col" className="govuk-table__header">
+                              Type
+                            </th>
+                            <th scope="col" className="govuk-table__header">
+                              Code
+                            </th>
+                            <th scope="col" className="govuk-table__header">
+                              <span className="govuk-visually-hidden">Actions</span>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="govuk-table__body">
+                          {questions.map((question, questionIndex) => {
+                            const questionTestId = `${sectionTestId}-question-${slugifyTestId(question.code) || question.id}`;
+                            const questionActions: ActionMenuItem[] = [
+                              ...(questionIndex > 0
+                                ? [
+                                    {
+                                      label: 'Move up',
+                                      onClick: () => moveQuestion(section.id, questionIndex, 'up'),
+                                      testId: `${questionTestId}-move-up`,
+                                    },
+                                  ]
+                                : []),
+                              ...(questionIndex < questions.length - 1
+                                ? [
+                                    {
+                                      label: 'Move down',
+                                      onClick: () => moveQuestion(section.id, questionIndex, 'down'),
+                                      testId: `${questionTestId}-move-down`,
+                                    },
+                                  ]
+                                : []),
+                              {
+                                label: 'Edit',
+                                href: `/admin/activity-record-questions/${question.id}/edit`,
+                                testId: `${questionTestId}-edit`,
+                              },
+                              {
+                                label: 'Delete',
+                                onClick: () => {
+                                  setActionError(null);
+                                  setConfirmQuestion({ id: question.id, label: question.label });
+                                },
+                                testId: `${questionTestId}-delete`,
+                              },
+                            ];
+                            return (
+                              <tr className="govuk-table__row" key={question.id} data-testid={questionTestId}>
+                                <td className="govuk-table__cell">
+                                  {question.label}
+                                  {question.isRequired && (
+                                    <span className="govuk-!-margin-left-1">
+                                      <GovUKTag colour="purple">Required</GovUKTag>
+                                    </span>
+                                  )}
+                                  {!question.isActive && (
+                                    <span className="govuk-!-margin-left-1">
+                                      <GovUKTag colour="grey">Hidden</GovUKTag>
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="govuk-table__cell">
+                                  <GovUKTag colour="blue">{question.questionType}</GovUKTag>
+                                </td>
+                                <td className="govuk-table__cell">
+                                  <span className="govuk-hint govuk-!-margin-bottom-0">{question.code}</span>
+                                </td>
+                                <td className="govuk-table__cell govuk-table__cell--numeric">
+                                  <GovUKActionMenu items={questionActions} buttonLabel="Actions" testId={`${questionTestId}-actions`} />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </GovUKTableScroll>
                   )}
 
-                  <RouterLink
-                    to={`/admin/activity-record-questions/create?sectionId=${section.id}`}
-                    className="govuk-link"
-                    data-testid={`${sectionTestId}-add-question`}
-                  >
+                  <RouterLink to={`/admin/activity-record-questions/create?sectionId=${section.id}`} className="govuk-link" data-testid={`${sectionTestId}-add-question`}>
                     Add a question to this section
                   </RouterLink>
                 </GovUKSummaryCard>
@@ -299,7 +378,7 @@ const FormQuestionsList = (): React.ReactElement => {
             confirmLabel="Delete section"
             onCancel={() => setConfirmSection(null)}
             onConfirm={() => deleteSectionM.mutate(confirmSection.id)}
-            isLoading={deleteSectionM.isLoading}
+            isLoading={deleteSectionM.isPending}
           />
         )}
 
@@ -313,7 +392,7 @@ const FormQuestionsList = (): React.ReactElement => {
             confirmLabel="Delete question"
             onCancel={() => setConfirmQuestion(null)}
             onConfirm={() => deleteQuestionM.mutate(confirmQuestion.id)}
-            isLoading={deleteQuestionM.isLoading}
+            isLoading={deleteQuestionM.isPending}
           />
         )}
       </div>

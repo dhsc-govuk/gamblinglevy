@@ -1,6 +1,5 @@
 using Domain;
 using Domain.Common;
-using EFCore.BulkExtensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace Infrastructure.Persistence.Repositories;
@@ -26,19 +25,6 @@ public abstract class RepositoryBase<T, TKey>(ApplicationDbContext dbContext) : 
             var entityType = Context.Model.FindRuntimeEntityType(entity.GetType());
             throw new Exception(
                 $"Unexpected failure while trying to add entity of type '{entityType}' with id '{entity.Id}'", ex);
-        }
-    }
-
-    public async Task AddRangeAsync(IList<T> entities, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            await Context.BulkInsertAsync(entities, cancellationToken: cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            throw new Exception(
-                $"Unexpected failure while trying to add entities of type '{typeof(T)}'", ex);
         }
     }
 

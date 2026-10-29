@@ -10,6 +10,11 @@ public interface IQuarterlyReportExportService
     // only ever the immutable, finalised copy "for your records".
     Task<Option<ReportExportFile>> GenerateAsync(Permission permission, Guid collectionId, CancellationToken cancellationToken);
 
+    // GenerateAsync without its live-render fallback: None when the report has no usable frozen snapshot. For a caller
+    // that only wants to know what the download holds (the detail screen's size caption, BLUM-9018) and must not
+    // re-render a legacy submission's whole report on every view. Where it answers, the file is GenerateAsync's.
+    Task<Option<ReportExportFile>> GenerateFromFrozenSnapshotAsync(Permission permission, Guid collectionId, CancellationToken cancellationToken);
+
     // DHSC variant (BLUM-6100): the same per-organisation report ZIP, but for an explicitly named organisation rather
     // than the caller's own. Used by the admin submission-detail screen. None when the org is not assigned or has no
     // submitted report. Uses the frozen snapshot only — the live render fallback is permission-scoped and unavailable

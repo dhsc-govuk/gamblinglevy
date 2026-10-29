@@ -1,9 +1,13 @@
 import React from 'react';
 import { NotAuthorised, PageLoading } from '../../../../components/GovUKComponents';
-import { useQuery, useMutation } from 'react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import { GeneralLayout } from '../../../../layouts';
-import { H1, H2, Paragraph } from '../../../../components/GovUKComponents';
+import { GovUKTaskList, H1, H2, Paragraph, type TaskListItem } from '../../../../components/GovUKComponents';
+import ReadOnlySectionCards from '../../../../components/Global/MaturityAssessment/ReadOnlySectionCards';
+import { progressTaskStatus } from '../../../Reports/display';
+import { maturityAssessmentName } from '../../../MaturityAssessment/names';
+import { financialYearEndYear } from '../../../../helpers/financialYear';
 import { SpreadsheetIcon } from '../../../../components/Icons';
 import usePageTitle, { pageTitleWithName } from '../../../../hooks/usePageTitle';
 import { reportSubmissionDetailKey } from '../../../../helpers/queriesParams';
@@ -14,14 +18,15 @@ import { reportBreadcrumbs } from '../navigation';
 import { reportFailureMessage, reportLoadVerdict, reportPageTitle, reportQueryRetry, SUBMISSION_NOT_FOUND_MESSAGE } from '../messages';
 import { downloadErrorMessage } from '../../../../helpers/downloadErrors';
 import ReportLoadFailure from '../../../../components/Global/Reports/ReportLoadFailure';
-import { composeTestId } from '../../../../helpers/testIds';
+import SubmittedByValue from '../../../../components/Global/Reports/SubmittedBy';
+import { fileMetadata } from '../../../../helpers/fileSize';
+import { composeTestId, slugifyTestId } from '../../../../helpers/testIds';
 import { ROUTES } from '../../../../helpers/routes';
 import './styles.css';
 
 interface DetailRow {
   label: string;
   value: React.ReactNode;
-  action?: { href: string; label: string };
   testId: string;
 }
 
@@ -30,6 +35,9 @@ interface DetailRow {
 // It previously used startDate/deadline, which are the window and only coincide with the period when the collection
 // was published with "window same as reporting period" = Yes (BLUM-7079).
 const orgReportTitle = (detail: OrgSubmissionDetailDto): string => {
+  if (detail.collectionType === 'maturity_assessment') {
+    return detail.financialYear ? `Maturity assessment for ${detail.organisationName}, ${detail.financialYear}` : `Maturity assessment for ${detail.organisationName}`;
+  }
   if (!detail.reportingPeriodStart || !detail.reportingPeriodEnd) {
     return `Quarterly report for ${detail.organisationName}`;
   }
@@ -42,19 +50,21 @@ const ReportSubmissionDetail = (): React.ReactElement => {
   const navigate = useNavigate();
   const { collectionId = '', organisationId = '' } = useParams<{ collectionId: string; organisationId: string }>();
   const hasRouteParams = !!collectionId && !!organisationId;
-  const { data, isError, error, refetch } = useQuery(reportSubmissionDetailKey(collectionId, organisationId), () => getReportSubmissionDetail(collectionId, organisationId), {
+  const { data, isError, error, refetch } = useQuery({
+    queryKey: reportSubmissionDetailKey(collectionId, organisationId),
+    queryFn: () => getReportSubmissionDetail(collectionId, organisationId),
     enabled: hasRouteParams,
     retry: reportQueryRetry,
   });
   const detail = data?.data;
 
-  // Suppressed while a record is in hand: react-query v3 keeps cached data when a background refetch fails, and a
+  // Suppressed while a record is in hand: react-query keeps cached data when a background refetch fails, and a
   // good record beats any failure page.
   const errorKind = reportLoadVerdict(!!detail, hasRouteParams, isError, error);
 
   usePageTitle(reportPageTitle(errorKind, NOT_FOUND_HEADING, pageTitleWithName('Submission', detail?.organisationName)));
 
-  const downloadMutation = useMutation(() => downloadOrgReport(collectionId, organisationId));
+  const downloadMutation = useMutation({ mutationFn: () => downloadOrgReport(collectionId, organisationId) });
 
   // NotAuthorised renders its own <main>, so it replaces the layout rather than sitting inside it — otherwise the
   // page would carry two main landmarks.
@@ -93,9 +103,12 @@ const ReportSubmissionDetail = (): React.ReactElement => {
   }
 
   const isCompleted = !!detail.submittedAt;
+  const isMaturity = detail.collectionType === 'maturity_assessment';
 
   const detailRows: DetailRow[] = [
     { label: 'Status', value: SUBMISSION_STATUS_LABEL[detail.status], testId: 'admin-reports-detail-status' },
+    // A maturity window covers a whole financial year, which is how the LA screens name it (BLUM-7859).
+    ...(isMaturity ? [{ label: 'Financial year', value: detail.financialYear ?? '—', testId: 'admin-reports-detail-financial-year' }] : []),
     // The period being reported on. Sits above the "Submitted by/on" rows because it describes the report itself
     // rather than the act of submitting, and so it also shows for organisations that have not submitted (BLUM-7079).
     {
@@ -108,23 +121,38 @@ const ReportSubmissionDetail = (): React.ReactElement => {
     { label: 'Deadline', value: formatGovUkDate(detail.deadline ?? null), testId: 'admin-reports-detail-deadline' },
   ];
   if (isCompleted) {
+    const submittedByTestId = 'admin-reports-detail-submitted-by';
     detailRows.push({
       label: 'Submitted by',
-      value: detail.submittedByName ?? '—',
-      action: detail.submittedByEmail ? { href: `mailto:${detail.submittedByEmail}`, label: detail.submittedByEmail } : undefined,
-      testId: 'admin-reports-detail-submitted-by',
+      // The email follows the name in the same cell, as on the LA's record (BLUM-9018).
+      value: <SubmittedByValue name={detail.submittedByName} email={detail.submittedByEmail} testId={submittedByTestId} />,
+      testId: submittedByTestId,
     });
     detailRows.push({ label: 'Submitted on', value: formatDateTime(detail.submittedAt), testId: 'admin-reports-detail-submitted-on' });
+    if (isMaturity && detail.referenceNumber) {
+      detailRows.push({ label: 'Reference number', value: detail.referenceNumber, testId: 'admin-reports-detail-reference' });
+    }
   }
+
+  // A maturity assessment is read here rather than only downloaded (BLUM-7859 AC2): section statuses while it is
+  // in progress, and every frozen answer once submitted.
+  const maturitySectionItems: TaskListItem[] = (detail.maturitySections ?? []).map((section) => ({
+    id: section.code,
+    title: section.title,
+    status: progressTaskStatus(section.status),
+    testId: composeTestId('admin-reports-detail-maturity-sections', 'item', slugifyTestId(section.code)),
+  }));
 
   return (
     <GeneralLayout breadcrumbs={reportBreadcrumbs([{ label: detail.collectionName, link: `/admin/reports/${collectionId}` }])}>
       <div className="reports-detail-page" data-testid="admin-reports-detail">
         <div className="reports-detail-page__overview">
-          <span className="reports-detail-page__caption">{detail.collectionName}</span>
+          <span className="reports-detail-page__caption">{isMaturity ? maturityAssessmentName(financialYearEndYear(detail.financialYear ?? '')) : detail.collectionName}</span>
           <H1 className="reports-detail-page__title">{detail.organisationName}</H1>
           <Paragraph className="reports-detail-page__intro">
-            These are the submission details for this organisation. When available, you can download their report for further analysis.
+            {isMaturity
+              ? 'These are the maturity assessment details for this organisation. Once submitted, you can read their answers below or download them for further analysis.'
+              : 'These are the submission details for this organisation. When available, you can download their report for further analysis.'}
           </Paragraph>
         </div>
 
@@ -137,13 +165,6 @@ const ReportSubmissionDetail = (): React.ReactElement => {
             <div className="reports-detail-page__summary-row" key={row.label}>
               <dt>{row.label}</dt>
               <dd data-testid={row.testId}>{row.value}</dd>
-              {row.action && (
-                <dd className="reports-detail-page__summary-action">
-                  <a className="govuk-link" href={row.action.href} data-testid={composeTestId(row.testId, 'action')}>
-                    {row.action.label}
-                  </a>
-                </dd>
-              )}
             </div>
           ))}
         </dl>
@@ -153,6 +174,36 @@ const ReportSubmissionDetail = (): React.ReactElement => {
             View organisation
           </RouterLink>
         </Paragraph>
+
+        {isMaturity && !isCompleted && maturitySectionItems.length > 0 && (
+          <>
+            <div className="reports-detail-page__heading-band">
+              <H2 className="reports-detail-page__subheading">Sections</H2>
+            </div>
+            <GovUKTaskList testId="admin-reports-detail-maturity-sections" idPrefix="admin-reports-detail-maturity-sections" items={maturitySectionItems} />
+          </>
+        )}
+
+        {isMaturity && isCompleted && (detail.maturitySnapshot ?? []).length > 0 && (
+          <>
+            <div className="reports-detail-page__heading-band">
+              <H2 className="reports-detail-page__subheading">Answers</H2>
+            </div>
+            <div data-testid="admin-reports-detail-maturity-answers">
+              {(detail.maturitySnapshot ?? []).map((section) => {
+                const sectionId = composeTestId('admin-reports-detail-maturity', slugifyTestId(section.code)) ?? section.code;
+                return (
+                  <section key={section.code} aria-labelledby={sectionId}>
+                    <h3 className="govuk-heading-m" id={sectionId}>
+                      {section.title}
+                    </h3>
+                    <ReadOnlySectionCards section={section} headingLevel={4} testId={sectionId} />
+                  </section>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         <div className="reports-detail-page__heading-band">
           <H2 className="reports-detail-page__subheading">Files</H2>
@@ -169,7 +220,7 @@ const ReportSubmissionDetail = (): React.ReactElement => {
                   type="button"
                   className="reports-detail-page__file-title"
                   onClick={() => downloadMutation.mutate()}
-                  disabled={downloadMutation.isLoading}
+                  disabled={downloadMutation.isPending}
                   /* The button's accessible name is the report title alone, so associate the format caption — it is
                      the only thing telling a screen-reader user this control downloads a file rather than navigating.
                      Block comment, not `//`: a line comment here silently comments out every attribute that follows
@@ -178,16 +229,15 @@ const ReportSubmissionDetail = (): React.ReactElement => {
                   data-testid="admin-reports-detail-files-download">
                   {orgReportTitle(detail)}
                 </button>
-                {/* Format only, no byte size — a known shortfall against the GDS attachment pattern, which expects
-                    format AND size so a user on a slow or metered connection can decide before committing. The size
-                    was removed because the only way to know it was to build the organisation's whole report ZIP on
-                    every view of this page, and again on download; measuring it also gave a read a way to fail,
-                    which left a download button that then 500d. Restoring it properly means persisting the byte
-                    length at submit time alongside ReportSnapshotJson (and versioning it, since the CSV/ZIP writers
-                    can change under a frozen snapshot). The LA card and the window export show "ZIP" alone too —
-                    that is the same gap, not a precedent. */}
+                {/* Format and size together, the GDS attachment pattern ("ZIP, 389 KB"), so a user on a slow or
+                    metered connection can decide before committing (BLUM-9018). The server measures this one
+                    organisation's ZIP through the download's own call, and falls back to null — the format alone —
+                    rather than failing the page when it cannot (ReportExportSizeService). The window-wide export stays
+                    format-only: measuring it would mean building every organisation's report on each view. The LA's
+                    post-submit confirmation pages (Reports/Submitted, MaturityAssessment/Submitted) still show the
+                    format alone — the same gap, left for a follow-up. */}
                 <p className="reports-detail-page__file-meta" id="admin-reports-detail-files-meta" data-testid="admin-reports-detail-files-meta">
-                  ZIP
+                  {fileMetadata('ZIP', detail.exportSizeBytes)}
                 </p>
                 {downloadMutation.isError && (
                   // role="alert" so a failed download is announced: focus stays on the button, and without a live

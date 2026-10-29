@@ -1,18 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { PageLoading } from '../../../../components/GovUKComponents';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GeneralLayout } from '../../../../layouts';
-import { GovUKButton, GovUKNotificationBanner, GovUKSummaryCard, GovUKTag, H1, Paragraph, type TagColour } from '../../../../components/GovUKComponents';
+import { ErrorSummary, GovUKButton, GovUKNotificationBanner, GovUKSummaryCard, GovUKTag, H1, Paragraph, type TagColour } from '../../../../components/GovUKComponents';
 import ModuleForm from '../../../../components/Global/Forms/ModuleForm';
 import { useAuthProvider } from '../../../../components/AuthProvider';
 import usePageTitle from '../../../../hooks/usePageTitle';
 import { defaultStaleTime, formModulesKey } from '../../../../helpers/queriesParams';
-import { slugifyTestId } from '../../../../helpers/testIds';
+import { composeTestId, slugifyTestId } from '../../../../helpers/testIds';
+import { ROUTES } from '../../../../helpers/routes';
 import { canManageForms, formsBuilderBreadcrumbs } from '../navigation';
 import { getFormModules, type FormModuleDto, type FormModuleStatus } from '../queries';
 import { createFormModule, type CreateFormModuleInput } from '../mutations';
-import { mapFormsError } from '../messages';
+import { formsErrorCode, mapFormsError } from '../messages';
 
 // Drafts are editable; published forms are locked; archived forms are retired. The tag colour and
 // label make the lifecycle state scannable at a glance on the landing page.
@@ -23,57 +24,66 @@ const STATUS_TAG: Record<FormModuleStatus, { colour: TagColour; label: string }>
 };
 
 const FormModulesList = (): React.ReactElement => {
-  usePageTitle('Forms');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { userRole } = useAuthProvider();
 
   const [showAddForm, setShowAddForm] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  // A refused create, linked from the error summary to the field it concerns.
+  const [actionError, setActionError] = useState<{ text: string; target: string } | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  // Bumped on every attempt, so the summary takes focus each time a refusal arrives (BLUM-8760).
+  const [actionAttempts, setActionAttempts] = useState(0);
+  // 1 only after a create, which closes the form the user was in: the success banner takes focus then.
+  const [successFocus, setSuccessFocus] = useState(0);
+  usePageTitle(actionError ? 'Error: Forms' : 'Forms');
+
+  const beginAction = () => {
+    setActionError(null);
+    setActionSuccess(null);
+    setActionAttempts((attempts) => attempts + 1);
+    setSuccessFocus(0);
+  };
 
   useEffect(() => {
     if (userRole && !canManageForms(userRole)) {
-      navigate('/admin/home');
+      navigate(ROUTES.admin.home);
     }
   }, [userRole, navigate]);
 
-  const modulesQuery = useQuery(formModulesKey, getFormModules, { staleTime: defaultStaleTime });
+  const modulesQuery = useQuery({ queryKey: formModulesKey, queryFn: getFormModules, staleTime: defaultStaleTime });
   const modules = (modulesQuery.data?.data ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder);
 
-  const createModuleM = useMutation((input: CreateFormModuleInput) => createFormModule(input), {
+  const createModuleM = useMutation({
+    mutationFn: (input: CreateFormModuleInput) => createFormModule(input),
     onSuccess: (_response, input) => {
-      queryClient.invalidateQueries(formModulesKey);
+      queryClient.invalidateQueries({ queryKey: formModulesKey });
       setShowAddForm(false);
       setActionSuccess(`${input.name} was created successfully.`);
+      setSuccessFocus(1);
     },
     onError: (error) => {
       setActionSuccess(null);
-      setActionError(mapFormsError(error));
+      setActionError({
+        text: mapFormsError(error),
+        target: formsErrorCode(error) === 'DUPLICATE_MODULE_CODE' ? 'admin-forms-module-form-code' : 'admin-forms-module-form-name',
+      });
     },
   });
 
   return (
-    <GeneralLayout breadcrumbs={formsBuilderBreadcrumbs()} backLink={{ href: '/admin/home' }}>
-      <div style={{ paddingTop: '20px' }}>
+    <GeneralLayout breadcrumbs={formsBuilderBreadcrumbs()} backLink={{ href: ROUTES.admin.home }}>
+      <div className="govuk-!-padding-top-4">
+        <ErrorSummary errors={actionError ? [{ targetName: actionError.target, text: actionError.text }] : []} focusTrigger={actionAttempts} testId="admin-forms-modules-error" />
         <H1>Forms</H1>
         <Paragraph>
           Build and manage the data-collection forms that Local Authority and VCSE organisations complete. Each form is a reusable template made of sections and questions.
         </Paragraph>
 
         {actionSuccess && (
-          <GovUKNotificationBanner type="success" title="Form created" testId="admin-forms-modules-success">
+          <GovUKNotificationBanner type="success" title="Form created" focusTrigger={successFocus} testId="admin-forms-modules-success">
             <Paragraph>{actionSuccess}</Paragraph>
           </GovUKNotificationBanner>
-        )}
-
-        {actionError && (
-          <div className="govuk-error-summary" role="alert" tabIndex={-1} data-testid="admin-forms-modules-error">
-            <h2 className="govuk-error-summary__title">There is a problem</h2>
-            <div className="govuk-error-summary__body">
-              <p className="govuk-body">{actionError}</p>
-            </div>
-          </div>
         )}
 
         {modulesQuery.isLoading ? (
@@ -82,13 +92,15 @@ const FormModulesList = (): React.ReactElement => {
           <>
             {showAddForm && (
               <ModuleForm
-                isSubmitting={createModuleM.isLoading}
+                isSubmitting={createModuleM.isPending}
                 onSubmit={(input) => {
-                  setActionError(null);
-                  setActionSuccess(null);
+                  beginAction();
                   createModuleM.mutate(input);
                 }}
-                onCancel={() => setShowAddForm(false)}
+                onCancel={() => {
+                  setActionError(null);
+                  setShowAddForm(false);
+                }}
               />
             )}
 
@@ -110,7 +122,7 @@ const FormModulesList = (): React.ReactElement => {
 
             {modules.map((module: FormModuleDto) => {
               const moduleSlug = slugifyTestId(module.code) || module.id;
-              const moduleTestId = `admin-forms-modules-module-${moduleSlug}`;
+              const moduleTestId = composeTestId('admin-forms-modules-module', moduleSlug);
               const statusTag = STATUS_TAG[module.status];
 
               return (
@@ -121,7 +133,7 @@ const FormModulesList = (): React.ReactElement => {
                     <>
                       {module.name}
                       <span className="govuk-!-margin-left-2">
-                        <GovUKTag colour={statusTag.colour} data-testid={`${moduleTestId}-status`}>
+                        <GovUKTag colour={statusTag.colour} data-testid={composeTestId(moduleTestId, 'status')}>
                           {statusTag.label}
                         </GovUKTag>
                       </span>
@@ -129,7 +141,7 @@ const FormModulesList = (): React.ReactElement => {
                   }>
                   {module.description && <Paragraph>{module.description}</Paragraph>}
                   <p className="govuk-hint govuk-!-margin-bottom-3">{module.code}</p>
-                  <RouterLink to={`/admin/forms/${module.id}`} className="govuk-link" data-testid={`${moduleTestId}-manage`}>
+                  <RouterLink to={ROUTES.admin.forms.module(module.id)} className="govuk-link" data-testid={composeTestId(moduleTestId, 'manage')}>
                     Manage questions
                     <span className="govuk-visually-hidden"> for {module.name}</span>
                   </RouterLink>

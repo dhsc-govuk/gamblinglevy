@@ -1,14 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { PageLoading } from '../../../../components/GovUKComponents';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ManagementLayout } from '../../../../layouts';
 import { GovUKFieldset, GovUKButton, ErrorSummary, H1 } from '../../../../components/GovUKComponents';
 import usePageTitle, { pageTitleWithName } from '../../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import { localAuthorityKey } from '../../../../helpers/queriesParams';
 import { ROUTES } from '../../../../helpers/routes';
-import { E_CODE_MAX_LENGTH, getLocalAuthority, REGIONS } from '../queries';
+import { E_CODE_MAX_LENGTH, getLocalAuthority, ONS_CODE_PATTERN, REGIONS } from '../queries';
 import type { EditOrganisationContactsState } from './Contacts';
 import './styles.css';
 
@@ -37,8 +36,9 @@ const LocalAuthoritiesEdit = (): React.ReactElement => {
 
   const routeState = location.state as EditOrganisationDetailsState | EditOrganisationContactsState | null;
   const incomingState = routeState && 'organisation' in routeState ? routeState.organisation : routeState;
+  const hasIncomingState = !!incomingState;
 
-  const { data, isLoading: loadingOrg } = useQuery(localAuthorityKey(organisationId), () => getLocalAuthority(organisationId), { enabled: !!organisationId });
+  const { data, isLoading: loadingOrg } = useQuery({ queryKey: localAuthorityKey(organisationId), queryFn: () => getLocalAuthority(organisationId), enabled: !!organisationId });
   const original = data?.data;
 
   const [name, setName] = useState(incomingState?.name ?? '');
@@ -52,7 +52,7 @@ const LocalAuthoritiesEdit = (): React.ReactElement => {
   usePageTitle(`${Object.keys(errors).length > 0 ? 'Error: ' : ''}${pageTitleWithName('Edit organisation', original?.name)}`);
 
   useEffect(() => {
-    if (original && !incomingState) {
+    if (original && !hasIncomingState) {
       setName(original.name);
       setOnsCode(original.onsCode ?? '');
       setRegion(original.region);
@@ -60,19 +60,18 @@ const LocalAuthoritiesEdit = (): React.ReactElement => {
       setECode(original.eCode ?? '');
     }
     // Only seed from the fetched record when the user hasn't already brought edits back from a later step.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [original]);
-
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
+  }, [original, hasIncomingState]);
 
   const validate = (): FormErrors => {
     const next: FormErrors = {};
     // Keys are inserted in the order the fields are rendered, because the error summary is built from
     // Object.entries(errors) and GDS requires it to match the visual order of the form.
     if (!name.trim()) next.name = 'Enter the LA name';
-    if (!region.trim()) next.region = 'Choose a region';
+    if (!region.trim()) next.region = "Select the organisation's region";
     if (type !== 'LA' && type !== 'VCSE') next.type = 'Choose LA or VCSE';
     if (type === 'LA' && !onsCode.trim()) next.onsCode = 'Enter the ONS code';
+    else if (type === 'LA' && onsCode.trim() && !ONS_CODE_PATTERN.test(onsCode.trim()))
+      next.onsCode = 'ONS code is not recognised. Enter it in the format E06000001 (a letter followed by 8 numbers).';
     // Required for both organisation types, unlike the ONS code above. Organisations created before BLUM-7050
     // have no E-code, so the first edit of one has to supply it.
     if (!eCode.trim()) next.eCode = 'Enter the E-code';
@@ -145,7 +144,7 @@ const LocalAuthoritiesEdit = (): React.ReactElement => {
   return (
     <ManagementLayout backLink={{ href: ROUTES.admin.organisations.detail(organisationId) }}>
       <div className="organisations-edit-page">
-        {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} testId="admin-local-authorities-edit-error-summary" />}
+        <ErrorSummary heading="There is a problem" errors={errorList} testId="admin-local-authorities-edit-error-summary" focusTrigger={submitAttempts} />
 
         <div className="organisations-edit-page__heading">
           <span className="govuk-caption-l">Edit organisation</span>
@@ -169,7 +168,7 @@ const LocalAuthoritiesEdit = (): React.ReactElement => {
               name="region"
               label="Region"
               value={region}
-              options={[{ value: '', label: 'Choose region' }, ...REGIONS.map((r) => ({ value: r, label: r }))]}
+              options={[{ value: '', label: 'Select region' }, ...REGIONS.map((r) => ({ value: r, label: r }))]}
               error={errors.region}
               onChange={(e) => setRegion(e.target.value)}
               required
@@ -205,7 +204,7 @@ const LocalAuthoritiesEdit = (): React.ReactElement => {
               id="eCode"
               name="eCode"
               label="E-code"
-              hint="DHSC internal finance identifier."
+              hint="DHSC internal finance identifier. For example, E1234567."
               value={eCode}
               error={errors.eCode}
               onChange={(e) => setECode(e.target.value)}

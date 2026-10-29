@@ -4,12 +4,10 @@ import './styles.css';
 interface GovUKSkipLinkProps {
   href?: string;
   children?: React.ReactNode;
+  testId?: string;
 }
 
-const GovUKSkipLink: React.FC<GovUKSkipLinkProps> = ({ 
-  href = '#main-content', 
-  children = 'Skip to main content' 
-}) => {
+const GovUKSkipLink: React.FC<GovUKSkipLinkProps> = ({ href = '#main-content', children = 'Skip to main content', testId = 'skip-link' }) => {
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     const targetId = href.replace('#', '');
@@ -22,12 +20,7 @@ const GovUKSkipLink: React.FC<GovUKSkipLinkProps> = ({
   };
 
   return (
-    <a 
-      href={href} 
-      className="govuk-skip-link" 
-      data-module="govuk-skip-link"
-      onClick={handleClick}
-    >
+    <a href={href} className="govuk-skip-link" data-module="govuk-skip-link" onClick={handleClick} data-testid={testId}>
       {children}
     </a>
   );

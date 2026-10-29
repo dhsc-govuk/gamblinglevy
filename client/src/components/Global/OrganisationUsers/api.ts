@@ -13,6 +13,7 @@ export interface OrganisationUserDto {
   status: 'active' | 'deactivated';
   role: string;
   mfaStatus?: string;
+  passwordLoginEnabled?: boolean;
   createdBy?: OrgUserActor;
   lastUpdatedBy?: OrgUserActor;
 }
@@ -46,3 +47,9 @@ export const reactivateOrganisationUser = (organisationId: string, userId: strin
 export const deleteOrganisationUser = (organisationId: string, userId: string) => axios.delete(`organisations/${organisationId}/users/${userId}`);
 
 export const resetOrganisationUserMfa = (organisationId: string, userId: string) => axios.post(`organisations/${organisationId}/users/${userId}/reset-mfa`);
+
+export const enableOrganisationUserPasswordLogin = (organisationId: string, userId: string) =>
+  axios.post<OrganisationUserDto>(`organisations/${organisationId}/users/${userId}/enable-password-login`);
+
+export const resetOrganisationUserPassword = (organisationId: string, userId: string) =>
+  axios.post<OrganisationUserDto>(`organisations/${organisationId}/users/${userId}/reset-password`);

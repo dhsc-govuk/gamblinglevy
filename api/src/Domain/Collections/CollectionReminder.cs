@@ -31,13 +31,14 @@ public class CollectionReminder : IEntity<CollectionReminderId>
         CollectionReminderId id,
         CollectionId collectionId,
         ReminderOffsetType offsetType,
-        int days)
+        int days,
+        DateTime utcNow)
     {
         Guard.NotNull(id, nameof(id));
         Guard.NotNull(collectionId, nameof(collectionId));
         Guard.NotNull(offsetType, nameof(offsetType));
         Guard.GreaterThanOrEqual(days, 0, nameof(days));
 
-        return new CollectionReminder(id, collectionId, offsetType, days, DateTime.UtcNow);
+        return new CollectionReminder(id, collectionId, offsetType, days, utcNow);
     }
 }

@@ -18,7 +18,8 @@ public interface IDataCollectionsControllerService
     // Soft-deleted collections — feeds the "Deleted collections" page.
     Task<IReadOnlyList<CollectionSummaryDto>> DeletedAsync(CancellationToken cancellationToken);
 
-    // The active form modules as options for the collection form-assignment picker.
+    // The options for the collection form-assignment picker: the active form modules (quarterly report), then the
+    // maturity-assessment catalogue sections, each tagged with its collection type.
     Task<IReadOnlyList<CollectionFormOptionDto>> GetFormOptionsAsync(CancellationToken cancellationToken);
 
     // The Local Authorities that can be assigned to a collection.

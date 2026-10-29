@@ -26,7 +26,7 @@ public class InvitationEmailService : SendGridEmailServiceBase, IInvitationEmail
         Guard.NotNullOrEmpty(settings.SendGrid.ClientUrl, nameof(settings.SendGrid.ClientUrl));
     }
 
-    public Task<Either<Exception, Unit>> SendInvitationAsync(string email, Name name, CancellationToken cancellationToken)
+    public Task<Either<Exception, Unit>> SendInvitationAsync(string email, Name name, UserRole role, CancellationToken cancellationToken)
     {
         (string PlainText, string Html) BuildBody()
         {

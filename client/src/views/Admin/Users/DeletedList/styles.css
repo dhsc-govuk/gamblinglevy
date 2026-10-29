@@ -20,29 +20,31 @@
   margin-bottom: 30px;
 }
 
+/* Wraps rather than squeezing the search. One row needs 191px search + 2 x 191px dropdowns + 2 x 30px gaps
+   = 633px, which ManagementLayout's 667.5px content column has at desktop. Between the 641px breakpoint
+   and about 914px it does not: with nowrap the search input shrank to 42px at 768px and 14px at 641px
+   (its button overflowing), so there the filter drops to a second row under the search and sort instead. */
 .admin-deleted-users-list__table .govuk-table-filter {
   align-items: flex-end;
-  flex-wrap: nowrap;
-  gap: 30px;
-  margin: 0 0 30px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px 30px;
+  margin-bottom: 30px;
 }
 
-.admin-deleted-users-list__table .govuk-table-filter > .govuk-grid-column-two-thirds {
-  flex: 1 1 auto;
-  float: none;
-  padding: 0;
-  width: auto;
+/* The 191px basis is what the search is worth before the row wraps; it then grows into whatever its line leaves
+   (about 225px at desktop). The dropdowns' own basis follows. */
+.admin-deleted-users-list__table .govuk-table-filter > * {
+  flex: 1 1 191px;
 }
 
 /* flex-basis auto + a 191px floor rather than a pinned 191px, so a user text-spacing stylesheet
    (WCAG 1.4.12) can widen the select instead of clipping its chosen option. The floor keeps the
    default-spacing width at 191px. */
-.admin-deleted-users-list__table .govuk-table-filter > .govuk-grid-column-one-third {
+.admin-deleted-users-list__table .govuk-table-filter > .govuk-table-filter__sort,
+.admin-deleted-users-list__table .govuk-table-filter > .govuk-table-filter__filter {
   flex: 0 0 auto;
-  float: none;
   min-width: 191px;
-  padding: 0;
-  width: auto;
 }
 
 .admin-deleted-users-list__table .govuk-table {
@@ -75,8 +77,7 @@
     gap: 20px;
   }
 
-  .admin-deleted-users-list__table .govuk-table-filter > .govuk-grid-column-two-thirds,
-  .admin-deleted-users-list__table .govuk-table-filter > .govuk-grid-column-one-third {
+  .admin-deleted-users-list__table .govuk-table-filter > * {
     flex-basis: auto;
     width: 100%;
   }

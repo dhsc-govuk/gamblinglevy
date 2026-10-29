@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface GovUKNotificationBannerProps {
   type?: 'success' | 'important';
@@ -6,6 +6,9 @@ interface GovUKNotificationBannerProps {
   children: React.ReactNode;
   autoDismiss?: boolean;
   autoDismissTimeout?: number;
+  // Opt-in: bump it (from 0) to move keyboard focus onto the banner, as GovUKErrorSummary's focusTrigger does — for
+  // a banner reporting the outcome of an action that took away the control the user was on.
+  focusTrigger?: number;
   testId?: string;
 }
 
@@ -15,10 +18,18 @@ function GovUKNotificationBanner({
   children,
   autoDismiss = false,
   autoDismissTimeout = 5000,
+  focusTrigger,
   testId,
 }: GovUKNotificationBannerProps): React.ReactElement | null {
   const [isVisible, setIsVisible] = useState(true);
   const isSuccess = type === 'success';
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (focusTrigger) {
+      rootRef.current?.focus();
+    }
+  }, [focusTrigger]);
 
   useEffect(() => {
     if (autoDismiss) {
@@ -40,6 +51,8 @@ function GovUKNotificationBanner({
 
   return (
     <div
+      ref={rootRef}
+      tabIndex={focusTrigger !== undefined ? -1 : undefined}
       className={`govuk-notification-banner ${isSuccess ? 'govuk-notification-banner--success' : ''}`}
       role={isSuccess ? 'alert' : 'region'}
       aria-labelledby={titleId}

@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+using Application.Common.Funding;
 using Application.Common.Text;
 using FluentValidation;
 
@@ -88,6 +90,83 @@ public static class ValidationRules
             .PrecisionScale(FieldLimits.MoneyPrecision, FieldLimits.MoneyScale, ignoreTrailingZeros: true)
             .WithErrorCode(ErrorCodes.OutOfRange)
             .WithMessage($"{label} must have no more than 2 decimal places.");
+    }
+
+    /// <summary>
+    /// The optional-money form of <see cref="PositiveMoney{T}(IRuleBuilder{T, decimal}, string)"/>: null passes, a
+    /// supplied value is bounded identically. Declared against the nullable property itself rather than as
+    /// PositiveMoney over x.Value under a .When(...), because the latter reports the failure under the property
+    /// name "NextYearAllocatedAmount.Value" and the client's fieldNameMap would no longer route it onto the field.
+    /// </summary>
+    public static IRuleBuilderOptions<T, decimal?> PositiveMoney<T>(this IRuleBuilder<T, decimal?> rule, string label)
+    {
+        return rule
+            .GreaterThan(0)
+            .WithErrorCode(ErrorCodes.OutOfRange)
+            .WithMessage($"{label} must be greater than 0.")
+            .LessThanOrEqualTo(FieldLimits.MaxMoney)
+            .WithErrorCode(ErrorCodes.OutOfRange)
+            .WithMessage($"{label} must be {FieldLimits.MaxMoney:N0} or less.")
+            .PrecisionScale(FieldLimits.MoneyPrecision, FieldLimits.MoneyScale, ignoreTrailingZeros: true)
+            .WithErrorCode(ErrorCodes.OutOfRange)
+            .WithMessage($"{label} must have no more than 2 decimal places.");
+    }
+
+    // A Local Authority's ONS/GSS code: a country-prefix letter (E, W, S or N) followed by eight digits,
+    // e.g. E06000001. BLUM-7663 — mirrors the Family Hubs project's OnsCodePattern. Neither codebase holds an
+    // enumerated reference list of real ONS codes, so this checks shape rather than list membership.
+    // Case-insensitive: OrganisationRepository.FindByOnsCodeAsync already treats ONS codes as
+    // case-insensitive for duplicate detection, so a lowercase-but-otherwise-valid code must still reach that
+    // check rather than being turned away here first.
+    // \A/\z rather than ^/$: in .NET, unquantified $ matches before a trailing \n as well as at the true end
+    // of the string, so "E06000001\n" would otherwise pass a check this rule claims enforces the exact shape.
+    private static readonly Regex OnsCodePattern = new(@"\A[EWSN][0-9]{8}\z", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// The ONS/GSS code shape for a Local Authority geography. Declared on top of MaximumLength(FieldLimits.OnsCode)
+    /// rather than replacing it, so the column-width guard survives if the shape check is ever loosened.
+    /// </summary>
+    public static IRuleBuilderOptions<T, string?> OnsCodeFormat<T>(this IRuleBuilder<T, string?> rule)
+    {
+        return rule
+            .MaximumLength(FieldLimits.OnsCode)
+            .WithErrorCode(ErrorCodes.MaxLength)
+            .WithMessage($"Must be {FieldLimits.OnsCode} characters or fewer.")
+            .Matches(OnsCodePattern)
+            .WithErrorCode(ErrorCodes.NotAllowed)
+            .WithMessage("ONS code is not recognised. Enter it in the format E06000001 (a letter followed by 8 numbers).");
+    }
+
+    /// <summary>
+    /// A "YYYY/YY" financial year, matching FinancialYearRange. Every lookup that reaches
+    /// funding_windows.financial_year matches by exact string equality, so a value in any other shape does not
+    /// fail — it silently resolves to a window nothing else agrees with, or (via IFundingWindowResolver) creates
+    /// one. Bounded by FieldLimits.FinancialYear as well, so the column width is still covered if the shape check
+    /// is ever loosened.
+    /// </summary>
+    public static IRuleBuilderOptions<T, string?> FinancialYearFormat<T>(this IRuleBuilder<T, string?> rule)
+    {
+        return rule
+            .MaximumLength(FieldLimits.FinancialYear)
+            .WithErrorCode(ErrorCodes.MaxLength)
+            .WithMessage($"Must be {FieldLimits.FinancialYear} characters or fewer.")
+            .Must(FinancialYearRange.IsValid)
+            .WithErrorCode(ErrorCodes.NotAllowed)
+            .WithMessage("Must be a financial year in the format 2026/27.");
+    }
+
+    /// <summary>
+    /// An optional date whose year must fall between FieldLimits.MinDateYear and MaxDateYear. DateOnly accepts any
+    /// year up to 9999, so without this a mistyped 5050 is saved (BLUM-8053). Null passes, because a draft may not
+    /// have answered the question yet. The label leads the message because it reaches the admin verbatim as GOV.UK
+    /// copy, e.g. "Year collection opens".
+    /// </summary>
+    public static IRuleBuilderOptions<T, DateOnly?> YearInRange<T>(this IRuleBuilder<T, DateOnly?> rule, string label)
+    {
+        return rule
+            .Must(date => date is null || (date.Value.Year >= FieldLimits.MinDateYear && date.Value.Year <= FieldLimits.MaxDateYear))
+            .WithErrorCode(ErrorCodes.OutOfRange)
+            .WithMessage($"{label} must be between {FieldLimits.MinDateYear} and {FieldLimits.MaxDateYear}");
     }
 
     /// <summary>

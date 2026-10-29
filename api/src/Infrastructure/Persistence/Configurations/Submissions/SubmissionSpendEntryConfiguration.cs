@@ -30,8 +30,9 @@ public class SubmissionSpendEntryConfiguration : IEntityTypeConfiguration<Submis
 
         builder.HasIndex(x => new { x.SubmissionId, x.Kind });
 
-        // Backstop against duplicate rows; the per-(submission, kind) wholesale replace is the real guarantee
-        // (Postgres treats NULL ActivityId / Quarter as distinct, so this does not constrain the "other" lines).
+        // Backstop against duplicate Forecast activity rows only. Postgres treats NULL as distinct, so it constrains
+        // neither the "other" lines (NULL ActivityId) nor any Actual row (NULL Quarter). The real guarantee is the
+        // wholesale replace, serialised per submission by the row lock in ReplaceForSubmissionAsync.
         builder.HasIndex(x => new { x.SubmissionId, x.ActivityId, x.Kind, x.Quarter }).IsUnique();
     }
 }

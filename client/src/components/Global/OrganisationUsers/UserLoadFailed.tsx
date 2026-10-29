@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { H1, Paragraph } from '../../GovUKComponents';
+import { SERVICE_PROBLEM_HEADING } from '../../../helpers/constants';
 
-// The one wording for this page, shared with the page title so the tab and the heading cannot drift apart.
-export const SERVICE_PROBLEM_HEADING = 'Sorry, there is a problem with the service';
+// Re-exported for the pages that import the wording from here; the definition is in helpers/constants.
+export { SERVICE_PROBLEM_HEADING };
 
 export interface UserLoadFailedProps {
   testId: string;

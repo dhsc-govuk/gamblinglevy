@@ -1,0 +1,9 @@
+.maturity-question-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.maturity-question-blocks__group .govuk-fieldset__legend--m {
+  margin-bottom: 20px;
+}

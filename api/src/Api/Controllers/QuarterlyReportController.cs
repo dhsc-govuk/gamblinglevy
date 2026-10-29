@@ -1,3 +1,4 @@
+using Api.Common;
 using Api.Dtos;
 using Api.Modules.Errors;
 using Api.Services.Abstract;
@@ -24,7 +25,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Api.Controllers;
 
 // LA-facing quarterly-report surface (BLUM-6611): the "Submit your quarterly report" intro context, the task list,
-// the "confirm your activities" step and the "Enter activity key results" section. Every LA role may both read and
+// the "confirm your activities" step and the "Enter activity results" section. Every LA role may both read and
 // submit — the view-only split that once separated finance/read-only users from activity managers went away with
 // those roles (BLUM-7038).
 [Route("quarterly-report")]
@@ -164,6 +165,7 @@ public class QuarterlyReportController(
     // Saves one page of an activity's answers — only the submitted question codes are replaced (per-page merge).
     // SaveAsDraft = "Save and come back later". Never completes the report; that is the complete endpoint below.
     [HttpPut("{collectionId:guid}/activities/{activityId:guid}/answers")]
+    [AcceptsEncodedJsonBody]
     public async Task<ActionResult<ActivityReportStateDto>> SaveAnswers(
         [FromRoute] Guid collectionId,
         [FromRoute] Guid activityId,
@@ -216,6 +218,7 @@ public class QuarterlyReportController(
 
     // Saves the "Activity spending" screen (actual levy spent this quarter). SaveAsDraft = "Save and come back later".
     [HttpPut("{collectionId:guid}/funding-spend/actuals")]
+    [AcceptsEncodedJsonBody]
     public async Task<ActionResult<FundingSpendStateDto>> SaveFundingActuals(
         [FromRoute] Guid collectionId,
         [FromBody] SaveFundingActualsRequestDto request,
@@ -237,6 +240,7 @@ public class QuarterlyReportController(
 
     // Saves the "Forecast spend" screen (expected levy spend per remaining quarter).
     [HttpPut("{collectionId:guid}/funding-spend/forecast")]
+    [AcceptsEncodedJsonBody]
     public async Task<ActionResult<FundingSpendStateDto>> SaveFundingForecast(
         [FromRoute] Guid collectionId,
         [FromBody] SaveFundingForecastRequestDto request,
@@ -290,6 +294,7 @@ public class QuarterlyReportController(
     // Saves the "Provide strategic feedback" answers (the full set on every save). SaveAsDraft = "Save and come back
     // later"; a non-draft save validates every required answer.
     [HttpPut("{collectionId:guid}/strategic-feedback")]
+    [AcceptsEncodedJsonBody]
     public async Task<ActionResult<StrategicFeedbackStateDto>> SaveStrategicFeedback(
         [FromRoute] Guid collectionId,
         [FromBody] SaveStrategicFeedbackRequestDto request,

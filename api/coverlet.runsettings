@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Code coverage for the backend test run (BLUM-8761). Used by the "Run backend tests" step in
+  bitbucket-pipelines.yml, and locally with the command in CLAUDE.md ("What actually gates a PR").
+  Each test project writes TestResults/GUID/coverage.cobertura.xml; ReportGenerator merges them.
+
+  The command is not repeated here on purpose: an XML comment cannot contain a double hyphen, and a
+  settings file that does not parse fails every test project before a single test runs.
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <!-- The four shipped assemblies only. Without this the shared test projects (Tests.Common,
+               Tests.Data) are measured too, because they are references of the project under test. -->
+          <Include>[Api]*,[Application]*,[Domain]*,[Infrastructure]*</Include>
+          <!-- EF migrations are generated and run once per database; no test should be written to cover them. -->
+          <ExcludeByFile>**/Persistence/Migrations/**/*.cs</ExcludeByFile>
+          <!-- Not CompilerGeneratedAttribute, although coverlet's own examples list it: the compiler puts it on
+               every async state machine and lambda closure, so excluding it removes the body of every async
+               method from the measurement and leaves little more than constructors. Handlers and controller
+               actions then report 100% whether or not anything calls them. -->
+          <ExcludeByAttribute>GeneratedCodeAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

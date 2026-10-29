@@ -1,32 +1,23 @@
 import React from 'react';
 import { PageLoading } from '../../../components/GovUKComponents';
-import { useQuery } from 'react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { GeneralLayout } from '../../../layouts';
 import { ErrorSummary, GovUKButton, GovUKInsetText, GovUKNotificationBanner, GovUKWarningText, H1, H2, H3, Paragraph } from '../../../components/GovUKComponents';
 import { useAuthProvider } from '../../../components/AuthProvider';
 import usePageTitle from '../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../hooks/useErrorSummaryFocus';
 import { activitiesListKey } from '../../../helpers/queriesParams';
 import { ROUTES } from '../../../helpers/routes';
 import { canManageActivities } from '../navigation';
 import { withReportContext } from '../reportContext';
 import { getActivityList, type ActivitySummaryDto } from '../queries';
-import { activityTypeDisplayName } from '../display';
+import { ACTIVITY_BANNER_COPY, activityTypeDisplayName, type ActivityBannerKey } from '../display';
 import './styles.css';
 
 interface BannerState {
-  banner?: 'created' | 'updated' | 'draft' | 'discarded' | 'deleted';
+  banner?: ActivityBannerKey;
   name?: string;
 }
-
-const BANNER_COPY: Record<string, { title: string; body: (name: string) => string }> = {
-  created: { title: 'Activity created', body: (name) => `‘${name}’ is now on your list of activities.` },
-  updated: { title: 'Activity updated', body: (name) => `Your changes to ‘${name}’ are now saved.` },
-  draft: { title: 'Progress saved', body: (name) => `You can come back to the activity ‘${name}’ and continue later.` },
-  discarded: { title: 'Changes discarded', body: (name) => `The updates you made to the activity ‘${name}’ were not saved.` },
-  deleted: { title: 'Activity deleted', body: (name) => `‘${name}’ has been taken off your main list. You can restore it from your deleted activities.` },
-};
 
 const STATUS_GROUPS: { key: string; label: string; action: 'change' | 'view' }[] = [
   { key: 'planned', label: 'Planned', action: 'change' },
@@ -49,13 +40,20 @@ const ActivityRow = ({
   const actionLabel = action === 'change' ? 'Change' : action === 'view' ? 'View' : 'Continue setup';
   const actionHref = action === 'view' ? ROUTES.activities.detail(activity.id) : ROUTES.activities.edit(activity.id);
   const displayTitle = activity.taskName && activity.title === activity.taskName ? activityTypeDisplayName(activity.taskName) : activity.title;
+  const isDraft = action === 'continue';
   return (
     <div
       style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '10px 0', borderBottom: '1px solid #b1b4b6' }}
       data-testid={`activities-row-${activity.id}`}>
-      <RouterLink to={decorate(ROUTES.activities.detail(activity.id))} className="govuk-link govuk-!-font-weight-bold" data-testid={`activities-row-${activity.id}-name`}>
-        {displayTitle}
-      </RouterLink>
+      {isDraft ? (
+        <span className="activities-list-page__draft-name" data-testid={`activities-row-${activity.id}-name`}>
+          {displayTitle}
+        </span>
+      ) : (
+        <RouterLink to={decorate(ROUTES.activities.detail(activity.id))} className="govuk-link govuk-!-font-weight-bold" data-testid={`activities-row-${activity.id}-name`}>
+          {displayTitle}
+        </RouterLink>
+      )}
       <span>
         <RouterLink to={decorate(actionHref)} className="govuk-link" data-testid={`activities-row-${activity.id}-action`}>
           {actionLabel}
@@ -96,28 +94,18 @@ interface Props {
   confirmAttempts?: number;
 }
 
-const ActivitiesList = ({
-  mode = 'standalone',
-  reportCollectionId,
-  backLink,
-  onConfirm,
-  confirmLoading = false,
-  confirmError,
-  confirmAttempts = 0,
-}: Props): React.ReactElement => {
+const ActivitiesList = ({ mode = 'standalone', reportCollectionId, backLink, onConfirm, confirmLoading = false, confirmError, confirmAttempts = 0 }: Props): React.ReactElement => {
   usePageTitle('Manage your list of activities');
   const { userRole } = useAuthProvider();
   const canManage = canManageActivities(userRole);
   const location = useLocation();
   const bannerState = (location.state as BannerState | null) ?? {};
-  const banner = bannerState.banner ? BANNER_COPY[bannerState.banner] : undefined;
-
-  useErrorSummaryFocus(confirmAttempts, !!confirmError);
+  const banner = bannerState.banner ? ACTIVITY_BANNER_COPY[bannerState.banner] : undefined;
 
   // Undefined outside the report flow, so every link below is left exactly as it was.
   const decorate = (path: string) => withReportContext(path, reportCollectionId);
 
-  const { data, isLoading } = useQuery(activitiesListKey, () => getActivityList());
+  const { data, isLoading } = useQuery({ queryKey: activitiesListKey, queryFn: () => getActivityList() });
   const activities = data?.data ?? [];
 
   const drafts = activities.filter((activity) => activity.isDraft);
@@ -127,7 +115,11 @@ const ActivitiesList = ({
   return (
     <GeneralLayout backLink={backLink ?? { href: '/' }}>
       <div className={`activities-list-page${mode === 'report' ? ' activities-list-page--report' : ''}`}>
-        {confirmError && <ErrorSummary heading="There is a problem" errors={[{ targetName: 'reports-confirm-activities-submit', text: confirmError }]} />}
+        <ErrorSummary
+          heading="There is a problem"
+          errors={confirmError ? [{ targetName: 'reports-confirm-activities-submit', text: confirmError }] : []}
+          focusTrigger={confirmAttempts}
+        />
 
         {banner && (
           <GovUKNotificationBanner type="success" title={banner.title} testId="activities-list-banner">
@@ -137,7 +129,7 @@ const ActivitiesList = ({
 
         <div className="activities-list-page__intro">
           <H1>Manage your list of activities</H1>
-          <Paragraph>Use this section to list your local authority’s gambling harm prevention work.</Paragraph>
+          <Paragraph>Use this section to list your local authority’s gambling harms prevention work.</Paragraph>
           <Paragraph>
             You must enter all activities, whether they are funded by the gambling levy or other sources. This includes activities from commissioning providers to hiring a member
             of staff.

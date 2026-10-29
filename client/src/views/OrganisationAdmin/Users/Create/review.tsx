@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useMutation, useQueryClient } from 'react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { httpMessageOf, httpStatusOf } from '../../../../helpers/httpErrors';
 import { OrganisationManagementLayout } from '../../../../layouts';
 import { GovUKFieldset, GovUKButton, GovUKSummaryCard, SummaryList, ErrorSummary, H1 } from '../../../../components/GovUKComponents';
 import usePageTitle from '../../../../hooks/usePageTitle';
-import useErrorSummaryFocus from '../../../../hooks/useErrorSummaryFocus';
 import { organisationUsersListKey } from '../../../../helpers/queriesParams';
 import { createOrganisationUser } from '../../../../components/Global/OrganisationUsers/api';
 import type { OrgCreateFormState } from './index';
@@ -32,14 +32,12 @@ const UsersCreateReview = (): React.ReactElement => {
   const [errors, setErrors] = useState<ReviewErrors>({});
   const [submitAttempts, setSubmitAttempts] = useState(0);
 
-  useErrorSummaryFocus(submitAttempts, Object.keys(errors).length > 0);
-
   useEffect(() => {
     if (!state?.firstName) navigate('/organisation-admin/users/create', { replace: true });
   }, [state, navigate]);
 
-  const { mutate, isLoading } = useMutation(
-    () =>
+  const { mutate, isPending } = useMutation({
+    mutationFn: () =>
       createOrganisationUser(organisationId, {
         firstName,
         lastName,
@@ -47,29 +45,27 @@ const UsersCreateReview = (): React.ReactElement => {
         role,
         status: isActive === 'true' ? 'active' : 'deactivated',
       }),
-    {
-      onSuccess: () => {
-        const userFullName = `${firstName} ${lastName}`.trim();
+    onSuccess: () => {
+      const userFullName = `${firstName} ${lastName}`.trim();
 
-        queryClient.invalidateQueries(organisationUsersListKey(organisationId));
-        navigate('/organisation-admin/users', {
-          replace: true,
-          state: {
-            banner: {
-              title: 'User added',
-              body: `${userFullName} has been added to your list. You can view, edit or delete the user at any time.`,
-            },
+      queryClient.invalidateQueries({ queryKey: organisationUsersListKey(organisationId) });
+      navigate('/organisation-admin/users', {
+        replace: true,
+        state: {
+          banner: {
+            title: 'User added',
+            body: `${userFullName} has been added to your list. You can view, edit or delete the user at any time.`,
           },
-        });
-      },
-      onError: (error: any) => {
-        const status = error?.response?.status;
-        setErrors({
-          submit: status === 409 ? 'A user with this email address already exists.' : error?.response?.data?.toString() ?? 'Could not create the user. Try again.',
-        });
-      },
-    }
-  );
+        },
+      });
+    },
+    onError: (error) => {
+      const status = httpStatusOf(error);
+      setErrors({
+        submit: status === 409 ? 'A user with this email address already exists.' : httpMessageOf(error) ?? 'Could not create the user. Try again.',
+      });
+    },
+  });
 
   if (!state?.firstName) return <></>;
 
@@ -94,7 +90,7 @@ const UsersCreateReview = (): React.ReactElement => {
 
   return (
     <OrganisationManagementLayout backLink={{ href: '/organisation-admin/users/create', onClick: () => navigate('/organisation-admin/users/create', { state }) }}>
-      {errorList.length > 0 && <ErrorSummary heading="There is a problem" errors={errorList} />}
+      <ErrorSummary heading="There is a problem" errors={errorList} focusTrigger={submitAttempts} />
 
       <span className="govuk-caption-l">Add user</span>
       <H1>Check your answers</H1>
@@ -151,7 +147,7 @@ const UsersCreateReview = (): React.ReactElement => {
           testId="organisation-admin-users-create-review-activate"
         />
 
-        <GovUKButton type="submit" isLoading={isLoading} disabled={isLoading} data-testid="organisation-admin-users-create-review-submit">
+        <GovUKButton type="submit" isLoading={isPending} disabled={isPending} data-testid="organisation-admin-users-create-review-submit">
           Save user and finish
         </GovUKButton>
       </form>
